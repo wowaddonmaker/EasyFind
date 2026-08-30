@@ -19,6 +19,7 @@ local FlightPathsEnabledAnywhere = Search.FlightPathsEnabledAnywhere
 local WipeScratchTables = Search.WipeScratchTables
 local GetNameLower = Search.GetNameLower
 local PreparePOI = Search.PreparePOI
+local POICouldMatch = Search.POICouldMatch
 local BuildEntranceLookup = Search.BuildEntranceLookup
 local EnrichZoneWithEntrance = Search.EnrichZoneWithEntrance
 local AppendLocalSearchSources = Search.AppendLocalSearchSources
@@ -322,9 +323,15 @@ end
 
 local function AppendNameMatches(results, seen, duplicates, candidates, query)
     for _, poi in ipairs(candidates) do
-        local score = ScorePOIForQuery(poi, query)
-        if score >= 50 then
-            AddScoredPOI(results, seen, duplicates, poi, GetPOIDuplicateKey(poi), score)
+        -- Letter-mask gate BEFORE any scoring call: the map corpus'
+        -- version of the UI index's candidate pruning. For a typical
+        -- non-map query ("glad mount") this skips nearly every POI with
+        -- one band(), which was the main bar's per-keystroke map cost.
+        if (poi.isZone and poi.score) or POICouldMatch(poi, query) then
+            local score = ScorePOIForQuery(poi, query)
+            if score >= 50 then
+                AddScoredPOI(results, seen, duplicates, poi, GetPOIDuplicateKey(poi), score)
+            end
         end
     end
 end

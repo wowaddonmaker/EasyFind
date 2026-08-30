@@ -94,6 +94,57 @@ local function PreparePOI(entry)
     return entry
 end
 
+-- Letter bitmask (a-z) of a string; the map corpus' equivalent of the UI
+-- index's candidate gate. A query whose letters aren't all present in a
+-- POI's name+keywords cannot score, so one band() prunes it before any
+-- scoring call. Non-letter characters contribute no bits, which keeps the
+-- gate conservative (digit/punctuation queries prune nothing).
+local band, bor, lshift = bit.band, bit.bor, bit.lshift
+local sbyte = string.byte
+
+local function LetterMask(text)
+    local mask = 0
+    for i = 1, #text do
+        local b = sbyte(text, i)
+        if b >= 97 and b <= 122 then
+            mask = bor(mask, lshift(1, b - 97))
+        end
+    end
+    return mask
+end
+
+-- Combined mask over the POI's searchable text, built once per entry.
+local function GetPOIMask(entry)
+    local mask = entry.searchMask
+    if mask then return mask end
+    mask = LetterMask(GetNameLower(entry))
+    if entry.keywords then
+        if not entry.kwLower then PreparePOI(entry) end
+        for i = 1, #entry.kwLower do
+            mask = bor(mask, LetterMask(entry.kwLower[i]))
+        end
+    end
+    entry.searchMask = mask
+    return mask
+end
+
+-- Query mask, cached for the current query string (per-keystroke caller).
+local lastQueryMaskFor, lastQueryMask
+local function QueryLetterMask(query)
+    if query ~= lastQueryMaskFor then
+        lastQueryMaskFor = query
+        lastQueryMask = LetterMask(query)
+    end
+    return lastQueryMask
+end
+
+-- true when the POI can possibly match: every query letter appears
+-- somewhere in the POI's name or keywords.
+local function POICouldMatch(entry, query)
+    local qm = QueryLetterMask(query)
+    return band(qm, GetPOIMask(entry)) == qm
+end
+
 local function PreparePOIList(entries)
     for i = 1, #entries do
         PreparePOI(entries[i])
@@ -115,8 +166,20 @@ local function EnrichZoneWithEntrance(poi, entrance)
     poi.icon = entrance.icon
 end
 
-local reuseEntranceLookup = NewScratchTable()
+-- Deliberately NOT a scratch table: WipeScratchTables runs per query and
+-- this lookup is now cached across queries (guarded on the entries list
+-- identity below); a wipe behind the guard's back would silently strip
+-- every entrance annotation.
+local reuseEntranceLookup = {}
+local entranceLookupFor, entranceLookupN
 local function BuildEntranceLookup(entries)
+    -- Rebuilt only when the entries LIST changes (new table from an EJ
+    -- refresh, or a different length); it was rebuilt per query before,
+    -- a fixed per-keystroke cost for every main-bar search.
+    if entranceLookupFor == entries and entranceLookupN == #entries then
+        return reuseEntranceLookup
+    end
+    entranceLookupFor, entranceLookupN = entries, #entries
     wipe(reuseEntranceLookup)
     for _, entry in ipairs(entries) do
         if entry.isDungeonEntrance and entry.x and entry.y then
@@ -217,6 +280,7 @@ Search.GetNameLower = GetNameLower
 Search.GetNameNorm = GetNameNorm
 Search.PreparePOI = PreparePOI
 Search.PreparePOIList = PreparePOIList
+Search.POICouldMatch = POICouldMatch
 Search.EnrichZoneWithEntrance = EnrichZoneWithEntrance
 Search.BuildEntranceLookup = BuildEntranceLookup
 Search.reuseAllPOIs = reuseAllPOIs
