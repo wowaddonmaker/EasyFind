@@ -405,3 +405,14 @@ function SearchIndex:Candidates(queryWords)
     end
     return candBuf, n
 end
+
+-- Dev-tool peek (EasyFindDev memory audit): file-local structures are
+-- invisible to table walks from ns; this hands the audit the real
+-- internals. Returns shared references; callers must not mutate.
+function SearchIndex:_DebugPeek()
+    return {
+        gramPost = gramPost, wordPost = wordPost, initPost = initPost,
+        entryMask = entryMask, lootIdx = lootIdx, slotEntry = slotEntry,
+        serials = serials, alive = alive,
+    }
+end

@@ -316,4 +316,10 @@ function IconSearch:Filter(query, out)
     return m
 end
 
+-- Dev-tool peek (EasyFindDev memory audit): the parsed icon index lives
+-- in file-locals invisible to ns walks. Shared references; do not mutate.
+function IconSearch:_DebugPeek()
+    return { names = names, ids = ids, idToIndex = idToIndex, idStrs = idStrs }
+end
+
 return IconSearch
