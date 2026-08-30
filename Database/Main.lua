@@ -44,6 +44,8 @@ local function RemoveEntriesByCategory(category)
         if entry.category ~= category then
             writeIdx = writeIdx + 1
             uiSearchData[writeIdx] = entry
+        elseif ns.SearchIndex and ns.SearchIndex.NoteRemoved then
+            ns.SearchIndex:NoteRemoved(entry)
         end
     end
     for i = before, writeIdx + 1, -1 do
@@ -56,11 +58,8 @@ local function RemoveEntriesByCategory(category)
     -- covers sync and async providers alike.
     Database._populateRemoved = writeIdx < before
     Database._populateAppendFrom = writeIdx + 1
-    -- Removals compact uiSearchData, invalidating the q-gram index's
-    -- stored positions; appends are picked up incrementally.
-    if writeIdx < before and ns.SearchIndex then
-        ns.SearchIndex:MarkDirty()
-    end
+    -- Ref-keyed index: NoteRemoved (above, per dropped entry) already
+    -- retired the removed entries from candidacy; no rebuild needed here.
 end
 
 local function RemoveEntriesWithField(field)
@@ -71,13 +70,12 @@ local function RemoveEntriesWithField(field)
         if not entry[field] then
             writeIdx = writeIdx + 1
             uiSearchData[writeIdx] = entry
+        elseif ns.SearchIndex and ns.SearchIndex.NoteRemoved then
+            ns.SearchIndex:NoteRemoved(entry)
         end
     end
     for i = before, writeIdx + 1, -1 do
         uiSearchData[i] = nil
-    end
-    if writeIdx < before and ns.SearchIndex then
-        ns.SearchIndex:MarkDirty()
     end
 end
 
