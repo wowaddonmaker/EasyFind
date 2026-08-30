@@ -23,6 +23,7 @@ local MAX_BUTTON_POOL = Render.MAX_BUTTON_POOL
 local MAX_SEARCH_RESULT_ROWS = Render.MAX_SEARCH_RESULT_ROWS
 local MAX_DEPTH = Render.MAX_DEPTH
 local deferredRepRefreshPending = false
+local repDeferredJustRan = false
 
 -- Single owner of the per-row viewport math: one visible row is the themed
 -- row height plus the flat-mode extra, both font-scaled. Returns the unit
@@ -623,13 +624,25 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
 
     -- If any rep bar row is in side-by-side mode, schedule one deferred re-render so
     -- IsTruncated() can reflect the layout we just set (it reads the previous frame's state).
+    -- CONVERGENCE LATCH: the re-render this schedules still sees the same
+    -- side-by-side row, so without the latch it re-scheduled itself every
+    -- frame forever -- a full 15-row re-render at frame rate whenever a
+    -- rep row was visible (the measured 360 renders / 6s idle loop, and
+    -- the 30-90MB GC sawtooth its allocations produced). The deferred
+    -- pass consumes the latch and does not re-arm; any later USER-driven
+    -- render arms it fresh.
     if hasSideBySideRepBar and not deferredRepRefreshPending then
-        deferredRepRefreshPending = true
-        local selfRef = self
-        ns.Utils.SafeAfter(0, function()
-            deferredRepRefreshPending = false
-            selfRef:RefreshResults()
-        end)
+        if repDeferredJustRan then
+            repDeferredJustRan = false
+        else
+            deferredRepRefreshPending = true
+            local selfRef = self
+            ns.Utils.SafeAfter(0, function()
+                deferredRepRefreshPending = false
+                repDeferredJustRan = true
+                selfRef:RefreshResults()
+            end)
+        end
     end
 
     Search:SetSelectedIndex(0)
