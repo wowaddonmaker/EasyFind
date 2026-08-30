@@ -219,13 +219,20 @@ end
 function Shortcuts:NoteShortcutBindingsCleared()
     armedShortcutSig = ""
 end
+-- Rows currently wearing a badge (at most RESULT_SHORTCUT.max of them):
+-- clearing exactly these replaced a full 100-row pool wipe on every
+-- update, which was the bulk of this function's cost in the scroll-spam
+-- flamegraph (it runs on every 12px scroll bucket).
+local badgedRows = {}
+local badgedCount = 0
+
 function Shortcuts:UpdateVisibleResultShortcuts()
     RefreshShortcutFrames()
     local showShortcutHints = ShouldShowResultShortcutHints()
 
-    for i = 1, MAX_BUTTON_POOL do
-        local row = Search:GetResultButtons()[i]
-        if not row then break end
+    for i = 1, badgedCount do
+        local row = badgedRows[i]
+        badgedRows[i] = nil
         row._efShortcutIndex = nil
         row._efShortcutBindingReady = nil
         if row.shortcutNumberText then row.shortcutNumberText:SetText("") end
@@ -233,6 +240,7 @@ function Shortcuts:UpdateVisibleResultShortcuts()
             row.shortcutGroup:Hide()
         end
     end
+    badgedCount = 0
 
     if not (resultsFrame and resultsFrame:IsShown()
             and resultsFrame.scrollFrame and resultShortcutFrame) then
@@ -247,9 +255,12 @@ function Shortcuts:UpdateVisibleResultShortcuts()
     local assigned = 0
     wipe(desiredShortcuts)
     local desiredSig = ""
+    local buttons = Search:GetResultButtons()
+    local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    local muted = theme and theme.mutedGlyph
 
     for i = 1, MAX_BUTTON_POOL do
-        local row = Search:GetResultButtons()[i]
+        local row = buttons[i]
         if not row then break end
         if IsShortcutEligibleRow(row) then
             local rowTop = row._efContentTop or 0
@@ -258,13 +269,12 @@ function Shortcuts:UpdateVisibleResultShortcuts()
                 assigned = assigned + 1
                 if assigned <= RESULT_SHORTCUT.max then
                     row._efShortcutIndex = assigned
+                    badgedCount = badgedCount + 1
+                    badgedRows[badgedCount] = row
                     if showShortcutHints and row.shortcutNumberText then
                         row.shortcutNumberText:SetText(tostring(assigned))
                         -- Muted-glyph tint follows the theme (0.58 gray is
-                        -- invisible on the light palettes). At most nine
-                        -- rows per pass, so no tint cache needed.
-                        local muted = ns.Results and ns.Results.GetActiveTheme
-                            and ns.Results:GetActiveTheme().mutedGlyph
+                        -- invisible on the light palettes).
                         if muted then
                             row.shortcutNumberText:SetTextColor(muted[1], muted[2], muted[3], muted[4] or 0.85)
                             if row.shortcutAltIcon then
