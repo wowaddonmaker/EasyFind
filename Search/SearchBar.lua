@@ -164,17 +164,13 @@ function Search:Initialize()
     self:UpdateScale()
     self:UpdateWidth()
     self:UpdateFontSize()
-    -- Load every sync dynamic provider (bags, pets, mounts, toys,
-    -- achievements, ...) staggered one per frame; the chain ends by
-    -- calling WarmSearchHotPath itself. Warming only the eager subset
-    -- left the rest to populate on demand, so a query like a bag item
-    -- painted its achievement match instantly and the bag and pet rows
-    -- a second later.
-    if ns.Database and ns.Database.LoadDeferredSyncProvidersStaggered then
-        ns.Database:LoadDeferredSyncProvidersStaggered()
-    elseif ns.Database and ns.Database.WarmSearchHotPath then
-        ns.Database:WarmSearchHotPath()
-    end
+    -- Provider warm happens on FIRST FOCUS (see OnEditFocusGained), not
+    -- here: this runs at login, and warming the whole searchable universe
+    -- (bags, pets, mounts, toys, achievements, ...) at login held tens of
+    -- MB resident for every character in every session, searched or not.
+    -- The staggered chain lands within a few frames of focus, and any
+    -- provider a beat behind the first keystroke loads on demand exactly
+    -- as before.
     if ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.EnsureFastGameOptions then
         ns.BlizzOptionsSearch:EnsureFastGameOptions()
     end
@@ -578,7 +574,18 @@ function Search:CreateSearchFrame()
         -- focused button's locked highlight (apps grid) stays lit.
         if searchFrame.ClearToolbarFocus then searchFrame.ClearToolbarFocus() end
         -- FOCUS is the search-intent signal (never login, never mere
-        -- always-show visibility): pull in the item catalog's LoadOnDemand
+        -- always-show visibility). First focus warms the provider universe
+        -- (staggered, one per frame; the chain ends in WarmSearchHotPath),
+        -- so the searchable database exists only in sessions that search.
+        if not searchFrame._efProvidersWarmed then
+            searchFrame._efProvidersWarmed = true
+            if ns.Database and ns.Database.LoadDeferredSyncProvidersStaggered then
+                ns.Database:LoadDeferredSyncProvidersStaggered()
+            elseif ns.Database and ns.Database.WarmSearchHotPath then
+                ns.Database:WarmSearchHotPath()
+            end
+        end
+        -- Pull in the item catalog's LoadOnDemand
         -- companion now, off the keystroke path, but ONLY if its filter is
         -- on -- with the General Catalog unchecked it never loads at all.
         if ns.RequestItemCatalog and not ns.ItemSearch and ns.CategoryMap then
