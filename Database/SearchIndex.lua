@@ -375,6 +375,22 @@ local function TryCompact()
     Ensure()
 end
 
+-- Compactions can remove K entries and later appends can restore the SAME
+-- array length before any query runs; a purely positional watermark then
+-- sees builtCount == n and never indexes the replacements (the settings
+-- live-walk refresh shipped exactly this hole: gated found 0 of 63).
+-- Every compaction site reports its post-truncation length here.
+function SearchIndex:NoteCompacted(n)
+    if n < builtCount then builtCount = n end
+end
+
+-- In-place replacement (same array slot, new object): retire the old
+-- entry's serial and index the replacement immediately.
+function SearchIndex:NoteReplaced(oldEntry, newEntry)
+    if oldEntry then self:NoteRemoved(oldEntry) end
+    if newEntry then IndexEntry(newEntry) end
+end
+
 function SearchIndex:NoteRemoved(entry)
     local sid = serials[entry]
     if not sid or not alive[sid] then return end

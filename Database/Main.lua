@@ -56,6 +56,9 @@ local function RemoveEntriesByCategory(category)
     for i = before, writeIdx + 1, -1 do
         uiSearchData[i] = nil
     end
+    if ns.SearchIndex and ns.SearchIndex.NoteCompacted then
+        ns.SearchIndex:NoteCompacted(writeIdx)
+    end
     -- Populate bookkeeping, consumed by the dynamic-provider completion:
     -- a populate that removed nothing (first load) only APPENDS, and the
     -- search cache can extend its candidate set instead of a full reset.
@@ -81,6 +84,9 @@ local function RemoveEntriesWithField(field)
     end
     for i = before, writeIdx + 1, -1 do
         uiSearchData[i] = nil
+    end
+    if ns.SearchIndex and ns.SearchIndex.NoteCompacted then
+        ns.SearchIndex:NoteCompacted(writeIdx)
     end
 end
 
@@ -1347,16 +1353,25 @@ local function ClassSpecIDs(classID)
 end
 
 local function RebuildLootSearchData()
-    -- Filter in place to avoid O(n^2) tremove.
+    -- Filter in place to avoid O(n^2) tremove. Dropped entries retire
+    -- from the index (re-added stubs revive via IndexEntry idempotence);
+    -- the compaction notice keeps the append watermark honest when the
+    -- re-add restores the same array length before any query runs.
     local writeIdx = 0
     for i = 1, #uiSearchData do
-        if uiSearchData[i].category ~= "Loot" then
+        local entry = uiSearchData[i]
+        if entry.category ~= "Loot" then
             writeIdx = writeIdx + 1
-            uiSearchData[writeIdx] = uiSearchData[i]
+            uiSearchData[writeIdx] = entry
+        elseif ns.SearchIndex and ns.SearchIndex.NoteRemoved then
+            ns.SearchIndex:NoteRemoved(entry)
         end
     end
     for i = #uiSearchData, writeIdx + 1, -1 do
         uiSearchData[i] = nil
+    end
+    if ns.SearchIndex and ns.SearchIndex.NoteCompacted then
+        ns.SearchIndex:NoteCompacted(writeIdx)
     end
     wipe(lootEntries)
 

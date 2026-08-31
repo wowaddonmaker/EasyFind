@@ -3063,6 +3063,13 @@ local function PushOptionEntries(data, entries, kb, addonEntries, gameEntries)
         if variable then
             local existingIndex = existingVars[variable]
             if existingIndex then
+                -- In-place swap: same slot, NEW object. Without telling
+                -- the index, the old serial stayed alive on a ghost and
+                -- the replacement was never indexed -- the gate hole the
+                -- bench caught ('graphic s': gated 0, ungated 63).
+                if ns.SearchIndex and ns.SearchIndex.NoteReplaced then
+                    ns.SearchIndex:NoteReplaced(data[existingIndex], e)
+                end
                 data[existingIndex] = e
                 changed = true
                 return

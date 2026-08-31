@@ -29,7 +29,14 @@ for i = 1, #WORDS do
 end
 addEntry("lonely unique zephyr")
 addEntry("sacrificial kumquat target")
-corpus[#corpus + 1] = { name = "loot thing", nameLower = "loot thing", lootEntry = true }
+-- Dedicated victims for the mutation tests (suite order is random, so
+-- destructive tests must never touch entries other tests assert on).
+addEntry("wombat alpha victim")
+addEntry("wombat beta victim")
+addEntry("wombat gamma victim")
+addEntry("plinth swap target")
+local lootEntry = { name = "loot thing", nameLower = "loot thing", lootEntry = true }
+corpus[#corpus + 1] = lootEntry
 
 ns.Database = { uiSearchData = corpus }
 H.loadModule("Database/SearchIndex.lua", env, ns)
@@ -60,10 +67,15 @@ end
 
 function tests.candidates_lootAlwaysIncluded()
     local set = candidateSet({ "zephyr" })
-    H.assertTrue(set[corpus[#corpus]], "loot entry must always be a candidate")
+    H.assertTrue(set[lootEntry], "loot entry must always be a candidate")
 end
 
 function tests.candidates_orderIsAppendOrder()
+    -- Order is serial order == INDEX-TIME order. The mutation tests swap
+    -- objects into mid-array slots (new serial, old position), where the
+    -- guarantee intentionally holds per index generation, not per array;
+    -- rebuild so array order and index order coincide for the assertion.
+    SearchIndex:MarkDirty()
     local cand, n = SearchIndex:Candidates({ "shadow" })
     H.assertTrue(n > 1)
     local lastPos = 0
@@ -138,6 +150,61 @@ function tests.postings_areCompressed()
     H.assertTrue(packedPostings > 100,
         "expected substantial packed postings, got " .. packedPostings)
     H.assertTrue(tailSlots > 0, "tail path should also be exercised")
+end
+
+function tests.sameCountReplacement_staysIndexed()
+    -- Remove K entries and append K NEW ones before any query: the array
+    -- length nets out equal, which a purely positional watermark cannot
+    -- see. NoteCompacted (called by every compaction site) lowers the
+    -- watermark so the appended replacements index on the next query.
+    candidateSet({ "shadow" })  -- ensure built
+    local dataArr = ns.Database.uiSearchData
+    local victims = {}
+    for i = #dataArr, 1, -1 do
+        if dataArr[i].nameLower:find("wombat", 1, true) then
+            victims[#victims + 1] = table.remove(dataArr, i)
+        end
+    end
+    H.assertEq(#victims, 3, "picked victims")
+    for _, v in ipairs(victims) do SearchIndex:NoteRemoved(v) end
+    SearchIndex:NoteCompacted(#dataArr)
+    local fresh = {}
+    for i = 1, 3 do
+        local e = { name = "replacement quixotic " .. i,
+            nameLower = "replacement quixotic " .. i,
+            keywordsLower = {}, category = "Test" }
+        fresh[i] = e
+        dataArr[#dataArr + 1] = e
+    end
+    local set = candidateSet({ "quixotic" })
+    for i = 1, 3 do
+        H.assertTrue(set[fresh[i]], "same-count replacement indexed: " .. i)
+    end
+    local gone = candidateSet({ "wombat" })
+    for _, v in ipairs(victims) do
+        H.assertTrue(not gone[v], "removed victim no longer a candidate")
+    end
+end
+
+function tests.noteReplaced_swapsCandidacy()
+    -- In-place slot swap (settings refresh): old object retires, new one
+    -- indexes immediately.
+    candidateSet({ "shadow" })
+    local dataArr = ns.Database.uiSearchData
+    local slot
+    for i = 1, #dataArr do
+        if dataArr[i].nameLower:find("plinth", 1, true) then slot = i break end
+    end
+    H.assertTrue(slot ~= nil, "found a slot to swap")
+    local old = dataArr[slot]
+    local fresh = { name = "swapped zybgorf entry", nameLower = "swapped zybgorf entry",
+        keywordsLower = {}, category = "Test" }
+    SearchIndex:NoteReplaced(old, fresh)
+    dataArr[slot] = fresh
+    local set = candidateSet({ "zybgorf" })
+    H.assertTrue(set[fresh], "replacement is a candidate")
+    local oldSet = candidateSet({ "plinth" })
+    H.assertTrue(not oldSet[old], "old object retired")
 end
 
 local pass, fail, failures = H.runSuite("SearchIndex", tests)
