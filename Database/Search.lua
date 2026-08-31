@@ -1662,8 +1662,8 @@ if Database.SetCategoryMinLen then
     pcall(Database.SetCategoryMinLen, Database, DEFAULT_CATEGORY_MINLEN)
 end
 
--- Dev-tool peek (EasyFindDev memory audit): file-local caches invisible
--- to ns walks. Shared references; do not mutate.
+-- Debug peek: file-local caches invisible to ns walks, exposed for
+-- external diagnostics. Shared references; do not mutate.
 function Database:_DebugPeekSearchCaches()
     return { wordCache = wordCache, nameMaskCache = nameMaskCache }
 end

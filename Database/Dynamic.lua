@@ -535,9 +535,9 @@ function Database:UnloadDynamicSearchData(includeCore)
     if self.ResetSearchCache then self:ResetSearchCache() end
 end
 
--- Dev-tool peek (EasyFindDev memory audit): the provider registry and
--- every per-provider cache it holds are file-local, invisible to ns
--- walks. Shared references; do not mutate.
+-- Debug peek: the provider registry and every per-provider cache it
+-- holds are file-local, invisible to ns walks; exposed for external
+-- diagnostics. Shared references; do not mutate.
 function Database:_DebugPeekProviders()
     return dynamicProviders
 end

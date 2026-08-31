@@ -62,8 +62,9 @@ Search from the world map with nested results built for location-first browsing:
 - **Guide mode and direct open**: Learn where things live with step-by-step highlights, or open supported destinations directly.
 - **Quick filters**: Type `@` to search within a category such as pets, mounts, bags, macros, abilities, achievements, statistics, bosses, gear, currencies, reputations, talents, titles, collections, or map results.
 - **Slash-command results**: Type `/` in the search bar to search slash commands: EasyFind commands such as `/reset` and `/options`, WoW commands such as `/reload`, and emotes such as `/hug`.
-- **Apps button**: A dot-grid button on the search bar opens the apps menu; Calculator is the first app, with more on the way.
+- **Apps button**: A dot-grid button on the search bar opens the apps menu; Calculator and Icon Search are the first apps, with more on the way.
 - **Calculator**: Type math directly into search, including arithmetic, trig functions, and factorials, or open the full calculator from the apps menu or with `Alt+C`. Ships as its own "EasyFind [Calculator]" addon so it can be disabled entirely.
+- **Icon Search**: Browse and filter every game icon in a grid via `@icons`, the apps menu, or searching "Icon Search". Copy an icon's ID, name, or path, or create a macro with it in one click. The same search engine also appears inside the game's own macro icon picker. Ships as its own "EasyFind [Icons]" addon so it can be disabled entirely.
 - **Keyboard control**: Use arrows, Enter, Tab, Alt+number row shortcuts, or Alt+H/J/K/L navigation.
 
 ### Options

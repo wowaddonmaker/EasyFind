@@ -249,8 +249,8 @@ function ItemSearch:Search(query, scoreName)
     return n > 0 and out or nil
 end
 
--- Dev-tool peek (EasyFindDev memory audit): blob and scratch live in
--- file-locals invisible to ns walks. Shared references; do not mutate.
+-- Debug peek: blob and scratch live in file-locals invisible to ns
+-- walks, exposed for external diagnostics. Shared references; do not mutate.
 function ItemSearch:_DebugPeek()
     return { blob = blob, attemptedLoads = attemptedLoads, pendingLoads = pendingLoads }
 end

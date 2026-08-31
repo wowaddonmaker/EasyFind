@@ -463,8 +463,8 @@ function Providers:RequestAchievementSearch(query)
     return nil
 end
 
--- Dev-tool peek (EasyFindDev /efd achsearch): exercises the fallback path
--- directly -- arm state, build state, and the blob-scan hits for a query.
+-- Debug peek: exercises the fallback path directly -- arm state, build
+-- state, and the blob-scan hits for a query.
 function Providers:_DebugFallbackSearch(query)
     local armed = fallbackScan ~= nil or TryHydrateFallbackIndex()
     local results

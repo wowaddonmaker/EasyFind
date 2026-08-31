@@ -792,8 +792,8 @@ function Utils.RunSliced(fn, onDone, budgetMs)
     return handle
 end
 
--- Dev-tool peek (EasyFindDev memory audit): the registry is file-local and
--- invisible to ns walks. Shared reference; do not mutate.
+-- Debug peek: the registry is file-local and invisible to ns walks,
+-- exposed for external diagnostics. Shared reference; do not mutate.
 function Utils._DebugPeekCorpora()
     return corpusRegistry
 end
