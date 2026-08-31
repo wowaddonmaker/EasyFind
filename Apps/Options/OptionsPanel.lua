@@ -1177,8 +1177,18 @@ local function BuildHomeTab(ctx)
                 -- makes this button a silent no-op. Keep the panel open on
                 -- failure so the funnel's disabled-module message lands on
                 -- something instead of an empty screen.
+                if _G.InCombatLockdown and _G.InCombatLockdown() then return end
                 if not (ns.RequestOnboarding and ns.RequestOnboarding()) then return end
-                optionsFrame:Hide()
+                -- Reached through Blizzard's Settings > AddOns, our frame is
+                -- EMBEDDED: hiding it alone leaves the Settings window open
+                -- on top of the wizard, which reads as the click doing
+                -- nothing. Close the whole surface (its hide callback
+                -- restores the standalone state).
+                if Options.embedded and _G.SettingsPanel and _G.HideUIPanel then
+                    _G.HideUIPanel(_G.SettingsPanel)
+                else
+                    optionsFrame:Hide()
+                end
                 if ns.Wizard and ns.Wizard.Show then ns.Wizard:Show(ns.Wizard.FEATURES_PAGE) end
             end,
         },
