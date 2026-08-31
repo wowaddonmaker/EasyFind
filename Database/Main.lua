@@ -4166,6 +4166,11 @@ function Database:PopulateDynamicAbilities()
         if lineName and lineName ~= "" then
             kw[#kw + 1] = slower(lineName)
         end
+        -- M+ dungeon teleports answer to their dungeon's name ("karazhan"
+        -- finds Path of the Fallen Guardian), not just their flavor name.
+        if ns.AppendDungeonTeleportKeywords then
+            ns.AppendDungeonTeleportKeywords(kw, spellID)
+        end
         uiSearchData[#uiSearchData + 1] = {
             name = displayName,
             nameLower = nameLower,

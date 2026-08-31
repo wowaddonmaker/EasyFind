@@ -33,6 +33,7 @@ MapSearch/Categories.lua
 MapSearch/Indicators.lua
 MapSearch/Frames.lua
 Core/Main.lua
+Database/TeleportData.lua
 Database/Main.lua
 Database/SearchIndex.lua
 Database/Search.lua
