@@ -264,7 +264,9 @@ L["WHATSNEW_BODY"]                      =
     "        |cff9999993.|r Digite o filtro rápido @icons na busca\n" ..
     "|cffFFD100\226\128\162|r |cffffffffBusca no seletor de ícones de macros|r\n" ..
     "    |cff999999-|r Criando um macro? O seletor de ícones do jogo agora tem barra de busca\n" ..
-    "    |cff999999-|r Usa outro addon para isso? Desative-a em Opções > Busca"
+    "    |cff999999-|r Usa outro addon para isso? Desative-a em Opções > Busca\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffMais rápido e leve|r\n" ..
+    "    |cff999999-|r Grande melhoria de desempenho: digitação mais fluida, menos memória e dados que só carregam quando você realmente os usa"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"

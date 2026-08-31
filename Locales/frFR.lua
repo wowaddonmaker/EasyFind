@@ -264,7 +264,9 @@ L["WHATSNEW_BODY"]                      =
     "        |cff9999993.|r Tapez le filtre rapide @icons dans la recherche\n" ..
     "|cffFFD100\226\128\162|r |cffffffffRecherche dans le sélecteur d'icônes de macros|r\n" ..
     "    |cff999999-|r Vous créez une macro ? Le sélecteur d'icônes du jeu a désormais une barre de recherche\n" ..
-    "    |cff999999-|r Un autre addon s'en charge déjà ? Désactivez-la dans Options > Recherche"
+    "    |cff999999-|r Un autre addon s'en charge déjà ? Désactivez-la dans Options > Recherche\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffPlus rapide et plus léger|r\n" ..
+    "    |cff999999-|r Grande passe d'optimisation : frappe plus fluide, moins de mémoire, et des données chargées uniquement quand vous les utilisez vraiment"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"

@@ -4,13 +4,14 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
-## [3.0.0] - 2026-08-30
+## [3.0.0] - 2026-08-31
 
 ### Added
 - **Icon Search, a new app**: type `@icons` (or open it from the apps menu, or search "Icon Search") to browse all game icons in a live-filtered grid. Left click opens a window to copy the icon's FileDataID; right click offers copy ID/name/path and creating a macro with that icon, blank-titled, plain or with a `#showtooltip` first line. Search understands words with plural matching (`swords`), alternatives (`sword/axe`, or comma-separated queries), exclusion (`-inv`), wildcards (`inv_sword_*`), IDs (`135274`, `#135274`), and the game's own link forms (`spell:133`, `item:6948`) including shift-clicked chat links
 - **Search inside the macro icon picker**: the game's own icon picker (macro creation, and anywhere else it appears) gains an EasyFind search bar running the same engine. It steps aside automatically if another icon-picker addon is present, and can be turned off in Options > Search
 - The entire Icon Search module (data, grid, picker bar) ships as the `EasyFind_Icons` companion addon, loaded on demand: it costs nothing at login and nothing ever until the first time icon search is actually used, and can be disabled entirely from the AddOns list
-- **Fully keyboard-driven grid**: Down enters, arrows and Alt+HJKL move, Enter copies, Tab opens the icon's menu, ESC steps back out — same conventions as the rest of the search bar
+- **Fully keyboard-driven grid**: Down enters (or Tab from the search box), arrows and Alt+HJKL move, Enter copies, Tab opens the icon's menu, ESC steps back out — same conventions as the rest of the search bar
+- **Menu keyboard flow**: Right on a focused result row opens its context menu (Tab still works); Left or Shift+Tab backs out of any keyboard-opened menu to the row or cell that opened it, one level at a time through submenus. Hovering a menu row moves the keyboard selection to it, so exactly one row is ever highlighted — whichever input you used last wins
 
 ### Changed
 - **New default look**: fresh installs start on the Midnight theme with window borders off; existing setups keep their saved choices
@@ -18,12 +19,16 @@ All notable changes to EasyFind will be documented in this file.
 - **Tutorial texts condensed** so slides no longer overflow the wizard window
 
 ### Performance
+- Typing no longer spikes the CPU: search work runs under a per-frame budget and spreads across frames, so the worst cold-cache keystroke went from several-hundred-millisecond stalls to under 50ms, and the average typing frame now costs the same as standing idle
+- Memory comes back when you're done: closing the search bar or the world map sweeps that surface's caches and garbage, a settle pass after login reclaims one-time startup construction, and the icon dataset releases its working memory whenever the grid closes
 - Idle CPU is now zero: menu and popup closers are event-driven (no per-frame polling), the scrollbar driver disarms itself when idle, and theme restyling runs only when the theme actually changed
 - The searchable database (collections, achievements, currencies, ...) is built on first search-bar focus instead of at login, and the item and icon datasets load on demand: sessions that never search carry none of it
 - The search index survives provider updates without rebuilding (removals cost one flag), and its posting lists are compressed to a fraction of their former memory
 - Scrolling results no longer recomputes badges per frame, re-renders mid-scroll, or fires tooltip machinery for rows passing under the cursor
 
 ### Fixed
+- **Catalog items get a real identity**: learned search, aliases, pins and shortkeys now key catalog items by item ID through the one shared identity system. Picking a catalog item after a search teaches the ranking like any other row; pinning one rarity variant no longer also pins its same-named siblings; and pinned catalog items show their proper icons in the pinned view without needing a search first
+- A gear set's spec badge (and an outfit's lock overlay) could linger on unrelated rows that recycled the same row frame
 - An active quick filter's view (including the icon grid) no longer gets replaced by pinned items when focus bounces off menus or popups
 - Keyboard-focused menu rows show the normal themed highlight instead of a gold overlay
 - Several tutorial slides and POI labels shipped untranslated in most locales; all translated, and a new CI check now blocks untranslated locale values from ever shipping again

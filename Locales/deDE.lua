@@ -266,7 +266,9 @@ L["WHATSNEW_BODY"]                      =
     "        |cff9999993.|r Den Schnellfilter @icons in der Suche eingeben\n" ..
     "|cffFFD100\226\128\162|r |cffffffffSuche in der Makro-Symbolauswahl|r\n" ..
     "    |cff999999-|r Beim Makro-Erstellen hat die Symbolauswahl des Spiels jetzt eine Suchleiste\n" ..
-    "    |cff999999-|r Nutzt du dafür ein anderes Addon? Deaktiviere sie unter Optionen > Suche"
+    "    |cff999999-|r Nutzt du dafür ein anderes Addon? Deaktiviere sie unter Optionen > Suche\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffSchneller und leichter|r\n" ..
+    "    |cff999999-|r Ein großer Performance-Durchgang: flüssigeres Tippen, weniger Speicher, und Daten werden erst geladen, wenn du sie wirklich nutzt"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"

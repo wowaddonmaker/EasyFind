@@ -287,7 +287,9 @@ L["WHATSNEW_BODY"]                      =
     "        |cff9999993.|r Type the @icons quick filter in search\n" ..
     "|cffFFD100\226\128\162|r |cffffffffSearch inside the macro icon picker|r\n" ..
     "    |cff999999-|r Making a macro? The game's own icon picker now has a search bar\n" ..
-    "    |cff999999-|r Using another addon for that? Turn it off in Options > Search"
+    "    |cff999999-|r Using another addon for that? Turn it off in Options > Search\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffFaster and lighter|r\n" ..
+    "    |cff999999-|r A big performance pass: smoother typing, less memory, and data that loads only when you actually use it"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels
