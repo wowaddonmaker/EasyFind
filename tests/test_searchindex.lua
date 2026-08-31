@@ -186,6 +186,46 @@ function tests.sameCountReplacement_staysIndexed()
     end
 end
 
+function tests.compactionShiftsPendingAppends_staysIndexed()
+    -- The 109-emote hole: entries appended while the index is caught up
+    -- (pending, unindexed), then a compaction removes entries BELOW them,
+    -- shifting the pending block under the watermark before any query
+    -- indexes it. NoteCompacted must trim the watermark to the fully
+    -- indexed prefix, not just the truncation point.
+    candidateSet({ "shadow" })  -- ensure built: watermark at #corpus
+    local dataArr = ns.Database.uiSearchData
+    local pending = {}
+    for i = 1, 4 do
+        local e = { name = "pending yodelburg " .. i,
+            nameLower = "pending yodelburg " .. i,
+            keywordsLower = {}, category = "Test" }
+        pending[i] = e
+        dataArr[#dataArr + 1] = e
+    end
+    -- NO query here: the pending block must stay unindexed while the
+    -- compaction below runs, exactly like a populate cycle mid-batch.
+    local writeIdx = 0
+    local removed = 0
+    for i = 1, #dataArr do
+        local e = dataArr[i]
+        if removed < 10 and e.nameLower:find("swift", 1, true) then
+            removed = removed + 1
+            SearchIndex:NoteRemoved(e)
+        else
+            writeIdx = writeIdx + 1
+            dataArr[writeIdx] = e
+        end
+    end
+    for i = #dataArr, writeIdx + 1, -1 do dataArr[i] = nil end
+    H.assertEq(removed, 10, "compaction removed entries below the pending block")
+    SearchIndex:NoteCompacted(writeIdx)
+    local set = candidateSet({ "yodelburg" })
+    for i = 1, 4 do
+        H.assertTrue(set[pending[i]],
+            "pending append shifted below the watermark must still index: " .. i)
+    end
+end
+
 function tests.noteReplaced_swapsCandidacy()
     -- In-place slot swap (settings refresh): old object retires, new one
     -- indexes immediately.

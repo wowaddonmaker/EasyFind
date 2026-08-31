@@ -380,8 +380,24 @@ end
 -- sees builtCount == n and never indexes the replacements (the settings
 -- live-walk refresh shipped exactly this hole: gated found 0 of 63).
 -- Every compaction site reports its post-truncation length here.
+--
+-- Truncation alone is not enough: a compaction also shifts survivors DOWN,
+-- and survivors that were appended but never indexed (no query ran between
+-- the append and this compaction) can land below the watermark, where
+-- Ensure never looks again -- a permanent candidate hole (109 command
+-- entries and 606 settings entries sat exactly there). The watermark's
+-- invariant is "every entry at or below it has postings", so re-derive it
+-- as the longest fully-indexed prefix. Compactions are per-populate, not
+-- per-keystroke, so the O(n) serial-lookup walk is off the hot path.
 function SearchIndex:NoteCompacted(n)
     if n < builtCount then builtCount = n end
+    local dataArr = Database.uiSearchData
+    for i = 1, builtCount do
+        if not serials[dataArr[i]] then
+            builtCount = i - 1
+            return
+        end
+    end
 end
 
 -- In-place replacement (same array slot, new object): retire the old
@@ -559,6 +575,6 @@ function SearchIndex:_DebugPeek()
         gramStr = gramStr, gramTail = gramTail, wordStr = wordStr,
         wordTail = wordTail, initStr = initStr, initTail = initTail,
         entryMask = entryMask, lootIdx = lootIdx, slotEntry = slotEntry,
-        serials = serials, alive = alive,
+        serials = serials, alive = alive, builtCount = builtCount,
     }
 end
