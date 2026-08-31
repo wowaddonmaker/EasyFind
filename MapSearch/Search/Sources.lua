@@ -602,10 +602,14 @@ function MapSearch:GetGlobalInstanceCache()
     return BuildGlobalInstanceCacheSync(self)
 end
 
+local emptyPromotedPOIs = {}
 BuildPromotedInstanceCache = function(self)
     if promotedInstancePOIs then return promotedInstancePOIs end
 
     local zones = self:BuildWorldZoneCache()
+    -- Zone catalog still building (sliced): degrade without caching so
+    -- the next call retries once it lands.
+    if not zones then return emptyPromotedPOIs end
     local instancePOIs = self:GetGlobalInstanceCache()
     local pathForMap = {}
     local parts = {}

@@ -28,8 +28,12 @@ local worldZonePrefixSeen = {}
 local worldZonePrefixReady = false
 local emptyWorldZones = {}
 
+local zoneCacheBuilding = false
+local zoneCacheGen = 0
+
 function MapSearch:ResetWorldZoneCache()
     cachedWorldZones = nil
+    zoneCacheGen = zoneCacheGen + 1
     wipe(worldZonePrefixIndex)
     wipe(worldZonePrefixSeen)
     worldZonePrefixReady = false
@@ -91,6 +95,7 @@ function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
     end
 
     for _, child in ipairs(children) do
+        Utils.SliceCheckpoint()
         if child.name then
             local fullPath = {}
             for i = 1, #parentPath do
@@ -212,34 +217,52 @@ local function BuildWorldZonePrefixIndex(zones)
     worldZonePrefixReady = true
 end
 
+-- Sliced: the world walk (GetMapChildrenInfo recursion over every map)
+-- was the last one-frame cold stall (~200ms at the first map-searchable
+-- keystroke of a session). While the build runs, callers get nil and
+-- degrade to no-zones; completion refreshes the active search so zone
+-- rows appear a few frames later on that FIRST query only.
 function MapSearch:BuildWorldZoneCache()
     if cachedWorldZones then return cachedWorldZones end
-
-    local worldPath = {{mapID = 946, name = "World"}}
-    local zones = {}
-    local cosmicChildren = GetMapChildrenInfo(946, nil, false)
-    if cosmicChildren then
-        for _, child in ipairs(cosmicChildren) do
-            if child.name then
-                tinsert(zones, {
-                    mapID = child.mapID,
-                    name = child.name,
-                    mapType = child.mapType,
-                    parentMapID = 946,
-                    parentName = "World",
-                    path = worldPath,
-                    depth = 0
-                })
-            end
-            local worldZones = self:GetAllWorldZones(child.mapID, 0, worldPath)
-            for _, z in ipairs(worldZones) do
-                tinsert(zones, z)
+    if zoneCacheBuilding then return nil end
+    zoneCacheBuilding = true
+    local myGen = zoneCacheGen
+    local mapSearch = self
+    Utils.RunSliced(function()
+        local worldPath = {{mapID = 946, name = "World"}}
+        local zones = {}
+        local cosmicChildren = GetMapChildrenInfo(946, nil, false)
+        if cosmicChildren then
+            for _, child in ipairs(cosmicChildren) do
+                Utils.SliceCheckpoint()
+                if child.name then
+                    tinsert(zones, {
+                        mapID = child.mapID,
+                        name = child.name,
+                        mapType = child.mapType,
+                        parentMapID = 946,
+                        parentName = "World",
+                        path = worldPath,
+                        depth = 0
+                    })
+                end
+                local worldZones = mapSearch:GetAllWorldZones(child.mapID, 0, worldPath)
+                for _, z in ipairs(worldZones) do
+                    tinsert(zones, z)
+                end
             end
         end
-    end
-    cachedWorldZones = zones
-    BuildWorldZonePrefixIndex(zones)
-    return zones
+        return zones
+    end, function(ok, zones)
+        zoneCacheBuilding = false
+        if not ok or myGen ~= zoneCacheGen or type(zones) ~= "table" then return end
+        cachedWorldZones = zones
+        BuildWorldZonePrefixIndex(zones)
+        if ns.Search and ns.Search.RefreshActiveSearch then
+            ns.Search:RefreshActiveSearch()
+        end
+    end, 4)
+    return nil
 end
 
 function MapSearch:SearchZones(query)
@@ -255,6 +278,7 @@ function MapSearch:SearchZones(query)
 
     if isGlobal then
         zones = self:BuildWorldZoneCache()
+        if not zones then return {} end
         if not worldZonePrefixReady then BuildWorldZonePrefixIndex(zones) end
         candidates = worldZonePrefixIndex[ssub(query, 1, 2)]
             or worldZonePrefixIndex[ssub(query, 1, 1)]

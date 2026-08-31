@@ -1097,6 +1097,29 @@ local function OnPlayerLogin()
     -- in Database/Dynamic.lua). One settle pass once login I/O has quieted
     -- so the meter shows the real floor instead of collector debt.
     SafeAfter(8, function() collectgarbage("collect") end)
+
+    -- LoadAddOn parses are synchronous C work that no slicing can spread
+    -- (the item catalog's 6.3MB blob measured as the largest one-frame
+    -- cost left at first focus). Pre-load the search companions a session
+    -- will use anyway at a quiet post-login moment instead of at the
+    -- user's first click into the bar. The focus/query funnels remain the
+    -- fallback; sessions whose filters exclude a companion still skip it.
+    SafeAfter(12, function()
+        local uiFilters = EasyFind.db and EasyFind.db.uiSearchFilters
+        local map = ns.CategoryMap
+        if ns.RequestItemCatalog and map and map.IsProviderFilterOff
+           and not (uiFilters and map.IsProviderFilterOff(uiFilters, "catalog")) then
+            ns.RequestItemCatalog(false)
+        end
+        if ns.RequestSettingsSearch and map and map.IsProviderFilterOff then
+            local bothOff = uiFilters
+                and map.IsProviderFilterOff(uiFilters, "gameOptions")
+                and map.IsProviderFilterOff(uiFilters, "addonOptions")
+            if not bothOff then
+                ns.RequestSettingsSearch(false)
+            end
+        end
+    end)
 end
 
 local outfitRefreshTimer

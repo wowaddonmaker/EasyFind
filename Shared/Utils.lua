@@ -491,13 +491,28 @@ end
 local function CorpusStubIndex(corpus, stub, key)
     local protoValue = corpus.proto[key]
     if protoValue ~= nil then return protoValue end
+    -- Gate masks memoize onto the stub on first serve: the scoring gate
+    -- reads both for EVERY corpus stub EVERY keystroke, and the flamegraph
+    -- put ~12% of all typing CPU in this dispatcher. false memoizes fine
+    -- (rawget returns non-nil, so __index stops firing). shedKeys covers
+    -- both, so Shed still strips them.
     if key == "_efGateMask" then
-        if corpus.ungated then return false end
-        return corpus.gateMasks[rawget(stub, "_ri")]
+        local value
+        if corpus.ungated then value = false else value = corpus.gateMasks[rawget(stub, "_ri")] end
+        if value ~= nil then
+            rawset(stub, key, value)
+            corpus.shedSet[stub] = true
+        end
+        return value
     end
     if key == "_efGateInit" then
-        if corpus.ungated then return false end
-        return corpus.gateInits[rawget(stub, "_ri")]
+        local value
+        if corpus.ungated then value = false else value = corpus.gateInits[rawget(stub, "_ri")] end
+        if value ~= nil then
+            rawset(stub, key, value)
+            corpus.shedSet[stub] = true
+        end
+        return value
     end
     local lite = corpus.liteValues
     if lite then
@@ -624,7 +639,7 @@ function Utils.NewPackedCorpus(packed, spec, proto, opts)
     end
 
     local fieldIdxOf = {}
-    local shedKeys = { nameLower = true }
+    local shedKeys = { nameLower = true, _efGateMask = true, _efGateInit = true }
     for i = 1, #spec do
         fieldIdxOf[spec[i][1]] = i
         shedKeys[spec[i][1]] = true
@@ -700,6 +715,15 @@ end
 local sliceDeadline
 local dpstop = debugprofilestop
 local coroutine = coroutine
+local GetTime = GetTime
+
+-- ONE per-frame pool shared by every sliced run: individually budgeted
+-- systems (search slice, provider walk, index build) each kept their own
+-- budget but STACKED in the same frame during cold moments. GetTime is
+-- frame-constant, so it doubles as the frame marker with no OnUpdate.
+local FRAME_CAP_MS = 8
+local frameSpent = 0
+local frameStamp
 
 function Utils.SliceCheckpoint()
     if not sliceDeadline then return end
@@ -732,7 +756,9 @@ function Utils.RunSliced(fn, onDone, budgetMs)
     local handle = {}
     function handle:Cancel() handle.cancelled = true end
     local pump
+    local pumpStart
     local function step(ok, ...)
+        frameSpent = frameSpent + (dpstop() - pumpStart)
         sliceDeadline = nil
         if not ok then
             slicedDone(onDone, false, ...)
@@ -746,7 +772,20 @@ function Utils.RunSliced(fn, onDone, budgetMs)
     end
     pump = function()
         if handle.cancelled then return end
-        sliceDeadline = dpstop() + budgetMs
+        local now = GetTime()
+        if now ~= frameStamp then
+            frameStamp = now
+            frameSpent = 0
+        elseif frameSpent >= FRAME_CAP_MS then
+            -- The frame's shared pool is spent; wait for the next one.
+            Utils.SafeAfter(0, pump)
+            return
+        end
+        local allowance = budgetMs
+        local remaining = FRAME_CAP_MS - frameSpent
+        if remaining < allowance then allowance = remaining end
+        pumpStart = dpstop()
+        sliceDeadline = pumpStart + allowance
         step(coroutine.resume(co))
     end
     pump()
