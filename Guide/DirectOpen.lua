@@ -78,7 +78,8 @@ function Guide:DirectOpen(data)
 
     local steps = data.steps
     local totalSteps = #steps
-    local Highlight = ns.Highlight
+    local Highlight = ns.RequestGuide()
+    if not Highlight then return end
 
     -- For reputation steps, pre-expand all needed headers via API.
     local needsReputationResync = false
@@ -447,7 +448,7 @@ function Guide:DirectOpen(data)
 
             -- EJ loot item: highlight only (last step)
             if step.ejLootItem and i == executeCount then
-                local Highlight = ns.Highlight
+                local Highlight = ns.RequestGuide()
                 local infoFrame = _G["EncounterJournalEncounterFrameInfo"]
                 local scrollBox = infoFrame and (
                     (infoFrame.LootContainer and infoFrame.LootContainer.ScrollBox)
@@ -506,7 +507,7 @@ function Guide:DirectOpen(data)
                     -- Once the search is in, scroll the grid to the entry and
                     -- highlight its tile; results land asynchronously, so
                     -- retry a few times before settling for the filtered view.
-                    local Highlight = ns.Highlight
+                    local Highlight = ns.RequestGuide()
                     local tries = 0
                     local function tryHighlightEntry()
                         if not Highlight or not Highlight.ScrollToHousingCatalogEntry then return end

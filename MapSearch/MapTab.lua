@@ -105,6 +105,16 @@ local tabFrame
 -- Forward declared: closures below capture this before RunSearch defines it.
 local RefreshCurrentSearch
 local ReleaseMapTabMemory
+
+local function MapShownForSweep()
+    return WorldMapFrame and WorldMapFrame:IsShown() or false
+end
+
+local function TrimAfterMapSearch()
+    if ns.MapSearch and ns.MapSearch.TrimSearchMemory then
+        ns.MapSearch:TrimSearchMemory()
+    end
+end
 local panel
 local selectedIsOurs = false
 local lastSelectedWasOurs = false
@@ -2612,6 +2622,11 @@ function MapTab:Initialize()
             elseif ReleaseMapTabMemory then
                 ReleaseMapTabMemory(true)
             end
+            -- Close boundary: the release above frees the session's caches
+            -- but the old two-step nudge (CollectMapGarbage) never claimed
+            -- them, so they sat in the memory meter for minutes. The shared
+            -- sweep does (mechanics in Utils.NoteSurfaceClosed).
+            Utils.NoteSurfaceClosed("mapSearch", MapShownForSweep, TrimAfterMapSearch)
         end)
     end
 

@@ -276,6 +276,34 @@ local function buildUtilsStub(clock)
         end)
     end
 
+    -- Mirrors of the real slicer API (Shared/Utils.lua): the harness has
+    -- no frame pump, so sliced work runs synchronously and checkpoints
+    -- are no-ops.
+    Utils.SliceCheckpoint = function() end
+    Utils.RunSliced = function(fn, onDone)
+        local function relay(ok, ...) onDone(ok, ...) end
+        relay(pcall(fn))
+    end
+
+    -- Mirror of the real Utils.AccumulateGateMasks (Shared/Utils.lua);
+    -- Database/Search.lua aliases it for the scoring gate. Keep in sync.
+    Utils.AccumulateGateMasks = function(s, cm, im)
+        local prevAlpha = false
+        for i = 1, #s do
+            local b = string.byte(s, i)
+            if b >= 65 and b <= 90 then b = b + 32 end
+            if b >= 97 and b <= 122 then
+                local bitv = 1 << (b - 97)
+                cm = cm | bitv
+                if not prevAlpha then im = im | bitv end
+                prevAlpha = true
+            else
+                prevAlpha = false
+            end
+        end
+        return cm, im
+    end
+
     Utils.SafeOnUpdate = function(frame, handler)
         frame:SetScript("OnUpdate", handler)
     end

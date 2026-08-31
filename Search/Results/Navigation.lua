@@ -22,7 +22,6 @@ local StaticPopup_Show = StaticPopup_Show
 local MAX_BUTTON_POOL = 100
 local GetAllPins = UIPins.GetAll
 local pinnedOnlyEntries = {}
-local idleTrimSerial = 0
 -- Name of the row button ENTER is currently override-bound to (nil = no
 -- binding). Binding writes are dedup'd against it: redundant writes near
 -- the combat boundary put Blizzard's key re-attach pass on EasyFind's
@@ -33,6 +32,20 @@ local navEnterBound
 
 local function ResultsFrame()
     return Search:GetResultsFrame()
+end
+
+local function ResultsShownForSweep()
+    local rf = ResultsFrame()
+    return rf and rf:IsShown() or false
+end
+
+local function TrimAfterUISearch()
+    if ns.Database and ns.Database.TrimSearchMemory then
+        ns.Database:TrimSearchMemory()
+    end
+    if ns.MapSearch and ns.MapSearch.TrimSearchMemory then
+        ns.MapSearch:TrimSearchMemory()
+    end
 end
 
 local function CollapsedNodes()
@@ -333,18 +346,10 @@ function Results:HideResults()
         ns.Database:CancelDynamicWarmup()
     end
 
-    idleTrimSerial = idleTrimSerial + 1
-    local serial = idleTrimSerial
-    Utils.SafeAfter(60, function()
-        if serial ~= idleTrimSerial then return end
-        if ResultsFrame() and ResultsFrame():IsShown() then return end
-        if ns.Database and ns.Database.TrimSearchMemory then
-            ns.Database:TrimSearchMemory()
-        end
-        if ns.MapSearch and ns.MapSearch.TrimSearchMemory then
-            ns.MapSearch:TrimSearchMemory()
-        end
-    end)
+    -- Close boundary: the session's garbage stops being produced here, so
+    -- the shared sweep claims it instead of letting it sit in the meter
+    -- (mechanics and rationale in Utils.NoteSurfaceClosed).
+    Utils.NoteSurfaceClosed("uiSearch", ResultsShownForSweep, TrimAfterUISearch)
 end
 
 function Results:ShowPinnedItems()

@@ -61,8 +61,32 @@ local function ReconstructMapData(key)
     if not name then return nil end
     mapID = tonumber(mapID)
     local isZone = category == "zone"
+    -- The key stores the NORMALIZED (lowercased) name; showing it raw put
+    -- "eastern kingdoms" rows in the results whenever a saved reference
+    -- resolved by reconstruction (live map caches now trim on idle, so
+    -- that path actually runs). Recover the display name from the
+    -- authoritative source: C_Map for zones, the static POI table for
+    -- coordinate entries; the key's name stays the fallback.
+    local properName
+    if isZone and mapID then
+        local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(mapID)
+        if info and info.name and info.name ~= "" then properName = info.name end
+    elseif mapID and ns.STATIC_LOCATIONS then
+        local locs = ns.STATIC_LOCATIONS[mapID]
+        if locs then
+            local xn, yn = tonumber(xi), tonumber(yi)
+            for i = 1, #locs do
+                local poi = locs[i]
+                if mfloor((poi.x or 0) * 10000 + 0.5) == xn
+                   and mfloor((poi.y or 0) * 10000 + 0.5) == yn then
+                    properName = poi.name
+                    break
+                end
+            end
+        end
+    end
     return {
-        name = name,
+        name = properName or name,
         nameLower = name,
         category = category,
         mapSearchResult = true,

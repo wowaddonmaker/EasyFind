@@ -268,6 +268,79 @@ function ns.RequestItemCatalog(announce)
     return false
 end
 
+-- Options panel: LoadOnDemand companion (EasyFind_Options). Triggers are
+-- every options open (slash, ESC category stub, tutorial link, resets) --
+-- most sessions never pay for the panel at all.
+local optionsModuleWarned = false
+function ns.RequestOptionsPanel()
+    if ns.Options then return true end
+    if C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, "EasyFind_Options")
+    end
+    if ns.Options then return true end
+    if not optionsModuleWarned then
+        optionsModuleWarned = true
+        EasyFind:Print(ns.L["OPTIONS_MODULE_DISABLED"])
+    end
+    return false
+end
+
+-- Blizzard settings search: LoadOnDemand companion (EasyFind_Settings).
+-- Triggers mirror the old populate moments exactly: the first-focus warm
+-- (unless both settings filter buckets are off) and explicit settings
+-- queries -- so settings rows appear from the first real query, never at
+-- login. announce=true on explicit paths only.
+local settingsModuleWarned = false
+function ns.RequestSettingsSearch(announce)
+    if ns.BlizzOptionsSearch then return true end
+    if C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, "EasyFind_Settings")
+    end
+    if ns.BlizzOptionsSearch then return true end
+    if announce and not settingsModuleWarned then
+        settingsModuleWarned = true
+        EasyFind:Print(ns.L["SETTINGS_MODULE_DISABLED"])
+    end
+    return false
+end
+
+-- Guide engine: LoadOnDemand companion (EasyFind_Guide). Every entry point
+-- is a guide-flavored gesture (starting a guide, a tab hint, a revealed-
+-- frame glow); teardown and probe paths keep their nil no-op guards so a
+-- session that never guides never loads it. Returns the module or nil.
+local guideModuleWarned = false
+function ns.RequestGuide()
+    if ns.Highlight then return ns.Highlight end
+    if C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, "EasyFind_Guide")
+    end
+    if ns.Highlight then return ns.Highlight end
+    if not guideModuleWarned then
+        guideModuleWarned = true
+        EasyFind:Print(ns.L["GUIDE_MODULE_DISABLED"])
+    end
+    return nil
+end
+
+-- Onboarding surface (tutorial wizard, What's New popup, feature
+-- spotlight): LoadOnDemand companion (EasyFind_Onboarding). Core loads it
+-- at login only while onboarding is pending; the slash paths load it
+-- explicitly. ns.Wizard is the loaded marker (ns.Onboarding is a seeded
+-- module table, always truthy).
+local onboardingModuleWarned = false
+function ns.RequestOnboarding()
+    if ns.Wizard then return true end
+    if C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, "EasyFind_Onboarding")
+    end
+    if ns.Wizard then return true end
+    if not onboardingModuleWarned then
+        onboardingModuleWarned = true
+        EasyFind:Print(ns.L["ONBOARDING_MODULE_DISABLED"])
+    end
+    return false
+end
+
 -- Can a LoadOnDemand companion load (or is it already in)? Entry-point UI
 -- (filter rows, quick filter suggestions, app rows, launchers) hides when
 -- the companion is disabled in the AddOns list, instead of advertising a
@@ -275,6 +348,10 @@ end
 function ns.IsCompanionLoadable(name)
     if name == "EasyFind_Items" and ns.ItemSearch then return true end
     if name == "EasyFind_Icons" and ns.Results.ShowIconGrid then return true end
+    if name == "EasyFind_Options" and ns.Options then return true end
+    if name == "EasyFind_Settings" and ns.BlizzOptionsSearch then return true end
+    if name == "EasyFind_Guide" and ns.Highlight then return true end
+    if name == "EasyFind_Onboarding" and ns.Wizard then return true end
     if not (C_AddOns and C_AddOns.GetAddOnEnableState) then return true end
     local ok, state = pcall(C_AddOns.GetAddOnEnableState, name)
     return ok and (tonumber(state) or 0) > 0

@@ -36,6 +36,11 @@ local knownCurrencyIDs = {}
 -- as a list-of-strings; an empty list yields no matches either way).
 local EMPTY_KEYWORDS = {}
 
+-- PackedCorpus conversion state and helpers, bundled into ONE container:
+-- the main chunk hit Lua's 200-local limit when these were individual
+-- file locals (same medicine as the 60-upvalue rule).
+local Corpora = {}
+
 local function RemoveEntriesByCategory(category)
     local before = #uiSearchData
     local writeIdx = 0
@@ -163,6 +168,7 @@ function Database:PopulateDynamicCurrencies()
         local size = C_CurrencyInfo.GetCurrencyListSize()
         local didExpand = false
         for i = 1, size do
+            Utils.SliceCheckpoint()
             local info = C_CurrencyInfo.GetCurrencyListInfo(i)
             if info and info.isHeader and not info.isHeaderExpanded then
                 C_CurrencyInfo.ExpandCurrencyList(i, true)
@@ -394,6 +400,7 @@ function Database:PopulateDynamicReputations()
         local numFactions = C_Reputation.GetNumFactions()
         local didExpand = false
         for i = 1, numFactions do
+            Utils.SliceCheckpoint()
             local factionData = C_Reputation.GetFactionDataByIndex(i)
             if factionData and factionData.isHeader then
                 local isCollapsed = false
@@ -515,6 +522,7 @@ function Database:PopulateDynamicReputations()
     end
 
     for i = 1, numFactions do
+        Utils.SliceCheckpoint()
         local factionData = C_Reputation.GetFactionDataByIndex(i)
         if factionData and factionData.name then
             if factionData.isHeader then
@@ -571,7 +579,6 @@ local MOUNT_PROTO = {
     path         = {},
     steps        = {},
 }
-local MOUNT_MT = { __index = MOUNT_PROTO }
 
 -- mountTypeID is static per mount and read only by the type filter. Memoized so
 -- a repopulate never re-walks the extra API per mount; only ever fetched when a
@@ -730,7 +737,6 @@ local TRANSMOG_SET_PROTO = {
     path     = {},
     steps    = {},
 }
-local TRANSMOG_SET_MT = { __index = TRANSMOG_SET_PROTO }
 
 local APPEARANCE_ITEM_PROTO = {
     category = "Appearance",
@@ -978,6 +984,7 @@ ns.BOSS_CACHE_VER = 3 -- 3: rows packed into one string instead of per-row table
 ns.STATISTIC_CACHE_VER = 3 -- 3: path/chain once per category; rows packed into one string
 ns.MOUNT_CACHE_VER = 2 -- 2: rows packed into one string instead of per-row tables
 ns.HOUSING_CACHE_VER = 3 -- 3: isRoom for the Room filter; rows packed into one string
+ns.TMOG_SET_CACHE_VER = 1 -- 1: base-set rows packed into one string; icons resolve lazily
 -- Title -> source achievement. Deliberately separate from the achievement
 -- index: that index is large and has needed careful rebuilds before, while
 -- this is one packed string of ~500 id pairs. Account-wide, since achievement
@@ -1145,6 +1152,23 @@ local LOOT_ROW_SPEC = {
     { "lootSourceName" }, { "lootInstanceName" }, { "lootSourceType" },
 }
 
+-- The per-encounter fields the old per-encounter metatables carried are all
+-- IN the row spec, so corpus stubs only need the static shared proto; the
+-- encounter data hydrates from the blob like any other field.
+-- LOOT_CORPUS_PROTO is built lazily: LOOT_PROTO is declared above but its
+-- path/steps tables must be shared by reference, not re-created.
+Corpora.LOOT_COMPUTED = {
+    -- Empty maps round-trip through the pack as nil; consumers index the
+    -- links table unconditionally.
+    lootItemLinks = function() return {} end,
+}
+
+
+function Corpora.HasLootCache()
+    if next(lootItemCache) ~= nil then return true end
+    return Corpora.lootCorpus ~= nil and Corpora.lootCorpus.count > 0
+end
+
 local function HydratePersistedLootCache()
     if lootItemCacheHydrated then return end
     lootItemCacheHydrated = true
@@ -1153,35 +1177,37 @@ local function HydratePersistedLootCache()
     if type(saved) ~= "table" or db.lootItemCacheVer ~= ns.LOOT_ITEM_CACHE_VER then return end
     if type(saved.packed) ~= "string" or saved.packed == "" then return end
 
-    local items = Utils.UnpackRows(saved.packed, LOOT_ROW_SPEC)
-    for i = 1, #items do
-        local raw = items[i]
-        local itemID, name = raw.itemID, raw.name
-        if itemID and name and name ~= "" and raw.encounterID and raw.instanceID then
-            local entry = {
-                name = name,
-                nameLower = slower(name),
-                icon = raw.icon,
-                itemID = itemID,
-                keywords = EMPTY_KEYWORDS,
-                lootSlotKw = raw.lootSlotKw,
-                lootSourceKw = raw.lootSourceKw,
-                lootStatKw = raw.lootStatKw,
-                lootItemLinks = raw.lootItemLinks or {},
-                lootSlotName = raw.lootSlotName,
-                _cachedSpecs = raw._cachedSpecs,
-                _cachedDiffs = raw._cachedDiffs,
-                _statsEnriched = raw._statsEnriched == true,
-            }
-            lootItemCache[itemID] = setmetatable(entry, GetLootEncounterMT(
-                raw.encounterID,
-                raw.instanceID,
-                raw.lootSourceName,
-                raw.lootInstanceName,
-                raw.lootSourceType == "Raid"
-            ))
-        end
+    if not Corpora.LOOT_CORPUS_PROTO then
+        Corpora.LOOT_CORPUS_PROTO = {
+            category  = "Loot",
+            path      = LOOT_PROTO.path,
+            steps     = LOOT_PROTO.steps,
+            lootEntry = true,
+            lookupRow = true,
+            keywords  = EMPTY_KEYWORDS,
+        }
     end
+
+    -- The blob stays the store: stubs hydrate on demand. Loot MUTATES its
+    -- entries (stat enrichment, link accrual) and persists them back, so
+    -- this corpus is noShed; it is also ungated (the scoring gate must
+    -- never skip loot). lootItemCache becomes a lazy map: itemID lookups
+    -- materialize the stub on first access.
+    Corpora.lootCorpus = Utils.NewPackedCorpus(saved.packed, LOOT_ROW_SPEC, Corpora.LOOT_CORPUS_PROTO,
+        { ungated = true, noShed = true, computed = Corpora.LOOT_COMPUTED })
+    Utils.RegisterCorpus("loot", Corpora.lootCorpus)
+    -- lootItemRi builds inside RebuildLootSearchData's first corpus pass
+    -- (one decode walk instead of two at warm).
+    Corpora.lootItemRi = nil
+    setmetatable(lootItemCache, {
+        __index = function(t, itemID)
+            local ri = Corpora.lootItemRi and Corpora.lootItemRi[itemID]
+            if not ri or not Corpora.lootCorpus then return nil end
+            local stub = Corpora.lootCorpus:StubAt(ri)
+            rawset(t, itemID, stub)
+            return stub
+        end,
+    })
 
     if type(saved.specsScanned) == "table" then
         for key, value in pairs(saved.specsScanned) do
@@ -1197,6 +1223,16 @@ local function PersistLootCache()
     local specsScanned = {}
     for key in pairs(lootSpecsScanned) do
         specsScanned[key] = true
+    end
+    -- The lazy map only holds materialized stubs; corpus rows never touched
+    -- this session must still round-trip, so materialize them first (their
+    -- hydration cost lands here, on the already-heavy persist moment).
+    if Corpora.lootCorpus and Corpora.lootItemRi then
+        for itemID, ri in pairs(Corpora.lootItemRi) do
+            if rawget(lootItemCache, itemID) == nil then
+                lootItemCache[itemID] = Corpora.lootCorpus:StubAt(ri)
+            end
+        end
     end
     -- Rows reference the live entry's own fields directly; PackRows only reads
     -- them, so no defensive copy is needed on the way out.
@@ -1353,22 +1389,67 @@ local function RebuildLootSearchData()
 
     local wantDiff = EasyFind.db.lootDifficulty or "normal"
 
-    for _, entry in pairs(lootItemCache) do
+    local function wanted(specs, diffs)
         local specMatch = wantAll
-        if not specMatch then
-            for _, spKey in ipairs(entry._cachedSpecs) do
-                if wantSpec[spKey] then specMatch = true; break end
+        if not specMatch and specs then
+            for i = 1, #specs do
+                if wantSpec[specs[i]] then specMatch = true; break end
             end
         end
-        if specMatch then
-            local diffMatch = false
-            for _, dk in ipairs(entry._cachedDiffs) do
-                if dk == wantDiff then diffMatch = true; break end
+        if not specMatch then return false end
+        if diffs then
+            for i = 1, #diffs do
+                if diffs[i] == wantDiff then return true end
             end
-            if diffMatch then
-                uiSearchData[#uiSearchData + 1] = entry
-                lootEntries[#lootEntries + 1] = entry
+        end
+        return false
+    end
+
+    -- Corpus rows filter on transient scratch decodes; a stub is only
+    -- created for included rows. Materialized stubs may carry session
+    -- mutations (a scan appended a spec/diff), so their LIVE lists win
+    -- over the blob's. Rows added live by EJ scans this session (absent
+    -- from the corpus) come from the map afterwards.
+    if Corpora.lootCorpus then
+        local corpus = Corpora.lootCorpus
+        local ri2item = Corpora.lootItemRi
+        local building = ri2item == nil
+        if building then
+            ri2item = {}
+            Corpora.lootItemRi = ri2item
+        end
+        -- First pass doubles as the validity/itemRi build (extra fields
+        -- decoded once); later rebuilds trust the map and decode less.
+        local wantedFields = building
+            and { itemID = true, name = true, encounterID = true, instanceID = true,
+                  _cachedSpecs = true, _cachedDiffs = true }
+            or { itemID = true, _cachedSpecs = true, _cachedDiffs = true }
+        corpus:EachRow(function(ri, row)
+            local itemID = row.itemID
+            if building then
+                if itemID and row.name and row.name ~= "" and row.encounterID and row.instanceID then
+                    ri2item[itemID] = ri
+                else
+                    itemID = nil
+                end
             end
+            if itemID and ri2item[itemID] == ri then
+                local live = rawget(lootItemCache, itemID)
+                local specs = live and live._cachedSpecs or row._cachedSpecs
+                local diffs = live and live._cachedDiffs or row._cachedDiffs
+                if wanted(specs, diffs) then
+                    local entry = live or corpus:StubAt(ri)
+                    uiSearchData[#uiSearchData + 1] = entry
+                    lootEntries[#lootEntries + 1] = entry
+                end
+            end
+        end, wantedFields)
+    end
+    for itemID, entry in pairs(lootItemCache) do
+        if not (Corpora.lootItemRi and Corpora.lootItemRi[itemID])
+           and wanted(entry._cachedSpecs, entry._cachedDiffs) then
+            uiSearchData[#uiSearchData + 1] = entry
+            lootEntries[#lootEntries + 1] = entry
         end
     end
     lootSearchDataHydrated = true
@@ -1478,23 +1559,15 @@ local function MountTypeFilterActive(db)
         or db.mountTypeAquatic == false or db.mountTypeRideAlong == false)
 end
 
--- Builds a live search entry (own copy + metatable) from a raw cache row. The
--- row itself stays pure data so it can round-trip through SavedVariables; the
--- volatile filter inputs (nameLower, mountTypeID) live only on the copy.
-local function BuildMountEntry(row, typeFilterActive)
-    return setmetatable({
-        name             = row.name,
-        nameLower        = slower(row.name),
-        icon             = row.icon,
-        mountID          = row.mountID,
-        spellID          = row.spellID,
-        isCollected      = row.isCollected,
-        isUsable         = row.isUsable,
-        shouldHideOnChar = row.shouldHideOnChar,
-        mountSourceType  = row.mountSourceType,
-        mountTypeID      = ResolveMountTypeID(row.mountID, typeFilterActive),
-    }, MOUNT_MT)
-end
+-- Mount entries are PackedCorpus stubs: the packed cache blob stays the
+-- store and fields decode on first read. mountTypeID is not in the blob
+-- (API-derived), so it resolves lazily as a computed field.
+Corpora.MOUNT_COMPUTED = {
+    mountTypeID = function(stub)
+        local db = EasyFind and EasyFind.db
+        return ResolveMountTypeID(stub.mountID, MountTypeFilterActive(db))
+    end,
+}
 
 -- Persisted mount cache. A walk calls GetMountInfoByID for every mount in the
 -- journal (the bulk of this provider's reload cost). Those results are stable
@@ -1509,13 +1582,13 @@ local MOUNT_ROW_SPEC = {
     { "isCollected" }, { "isUsable" }, { "shouldHideOnChar" }, { "mountSourceType" },
 }
 
-local function PersistMountCache(rows, guid)
+local function PersistMountCache(packed, guid)
     local db = EasyFind and EasyFind.db
-    if not db or not rows then return end
+    if not db or not packed then return end
     db.mountCache = {
         version = ns.MOUNT_CACHE_VER,
         guid = guid,
-        packed = Utils.PackRows(rows, MOUNT_ROW_SPEC),
+        packed = packed,
     }
     db.mountCacheVer = ns.MOUNT_CACHE_VER
 end
@@ -1525,6 +1598,40 @@ function Database:InvalidateMountCache()
     if not db then return end
     db.mountCache = nil
     db.mountCacheVer = nil
+    if self._BumpMountWalkGen then self._BumpMountWalkGen() end
+end
+
+-- Registry-memoized: a repopulate over the same packed blob reuses the
+-- corpus and its stubs, so entry identity survives unload/reload cycles.
+function Corpora.MountCorpusFor(packed)
+    local corpus = Utils.GetCorpus("mounts")
+    if not (corpus and corpus.packed == packed) then
+        corpus = Utils.NewPackedCorpus(packed, MOUNT_ROW_SPEC, MOUNT_PROTO,
+            { computed = Corpora.MOUNT_COMPUTED })
+        Utils.RegisterCorpus("mounts", corpus)
+    end
+    return corpus
+end
+
+function Corpora.MountIncludeRow(corpus, ri, row, typeFilterActive)
+    if not (row.name and row.mountID) then return 0 end
+    row.mountTypeID = ResolveMountTypeID(row.mountID, typeFilterActive)
+    if not Database:MountPassesSearchFilters(row) then return 0 end
+    uiSearchData[#uiSearchData + 1] = corpus:StubAt(ri)
+    return 1
+end
+
+-- Runs the search filters over transient scratch rows and appends a stub
+-- per included row; no entry tables are built.
+function Corpora.InsertMountStubs(corpus)
+    local db = EasyFind and EasyFind.db
+    local typeFilterActive = MountTypeFilterActive(db)
+    local inserted = 0
+    corpus:EachRow(function(ri, row)
+        inserted = inserted + Corpora.MountIncludeRow(corpus, ri, row, typeFilterActive)
+    end, { name = true, mountID = true, isCollected = true, isUsable = true,
+           shouldHideOnChar = true, mountSourceType = true })
+    return inserted
 end
 
 local function HydratePersistedMountCache()
@@ -1538,23 +1645,12 @@ local function HydratePersistedMountCache()
     end
     if saved.guid ~= (UnitGUID and UnitGUID("player")) then return false end
     if type(saved.packed) ~= "string" or saved.packed == "" then return false end
-    local entries = Utils.UnpackRows(saved.packed, MOUNT_ROW_SPEC)
-    if #entries == 0 then return false end
+    local corpus = Corpora.MountCorpusFor(saved.packed)
+    if corpus.count == 0 then return false end
 
     RemoveEntriesByCategory("Mount")
 
-    local typeFilterActive = MountTypeFilterActive(db)
-    local inserted = 0
-    for i = 1, #entries do
-        local row = entries[i]
-        if type(row) == "table" and row.name and row.mountID then
-            local entry = BuildMountEntry(row, typeFilterActive)
-            if Database:MountPassesSearchFilters(entry) then
-                uiSearchData[#uiSearchData + 1] = entry
-                inserted = inserted + 1
-            end
-        end
-    end
+    local inserted = Corpora.InsertMountStubs(corpus)
     if inserted == 0 then return false end
     if Database.ResetSearchCache then Database:ResetSearchCache() end
     return true
@@ -1572,11 +1668,10 @@ function Database:PopulateDynamicMounts()
 
     RemoveEntriesByCategory("Mount")
 
-    -- Store every named mount unfiltered so a later filter change re-hydrates
-    -- from rows without walking; mountTypeID stays off the row (lazy, resolved
-    -- per entry only when a type filter is active).
-    local db = EasyFind and EasyFind.db
-    local typeFilterActive = MountTypeFilterActive(db)
+    -- Store every named mount unfiltered so a later filter change re-includes
+    -- from the corpus without walking; mountTypeID stays off the row (lazy,
+    -- resolved per stub only when a type filter is active). The walk's rows
+    -- are transient: they pack into the blob and the corpus serves the rest.
     local GetMountInfoByID = C_MountJournal.GetMountInfoByID
 
     local rows = {}
@@ -1584,7 +1679,7 @@ function Database:PopulateDynamicMounts()
         local name, spellID, icon, _, isUsable, sourceType, _,
               _, _, shouldHideOnChar, isCollected = GetMountInfoByID(mountID)
         if name then
-            local row = {
+            rows[#rows + 1] = {
                 name             = name,
                 icon             = icon,
                 mountID          = mountID,
@@ -1594,15 +1689,84 @@ function Database:PopulateDynamicMounts()
                 shouldHideOnChar = shouldHideOnChar and true or false,
                 mountSourceType  = sourceType,
             }
-            rows[#rows + 1] = row
-            local entry = BuildMountEntry(row, typeFilterActive)
-            if self:MountPassesSearchFilters(entry) then
-                uiSearchData[#uiSearchData + 1] = entry
-            end
         end
     end
-    PersistMountCache(rows, UnitGUID and UnitGUID("player"))
+    local packed = Utils.PackRows(rows, MOUNT_ROW_SPEC)
+    PersistMountCache(packed, UnitGUID and UnitGUID("player"))
+    Corpora.InsertMountStubs(Corpora.MountCorpusFor(packed))
     return true
+end
+
+-- Budget-sliced walk: the sync version's 1668 GetMountInfoByID calls in
+-- one frame were the single worst cold stall in the bench (407ms). The
+-- scheduler runs this variant; the sync one remains for the bench probe
+-- and as the no-scheduler fallback. Invalidation mid-walk cancels via the
+-- generation (a fresh populate restarts clean).
+local mountWalkGen = 0
+Database._BumpMountWalkGen = function() mountWalkGen = mountWalkGen + 1 end
+
+function Database:PopulateDynamicMountsAsync(done)
+    if not C_MountJournal or not C_MountJournal.GetMountIDs then
+        done(false)
+        return
+    end
+    if HydratePersistedMountCache() then
+        done(true)
+        return
+    end
+
+    local mountIDs = C_MountJournal.GetMountIDs()
+    if not mountIDs then
+        done(false)
+        return
+    end
+
+    RemoveEntriesByCategory("Mount")
+
+    local GetMountInfoByID = C_MountJournal.GetMountInfoByID
+    mountWalkGen = mountWalkGen + 1
+    local myGen = mountWalkGen
+    local rows = {}
+    local i = 1
+    local total = #mountIDs
+    local budgetMs = 4
+    local dps = debugprofilestop
+    local function slice()
+        if myGen ~= mountWalkGen then
+            done(false, "cancelled")
+            return
+        end
+        local start = dps and dps() or 0
+        local processed = 0
+        while i <= total do
+            local mountID = mountIDs[i]
+            i = i + 1
+            local name, spellID, icon, _, isUsable, sourceType, _,
+                  _, _, shouldHideOnChar, isCollected = GetMountInfoByID(mountID)
+            if name then
+                rows[#rows + 1] = {
+                    name             = name,
+                    icon             = icon,
+                    mountID          = mountID,
+                    spellID          = spellID,
+                    isCollected      = isCollected and true or false,
+                    isUsable         = isUsable and true or false,
+                    shouldHideOnChar = shouldHideOnChar and true or false,
+                    mountSourceType  = sourceType,
+                }
+            end
+            processed = processed + 1
+            if (dps and (dps() - start) >= budgetMs) or (not dps and processed >= 80) then
+                Utils.SafeAfter(0, slice)
+                return
+            end
+        end
+        local packed = Utils.PackRows(rows, MOUNT_ROW_SPEC)
+        PersistMountCache(packed, UnitGUID and UnitGUID("player"))
+        Corpora.InsertMountStubs(Corpora.MountCorpusFor(packed))
+        done(true)
+    end
+    slice()
 end
 
 -- Dev probe (bench CACHE section): time a fresh walk against the cache hydrate
@@ -1655,21 +1819,6 @@ local housingCacheHydrated = false
 -- to revalidate, and its fresh results swap in atomically when they arrive.
 -- Keyed per character (placed counts are per-character) and always revalidated,
 -- so a stale hydrate self-corrects within one search.
-local function BuildHousingEntry(row)
-    return setmetatable({
-        name              = row.name,
-        nameLower         = slower(row.name),
-        icon              = row.icon,
-        housingEntryID    = row.housingEntryID,
-        housingRecordID   = row.housingRecordID,
-        housingNumStored  = row.housingNumStored,
-        housingNumPlaced  = row.housingNumPlaced,
-        housingQuality    = row.housingQuality,
-        housingSourceText = row.housingSourceText,
-        isRoom            = row.isRoom,
-    }, HOUSING_MT)
-end
-
 local HOUSING_ROW_SPEC = {
     { "name" }, { "icon" }, { "housingEntryID" },
     { "housingRecordID" }, { "housingNumStored" }, { "housingNumPlaced" },
@@ -1697,17 +1846,22 @@ local function HydratePersistedHousingCache()
     end
     if saved.guid ~= (UnitGUID and UnitGUID("player")) then return false end
     if type(saved.packed) ~= "string" or saved.packed == "" then return false end
-    local entries = Utils.UnpackRows(saved.packed, HOUSING_ROW_SPEC)
-    if #entries == 0 then return false end
+
+    -- The blob stays the store: stubs hydrate on demand (the whole
+    -- category is small, but the unpack transient and repopulate churn
+    -- are not).
+    local corpus = Utils.NewPackedCorpus(saved.packed, HOUSING_ROW_SPEC, HOUSING_PROTO)
+    if corpus.count == 0 then return false end
+    Utils.RegisterCorpus("housing", corpus)
+
     RemoveEntriesByCategory("Housing")
     local inserted = 0
-    for i = 1, #entries do
-        local row = entries[i]
-        if type(row) == "table" and row.name and row.housingEntryID then
-            uiSearchData[#uiSearchData + 1] = BuildHousingEntry(row)
+    corpus:EachRow(function(ri, row)
+        if row.name and row.housingEntryID then
+            uiSearchData[#uiSearchData + 1] = corpus:StubAt(ri)
             inserted = inserted + 1
         end
-    end
+    end, { name = true, housingEntryID = true })
     if inserted == 0 then return false end
     if Database.ResetSearchCache then Database:ResetSearchCache() end
     return true
@@ -2055,6 +2209,7 @@ function Database:PopulateDynamicToys()
     RemoveEntriesByCategory("Toy")
 
     for i = 1, numToys or 0 do
+        Utils.SliceCheckpoint()
         local itemID = GetToyFromIndex(i)
         if itemID and itemID > 0 then
             local _, toyName, toyIcon = GetToyInfo(itemID)
@@ -2151,6 +2306,7 @@ function Database:PopulateDynamicPets()
 
     local seen = {}
     for i = 1, numPets or 0 do
+        Utils.SliceCheckpoint()
         -- No `owned` gate: our Not-Collected filter (applied above) decides
         -- whether unowned species appear, exactly like the pet journal itself.
         -- `owned` rides along as isCollected so the click can summon a pet you
@@ -2268,6 +2424,7 @@ function Database:PopulateDynamicTitles()
     -- good entries mid-session.
     local known = 0
     for titleID = 1, total do
+        Utils.SliceCheckpoint()
         if isKnown(titleID) then known = known + 1 end
     end
     if known == 0 then return false end
@@ -2286,6 +2443,7 @@ function Database:PopulateDynamicTitles()
     if wantUnearned then self:EnsureTitleSourceCache() end
 
     for titleID = 1, total do
+        Utils.SliceCheckpoint()
         local titleKnown = isKnown(titleID)
         if (titleKnown and wantEarned) or (not titleKnown and wantUnearned) then
             local raw = getName(titleID)
@@ -2342,6 +2500,7 @@ function Database:PopulateDynamicGearSets()
     local specFilter = EasyFind and EasyFind.db and EasyFind.db.gearSetSpecFilter
     if specFilter == "all" then specFilter = nil end
     for _, setID in ipairs(ids) do
+        Utils.SliceCheckpoint()
         local name, iconFileID = getInfo(setID)
         if name and name ~= "" then
             local assignedSpec
@@ -2445,26 +2604,74 @@ function Database:SyncTransmogSetFiltersFromUI()
     -- comes from the SetTransmogSetsClassFilter forward hook instead.
 end
 
-function Database:PopulateDynamicTransmogSets()
-    if not C_TransmogSets or not C_TransmogSets.GetAllSets then return false end
+-- Persisted transmog-set cache: the GetAllSets walk allocates a large
+-- API-side table per set plus a per-set primary-appearance lookup for the
+-- icon -- the single fattest provider in the warmledger. Base-set rows now
+-- persist unfiltered (account-wide collection, so no guid key) and the
+-- first populate of a session hydrates corpus stubs from the blob with
+-- ZERO API calls; icons resolve lazily at render through the computed
+-- field. Dirty repopulates after that (a real collection change, a filter
+-- change) walk fresh and re-persist, exactly like the mount cache.
+Corpora.TMOG_SET_ROW_SPEC = {
+    { "transmogSetID" }, { "name" }, { "labelLower" }, { "descKw" },
+    { "classMask" }, { "collected" },
+}
 
-    RemoveEntriesWithField("transmogSetID")
-    -- Without this, a query typed before repopulate (e.g. "cauldron" while
-    -- Druid sets were active) reuses prevCandidates and misses the new entries.
-    if self.ResetSearchCache then self:ResetSearchCache() end
+-- Bug-compatible with the walk's old kw build (kwLen started at 3, so a
+-- label overwrote "xmog" and a description overwrote "appearance"); the
+-- bench identity gate holds only if the corpus reproduces it exactly.
+Corpora.tmogKwBuf = {}
+function Corpora.TmogSetRowKeywords(row)
+    Corpora.tmogKwBuf[1] = "set"
+    Corpora.tmogKwBuf[2] = "transmog"
+    Corpora.tmogKwBuf[3] = "tmog"
+    Corpora.tmogKwBuf[4] = "xmog"
+    Corpora.tmogKwBuf[5] = "appearance"
+    local n = 3
+    local label = row.labelLower
+    if label and label ~= "" then
+        n = n + 1
+        Corpora.tmogKwBuf[n] = label
+    end
+    if row.descKw then
+        n = n + 1
+        Corpora.tmogKwBuf[n] = row.descKw
+    end
+    if n < 5 then n = 5 end
+    for i = #Corpora.tmogKwBuf, n + 1, -1 do Corpora.tmogKwBuf[i] = nil end
+    return Corpora.tmogKwBuf
+end
 
-    local allSets = C_TransmogSets.GetAllSets()
-    if not allSets then return false end
+Corpora.TMOG_SET_COMPUTED = {
+    keywords = function(stub)
+        local kws = Corpora.TmogSetRowKeywords(stub)
+        local copy = {}
+        for i = 1, #kws do copy[i] = kws[i] end
+        return copy
+    end,
+    icon = function(stub)
+        local C = C_TransmogSets
+        local GetSetPrimaryAppearances = C and C.GetSetPrimaryAppearances
+        local GetSourceIcon = C_TransmogCollection and C_TransmogCollection.GetSourceIcon
+        if not (GetSetPrimaryAppearances and GetSourceIcon) then return nil end
+        local ok, appearances = pcall(GetSetPrimaryAppearances, stub.transmogSetID)
+        local sourceID = ok and appearances and appearances[1] and appearances[1].appearanceID
+        return sourceID and GetSourceIcon(sourceID) or nil
+    end,
+}
 
-    local db = EasyFind and EasyFind.db
-    if not db then return false end
-    local classFilter = db.appearanceSetClass
-    local showCollected = not db or db.appearanceSetCollected ~= false
-    local showNotCollected = not db or db.appearanceSetNotCollected ~= false
-    local showPvE = not db or db.appearanceSetPvE ~= false
-    local showPvP = not db or db.appearanceSetPvP ~= false
+Corpora.tmogSetCacheHydrated = false
 
-    -- Guard against the Core/Main.lua hooksecurefunc re-entering Populate.
+function Corpora.IsTransmogLabelPvP(labelLower)
+    return sfind(labelLower, "pvp") or sfind(labelLower, "season")
+        or sfind(labelLower, "gladiator") or sfind(labelLower, "aspirant")
+        or sfind(labelLower, "combatant")
+end
+
+-- Push our filter choices into the wardrobe UI so the Sets panel matches;
+-- runs on every populate, cache-hydrated or walked. Guarded against the
+-- Core/Main.lua hooksecurefunc re-entering Populate.
+function Corpora.SyncTransmogWardrobeFilters(classFilter, showCollected, showNotCollected, showPvE, showPvP)
     if C_TransmogSets.SetTransmogSetsClassFilter then
         EasyFind._tmogClassHookSuppress = true
         if not classFilter then
@@ -2495,84 +2702,224 @@ function Database:PopulateDynamicTransmogSets()
     if wcf and wcf.ClassDropdown and wcf.ClassDropdown.Update then
         pcall(wcf.ClassDropdown.Update, wcf.ClassDropdown)
     end
+end
 
-    local wantMask
+function Corpora.TransmogWantMask(classFilter)
     if not classFilter then
         local _, _, cid = UnitClass("player")
-        wantMask = cid and lshift(1, cid - 1) or 0
+        return cid and lshift(1, cid - 1) or 0
     elseif classFilter == "all" then
-        wantMask = nil
+        return nil
     elseif type(classFilter) == "table" and classFilter.classID then
-        wantMask = lshift(1, classFilter.classID - 1)
+        return lshift(1, classFilter.classID - 1)
+    end
+    return 0
+end
+
+-- The include filters over one row's plain fields; shared by the corpus
+-- pass and the walk.
+function Corpora.TmogRowWanted(row, wantMask, showCollected, showNotCollected, showPvE, showPvP)
+    local cm = row.classMask or 0
+    if wantMask and cm ~= 0 and cm >= 0 and band(cm, wantMask) == 0 then return false end
+    local isPvP = Corpora.IsTransmogLabelPvP(row.labelLower or "")
+    if not ((isPvP and showPvP) or (not isPvP and showPvE)) then return false end
+    if not (showCollected and showNotCollected) then
+        if row.collected and not showCollected then return false end
+        if not row.collected and not showNotCollected then return false end
+    end
+    return true
+end
+
+function Corpora.InsertTransmogSetStubs(packed, wantMask, showCollected, showNotCollected, showPvE, showPvP)
+    local corpus = Utils.GetCorpus("transmogSets")
+    if not (corpus and corpus.packed == packed) then
+        corpus = Utils.NewPackedCorpus(packed, Corpora.TMOG_SET_ROW_SPEC, TRANSMOG_SET_PROTO,
+            { computed = Corpora.TMOG_SET_COMPUTED, keywordsFor = Corpora.TmogSetRowKeywords,
+              keywordFields = { labelLower = true, descKw = true } })
+        Utils.RegisterCorpus("transmogSets", corpus)
+    end
+    local inserted = 0
+    corpus:EachRow(function(ri, row)
+        if row.transmogSetID and row.name
+           and Corpora.TmogRowWanted(row, wantMask, showCollected, showNotCollected, showPvE, showPvP) then
+            uiSearchData[#uiSearchData + 1] = corpus:StubAt(ri)
+            inserted = inserted + 1
+        end
+    end)
+    return inserted
+end
+
+function Database:PopulateDynamicTransmogSets()
+    if not C_TransmogSets or not C_TransmogSets.GetAllSets then return false end
+
+    RemoveEntriesWithField("transmogSetID")
+    -- Without this, a query typed before repopulate (e.g. "cauldron" while
+    -- Druid sets were active) reuses prevCandidates and misses the new entries.
+    if self.ResetSearchCache then self:ResetSearchCache() end
+
+    local db = EasyFind and EasyFind.db
+    if not db then return false end
+    local classFilter = db.appearanceSetClass
+    local showCollected = not db or db.appearanceSetCollected ~= false
+    local showNotCollected = not db or db.appearanceSetNotCollected ~= false
+    local showPvE = not db or db.appearanceSetPvE ~= false
+    local showPvP = not db or db.appearanceSetPvP ~= false
+
+    Corpora.SyncTransmogWardrobeFilters(classFilter, showCollected, showNotCollected, showPvE, showPvP)
+
+    local wantMask = Corpora.TransmogWantMask(classFilter)
+
+    -- First populate of the session: serve from the persisted blob, no
+    -- GetAllSets walk at all. Later dirty repopulates walk fresh.
+    if not Corpora.tmogSetCacheHydrated then
+        Corpora.tmogSetCacheHydrated = true
+        local saved = db.transmogSetCache
+        if type(saved) == "table" and db.transmogSetCacheVer == ns.TMOG_SET_CACHE_VER
+           and type(saved.packed) == "string" and saved.packed ~= "" then
+            if Corpora.InsertTransmogSetStubs(saved.packed, wantMask,
+                showCollected, showNotCollected, showPvE, showPvP) > 0 then
+                return true
+            end
+        end
     end
 
-    local GetSetPrimaryAppearances = C_TransmogSets.GetSetPrimaryAppearances
-    local GetSourceIcon = C_TransmogCollection and C_TransmogCollection.GetSourceIcon
+    local allSets = C_TransmogSets.GetAllSets()
+    if not allSets then return false end
 
+    local rows = {}
     for i = 1, #allSets do
         local setInfo = allSets[i]
-        -- Variants share visuals with their base set and aren't navigable in the Sets list.
+        -- Variants share visuals with their base set and are not navigable
+        -- in the Sets list.
         local isBaseSet = true
         if C_TransmogSets.GetBaseSetID then
             local bid = C_TransmogSets.GetBaseSetID(setInfo.setID)
             isBaseSet = not bid or bid == setInfo.setID
         end
         if isBaseSet and setInfo.name and setInfo.name ~= "" and not setInfo.hiddenUntilCollected then
-            local cm = setInfo.classMask or 0
-            local classOk = not wantMask or cm == 0 or cm < 0 or band(cm, wantMask) ~= 0
-
-            local label = setInfo.label or ""
-            local labelLower = slower(label)
-            local isPvP = sfind(labelLower, "pvp") or sfind(labelLower, "season")
-                or sfind(labelLower, "gladiator") or sfind(labelLower, "aspirant")
-                or sfind(labelLower, "combatant")
-            local sourceOk = (isPvP and showPvP) or (not isPvP and showPvE)
-
-            local collected = setInfo.collected
-            local collectedOk = true
-            if not (showCollected and showNotCollected) then
-                if collected and not showCollected then collectedOk = false end
-                if not collected and not showNotCollected then collectedOk = false end
+            local labelLower = slower(setInfo.label or "")
+            local descKw
+            if setInfo.description and setInfo.description ~= "" then
+                local descLower = slower(setInfo.description)
+                if descLower ~= slower(setInfo.name) then descKw = descLower end
             end
+            rows[#rows + 1] = {
+                transmogSetID = setInfo.setID,
+                name          = setInfo.name,
+                labelLower    = labelLower,
+                descKw        = descKw,
+                classMask     = setInfo.classMask or 0,
+                collected     = setInfo.collected and true or false,
+            }
+        end
+    end
 
-            if classOk and sourceOk and collectedOk then
-                local nameLower = slower(setInfo.name)
-                local kw = {"set", "transmog", "tmog", "xmog", "appearance"}
-                local kwLen = 3
-                if label ~= "" then
-                    kwLen = kwLen + 1
-                    kw[kwLen] = labelLower
-                end
-                if setInfo.description and setInfo.description ~= "" then
-                    local descLower = slower(setInfo.description)
-                    if descLower ~= nameLower then
-                        kwLen = kwLen + 1
-                        kw[kwLen] = descLower
-                    end
-                end
+    local packed = Utils.PackRows(rows, Corpora.TMOG_SET_ROW_SPEC)
+    db.transmogSetCache = { version = ns.TMOG_SET_CACHE_VER, packed = packed }
+    db.transmogSetCacheVer = ns.TMOG_SET_CACHE_VER
+    Corpora.InsertTransmogSetStubs(packed, wantMask, showCollected, showNotCollected, showPvE, showPvP)
+    return true
+end
 
-                local icon
-                if GetSetPrimaryAppearances and GetSourceIcon then
-                    local appearances = GetSetPrimaryAppearances(setInfo.setID)
-                    if appearances and appearances[1] then
-                        local sourceID = appearances[1].appearanceID
-                        if sourceID then
-                            icon = GetSourceIcon(sourceID)
-                        end
-                    end
-                end
+-- Budget-sliced walk (the GetBaseSetID + row-build loop over every set in
+-- the game); cache-hit sessions never reach it. Same generation-cancel
+-- shape as the mount walk.
+local tmogWalkGen = 0
 
-                uiSearchData[#uiSearchData + 1] = setmetatable({
-                    name = setInfo.name,
-                    nameLower = nameLower,
-                    transmogSetID = setInfo.setID,
-                    icon = icon,
-                    keywords = kw,
-                }, TRANSMOG_SET_MT)
+function Database:PopulateDynamicTransmogSetsAsync(done)
+    if not C_TransmogSets or not C_TransmogSets.GetAllSets then
+        done(false)
+        return
+    end
+
+    RemoveEntriesWithField("transmogSetID")
+    if self.ResetSearchCache then self:ResetSearchCache() end
+
+    local db = EasyFind and EasyFind.db
+    if not db then
+        done(false)
+        return
+    end
+    local classFilter = db.appearanceSetClass
+    local showCollected = not db or db.appearanceSetCollected ~= false
+    local showNotCollected = not db or db.appearanceSetNotCollected ~= false
+    local showPvE = not db or db.appearanceSetPvE ~= false
+    local showPvP = not db or db.appearanceSetPvP ~= false
+
+    Corpora.SyncTransmogWardrobeFilters(classFilter, showCollected, showNotCollected, showPvE, showPvP)
+
+    local wantMask = Corpora.TransmogWantMask(classFilter)
+
+    if not Corpora.tmogSetCacheHydrated then
+        Corpora.tmogSetCacheHydrated = true
+        local saved = db.transmogSetCache
+        if type(saved) == "table" and db.transmogSetCacheVer == ns.TMOG_SET_CACHE_VER
+           and type(saved.packed) == "string" and saved.packed ~= "" then
+            if Corpora.InsertTransmogSetStubs(saved.packed, wantMask,
+                showCollected, showNotCollected, showPvE, showPvP) > 0 then
+                done(true)
+                return
             end
         end
     end
-    return true
+
+    local allSets = C_TransmogSets.GetAllSets()
+    if not allSets then
+        done(false)
+        return
+    end
+
+    tmogWalkGen = tmogWalkGen + 1
+    local myGen = tmogWalkGen
+    local rows = {}
+    local i = 1
+    local total = #allSets
+    local budgetMs = 4
+    local dps = debugprofilestop
+    local function slice()
+        if myGen ~= tmogWalkGen then
+            done(false, "cancelled")
+            return
+        end
+        local start = dps and dps() or 0
+        local processed = 0
+        while i <= total do
+            local setInfo = allSets[i]
+            i = i + 1
+            local isBaseSet = true
+            if C_TransmogSets.GetBaseSetID then
+                local bid = C_TransmogSets.GetBaseSetID(setInfo.setID)
+                isBaseSet = not bid or bid == setInfo.setID
+            end
+            if isBaseSet and setInfo.name and setInfo.name ~= "" and not setInfo.hiddenUntilCollected then
+                local labelLower = slower(setInfo.label or "")
+                local descKw
+                if setInfo.description and setInfo.description ~= "" then
+                    local descLower = slower(setInfo.description)
+                    if descLower ~= slower(setInfo.name) then descKw = descLower end
+                end
+                rows[#rows + 1] = {
+                    transmogSetID = setInfo.setID,
+                    name          = setInfo.name,
+                    labelLower    = labelLower,
+                    descKw        = descKw,
+                    classMask     = setInfo.classMask or 0,
+                    collected     = setInfo.collected and true or false,
+                }
+            end
+            processed = processed + 1
+            if (dps and (dps() - start) >= budgetMs) or (not dps and processed >= 80) then
+                Utils.SafeAfter(0, slice)
+                return
+            end
+        end
+        local packed = Utils.PackRows(rows, Corpora.TMOG_SET_ROW_SPEC)
+        db.transmogSetCache = { version = ns.TMOG_SET_CACHE_VER, packed = packed }
+        db.transmogSetCacheVer = ns.TMOG_SET_CACHE_VER
+        Corpora.InsertTransmogSetStubs(packed, wantMask, showCollected, showNotCollected, showPvE, showPvP)
+        done(true)
+    end
+    slice()
 end
 
 
@@ -3007,7 +3354,7 @@ end
 function Database:HydrateCachedLoot()
     if lootSearchDataHydrated then return false end
     HydratePersistedLootCache()
-    if not next(lootItemCache) then return false end
+    if not Corpora.HasLootCache() then return false end
 
     local specPairs = BuildLootSpecPairs(false)
     if #specPairs == 0 then return false end
@@ -3337,7 +3684,7 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
         if savedTier and EJ_SelectTier then EJ_SelectTier(savedTier) end
         if ejFrame and savedOnEvent then ejFrame:SetScript("OnEvent", savedOnEvent) end
         if changed and scanIncomplete and not sweepCachedAny
-           and not next(lootItemCache) then
+           and not Corpora.HasLootCache() then
             -- Entirely cold sweep AND no usable cache at all: report a
             -- transient failure so the provider is not marked loaded for
             -- the session pinned to an empty category; a later search
@@ -3840,6 +4187,7 @@ function Database:PopulateDynamicAbilities()
         local isOffSpec = lineInfo and lineInfo.offSpecID
             and lineInfo.offSpecID ~= 0 or false
         for s = offset + 1, offset + numSpells do
+            Utils.SliceCheckpoint()
             local itemInfo = SBOOK.GetSpellBookItemInfo(s, BANK)
             if itemInfo and itemInfo.name and itemInfo.name ~= "" and itemInfo.actionID then
                 if (not SPELL_TYPE or itemInfo.itemType == SPELL_TYPE) then
@@ -3922,6 +4270,17 @@ local function ClearBossInstanceCache()
     wipe(bossInstanceMTCache)
 end
 
+-- ONE builder for a boss's guide steps, shared by the live-scan metatables
+-- and the persisted-cache corpus so the two paths cannot drift.
+function Corpora.BuildBossSteps(tier, isRaid, instID, instName, bossName, encounterID)
+    return {
+        { buttonFrame = "EJMicroButton" },
+        { waitForFrame = "EncounterJournal", ejTier = tier, ejTabIsRaid = isRaid },
+        { waitForFrame = "EncounterJournal", ejInstance = instName, ejInstanceID = instID },
+        { waitForFrame = "EncounterJournal", ejBoss = bossName, ejEncounterID = encounterID },
+    }
+end
+
 local function GetBossInstanceMT(tier, isRaid, instID, instName)
     local cached = bossInstanceMTCache[instID]
     if cached then return cached end
@@ -3934,9 +4293,6 @@ local function GetBossInstanceMT(tier, isRaid, instID, instName)
     end
 
     local pathArr = { isRaid and "Raid" or "Dungeon", instName }
-    local baseStep1 = { buttonFrame = "EJMicroButton" }
-    local baseStep2 = { waitForFrame = "EncounterJournal", ejTier = tier, ejTabIsRaid = isRaid }
-    local baseStep3 = { waitForFrame = "EncounterJournal", ejInstance = instName, ejInstanceID = instID }
 
     local proto = {
         category          = "Boss",
@@ -3951,10 +4307,7 @@ local function GetBossInstanceMT(tier, isRaid, instID, instName)
     local mt = {
         __index = function(t, k)
             if k == "steps" then
-                local v = {
-                    baseStep1, baseStep2, baseStep3,
-                    { waitForFrame = "EncounterJournal", ejBoss = t.name, ejEncounterID = t.encounterID },
-                }
+                local v = Corpora.BuildBossSteps(tier, isRaid, instID, instName, t.name, t.encounterID)
                 rawset(t, "steps", v)
                 return v
             end
@@ -4017,6 +4370,61 @@ local function PersistBossCache(cacheRows)
     db.bossCacheVer = ns.BOSS_CACHE_VER
 end
 
+-- Boss rows carry PER-ROW keywords (instance name + abbreviations), so the
+-- corpus gets keywordsFor: the gate masks and the index see the same
+-- keyword set a hydrated entry's list would carry. The buffer is reused;
+-- callers consume it before the next call.
+Corpora.bossKwBuf = {}
+function Corpora.BossRowKeywords(row)
+    local instName = row.instanceName
+    local instLower = type(instName) == "string" and slower(instName) or nil
+    local n = 0
+    if instLower then
+        n = n + 1
+        Corpora.bossKwBuf[n] = instLower
+    end
+    n = n + 1
+    Corpora.bossKwBuf[n] = "boss"
+    n = n + 1
+    Corpora.bossKwBuf[n] = "bosses"
+    local abbrs = instLower and INSTANCE_ABBRS[instLower]
+    if abbrs then
+        for i = 1, #abbrs do
+            n = n + 1
+            Corpora.bossKwBuf[n] = abbrs[i]
+        end
+    end
+    for i = #Corpora.bossKwBuf, n + 1, -1 do Corpora.bossKwBuf[i] = nil end
+    return Corpora.bossKwBuf
+end
+
+Corpora.BOSS_CORPUS_PROTO = { category = "Boss" }
+
+Corpora.BOSS_COMPUTED = {
+    isRaidBoss = function(stub) return stub.isRaid == true end,
+    ejTier = function(stub) return stub.tier or 1 end,
+    instanceNameLower = function(stub)
+        local instName = stub.instanceName
+        return type(instName) == "string" and slower(instName) or nil
+    end,
+    keywords = function(stub)
+        -- Own memoized copy: scoring iterates the list per candidate, so
+        -- the reused build buffer cannot be handed out.
+        local kws = Corpora.BossRowKeywords(stub)
+        local copy = {}
+        for i = 1, #kws do copy[i] = kws[i] end
+        return copy
+    end,
+    keywordsLower = function(stub) return stub.keywords end,
+    path = function(stub)
+        return { stub.isRaid and "Raid" or "Dungeon", stub.instanceName }
+    end,
+    steps = function(stub)
+        return Corpora.BuildBossSteps(stub.ejTier, stub.isRaid == true, stub.instanceID,
+            stub.instanceName, stub.name, stub.encounterID)
+    end,
+}
+
 local function HydratePersistedBossCache()
     if bossCacheHydrated then return false end
     bossCacheHydrated = true
@@ -4027,30 +4435,26 @@ local function HydratePersistedBossCache()
         return false
     end
     if type(saved.packed) ~= "string" or saved.packed == "" then return false end
-    local entries = Utils.UnpackRows(saved.packed, BOSS_ROW_SPEC)
-    if #entries == 0 then return false end
+
+    -- The blob stays the store: stubs hydrate on demand, instance-dependent
+    -- fields resolve through the computed table.
+    local corpus = Utils.NewPackedCorpus(saved.packed, BOSS_ROW_SPEC, Corpora.BOSS_CORPUS_PROTO,
+        { computed = Corpora.BOSS_COMPUTED, keywordsFor = Corpora.BossRowKeywords,
+          keywordFields = { instanceName = true } })
+    if corpus.count == 0 then return false end
+    Utils.RegisterCorpus("bosses", corpus)
 
     RemoveEntriesByCategory("Boss")
     ClearBossInstanceCache()
 
     local inserted = 0
-    for i = 1, #entries do
-        local raw = entries[i]
-        if type(raw) == "table"
-           and raw.name and raw.name ~= ""
-           and raw.encounterID and raw.instanceID and raw.instanceName then
-            uiSearchData[#uiSearchData + 1] = BuildBossEntry(
-                raw.tier or 1,
-                raw.isRaid == true,
-                raw.instanceID,
-                raw.instanceName,
-                raw.name,
-                raw.encounterID,
-                raw.icon
-            )
+    corpus:EachRow(function(ri, row)
+        if row.name and row.name ~= ""
+           and row.encounterID and row.instanceID and row.instanceName then
+            uiSearchData[#uiSearchData + 1] = corpus:StubAt(ri)
             inserted = inserted + 1
         end
-    end
+    end, { name = true, encounterID = true, instanceID = true, instanceName = true })
     if inserted == 0 then return false end
 
     if Database.ResetSearchCache then Database:ResetSearchCache() end
@@ -4367,6 +4771,7 @@ function Database:PopulateDynamicTalents()
         local nok, nodeIDs = pcall(C_Traits.GetTreeNodes, treeID)
         if nok and type(nodeIDs) == "table" then
             for _, nodeID in ipairs(nodeIDs) do
+                Utils.SliceCheckpoint()
                 local niok, nodeInfo = pcall(C_Traits.GetNodeInfo, configID, nodeID)
                 if niok and type(nodeInfo) == "table" and type(nodeInfo.entryIDs) == "table" then
                     local isChoice = #nodeInfo.entryIDs > 1
@@ -4749,6 +5154,7 @@ function Database:PopulateDynamicBags()
     if self.ResetSearchCache then self:ResetSearchCache() end
 
     for _, itemID in ipairs(order) do
+        Utils.SliceCheckpoint()
         local info = itemMap[itemID]
         local name = info.link and info.link:match("%[(.-)%]") or (GetItemInfo and GetItemInfo(itemID)) or ((_G["ITEM"] or "Item") .. " " .. itemID)
         local quality
@@ -5049,6 +5455,10 @@ function Database:_ResetDynamicProviderCaches()
     wipe(knownCurrencyIDs)
     wipe(lootEntries)
     wipe(lootItemCache)
+    setmetatable(lootItemCache, nil)
+    Corpora.lootCorpus = nil
+    Corpora.lootItemRi = nil
+    Utils.RegisterCorpus("loot", nil)
     wipe(lootSpecsScanned)
     wipe(lootEncounterMTCache)
     wipe(pendingStatEnrichment)
@@ -5061,6 +5471,10 @@ end
 function Database:_ResetHeavyProviderCaches()
     wipe(lootEntries)
     wipe(lootItemCache)
+    setmetatable(lootItemCache, nil)
+    Corpora.lootCorpus = nil
+    Corpora.lootItemRi = nil
+    Utils.RegisterCorpus("loot", nil)
     wipe(lootSpecsScanned)
     wipe(lootEncounterMTCache)
     wipe(pendingStatEnrichment)
@@ -5367,6 +5781,7 @@ function Database:PopulateDynamicAchievements()
 
     local catMap = {}
     for i = 1, #categories do
+        Utils.SliceCheckpoint()
         local catID = categories[i]
         if not HasID(statsCatSet, catID) and not HasID(Database.statisticIDs, catID) then
             local name, parentID, flags = GetCategoryInfo(catID)
@@ -5384,6 +5799,7 @@ function Database:PopulateDynamicAchievements()
 
     local roots = {}
     for _, cat in pairs(catMap) do
+        Utils.SliceCheckpoint()
         local parent = cat.parentID and cat.parentID ~= -1 and catMap[cat.parentID]
         if parent then
             parent.children[#parent.children + 1] = cat
@@ -5556,23 +5972,33 @@ local function StatisticChainKey(chain)
     return key
 end
 
-local function GetStatisticMT(path, categoryChain)
-    local key = StatisticChainKey(categoryChain)
-    local cached = statisticMTCache[key]
-    if cached then return cached end
-
-    local stepsPrefix = {
+-- ONE builder for a statistic's guide steps, shared by the live-scan
+-- metatables and the persisted-cache corpus so the two paths cannot drift.
+function Corpora.BuildStatisticSteps(categoryChain, statisticID, statisticName)
+    local steps = {
         { buttonFrame = "AchievementMicroButton" },
         { waitForFrame = "AchievementFrame", tabIndex = 3 },
     }
     for i = 1, #categoryChain do
         local cat = categoryChain[i]
-        stepsPrefix[#stepsPrefix + 1] = {
+        steps[#steps + 1] = {
             waitForFrame = "AchievementFrame",
             statisticsCategory = cat.name,
             statisticsCategoryID = cat.id,
         }
     end
+    steps[#steps + 1] = {
+        waitForFrame = "AchievementFrame",
+        statisticID = statisticID,
+        statisticName = statisticName,
+    }
+    return steps
+end
+
+local function GetStatisticMT(path, categoryChain)
+    local key = StatisticChainKey(categoryChain)
+    local cached = statisticMTCache[key]
+    if cached then return cached end
 
     local proto = {
         category      = "Statistic",
@@ -5581,17 +6007,10 @@ local function GetStatisticMT(path, categoryChain)
         keywordsLower = STAT_KEYWORDS_EMPTY,
         path          = path,
     }
-    local prefixLen = #stepsPrefix
     local mt = {
         __index = function(t, k)
             if k == "steps" then
-                local steps = {}
-                for s = 1, prefixLen do steps[s] = stepsPrefix[s] end
-                steps[prefixLen + 1] = {
-                    waitForFrame = "AchievementFrame",
-                    statisticID = t.statisticID,
-                    statisticName = t.name,
-                }
+                local steps = Corpora.BuildStatisticSteps(categoryChain, t.statisticID, t.name)
                 rawset(t, "steps", steps)
                 return steps
             end
@@ -5652,6 +6071,29 @@ local function PersistStatisticsCache(cache, categories)
     db.statisticCacheVer = ns.STATISTIC_CACHE_VER
 end
 
+-- Chains table of the active statistics corpus; the computed fields below
+-- resolve a stub's chain index through it on demand.
+
+Corpora.STAT_CORPUS_PROTO = {
+    category      = "Statistic",
+    buttonFrame   = "AchievementMicroButton",
+    keywords      = STAT_KEYWORDS_EMPTY,
+    keywordsLower = STAT_KEYWORDS_EMPTY,
+}
+
+Corpora.STAT_COMPUTED = {
+    statisticID = function(stub) return stub.id end,
+    path = function(stub)
+        local def = Corpora.statChainsRef and Corpora.statChainsRef[stub.chain]
+        return def and def.path or STAT_DEFAULT_PATH
+    end,
+    steps = function(stub)
+        local def = Corpora.statChainsRef and Corpora.statChainsRef[stub.chain]
+        return Corpora.BuildStatisticSteps(def and def.chain or STAT_CHAIN_EMPTY,
+            stub.statisticID, stub.name)
+    end,
+}
+
 local function HydratePersistedStatisticsCache()
     if statisticCacheHydrated then return false end
     statisticCacheHydrated = true
@@ -5664,30 +6106,28 @@ local function HydratePersistedStatisticsCache()
     local chains = saved.chains
     if type(saved.packed) ~= "string" or saved.packed == "" then return false end
     if type(chains) ~= "table" or #chains == 0 then return false end
-    local entries = Utils.UnpackRows(saved.packed, STAT_ROW_SPEC)
-    if #entries == 0 then return false end
+
+    -- The blob stays the store: stubs hydrate on demand, chain-dependent
+    -- path/steps resolve through the computed fields.
+    local corpus = Utils.NewPackedCorpus(saved.packed, STAT_ROW_SPEC, Corpora.STAT_CORPUS_PROTO,
+        { computed = Corpora.STAT_COMPUTED })
+    if corpus.count == 0 then return false end
+    Utils.RegisterCorpus("statistics", corpus)
+    Corpora.statChainsRef = chains
 
     RemoveEntriesByCategory("Statistic")
     wipe(Database.statisticIDs)
     Database.statisticsComplete = true
     RefreshStatisticsCategoryIDs(saved.categoryIDs)
 
-    -- The saved chain tables are handed straight to BuildStatisticEntry: they
-    -- are read-only there (the MT caches one proto per chain) and every row in
-    -- a category shares them, so no copy is made per row.
     local inserted = 0
-    for i = 1, #entries do
-        local raw = entries[i]
-        if type(raw) == "table" and raw.id and raw.name and raw.name ~= "" then
-            local chainDef = chains[raw.chain]
-            if chainDef then
-                uiSearchData[#uiSearchData + 1] =
-                    BuildStatisticEntry(raw.name, raw.id, chainDef.path, chainDef.chain)
-                MarkID(Database.statisticIDs, raw.id)
-                inserted = inserted + 1
-            end
+    corpus:EachRow(function(ri, row)
+        if row.id and row.name and row.name ~= "" and chains[row.chain] then
+            uiSearchData[#uiSearchData + 1] = corpus:StubAt(ri)
+            MarkID(Database.statisticIDs, row.id)
+            inserted = inserted + 1
         end
-    end
+    end)
     if inserted == 0 then return false end
 
     Database.statisticsVersion = Database.statisticsVersion + 1

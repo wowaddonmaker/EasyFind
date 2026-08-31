@@ -7,6 +7,7 @@ local L = ns.L
 local pairs, ipairs, type, select, unpack, next = pairs, ipairs, type, select, unpack, next
 local tinsert, tsort, tconcat, tremove = table.insert, table.sort, table.concat, table.remove
 local sfind, slower, ssub, sformat, smatch = string.find, string.lower, string.sub, string.format, string.match
+local InCombatLockdown = InCombatLockdown
 local mmin, mmax, mabs, mpi, mceil, mfloor = math.min, math.max, math.abs, math.pi, math.ceil, math.floor
 local pcall, xpcall, tostring, tonumber = pcall, xpcall, tostring, tonumber
 local debugstack = debugstack
@@ -297,6 +298,502 @@ function Utils.UnpackRows(blob, spec)
         pos = rowSep + 1
     end
     return rows
+end
+
+-- The mask accumulator, PackedCorpus, corpus registry, sliced-run, and
+-- GC-sweep sections live in one do-block so their locals scope out of the
+-- main chunk (Lua's 200-local cap; the compile gate caught the overflow).
+do
+local sbyte = string.byte
+local bor, lshift = bit.bor, bit.lshift
+local rawget, rawset, setmetatable = rawget, rawset, setmetatable
+local wipe = wipe
+local collectgarbage = collectgarbage
+
+-- Scoring-gate mask accumulator, shared with the scorer's per-entry fill
+-- (Database/Search.lua): cm gains a bit per a-z letter present in s, im per
+-- letter that starts an alphabetic run. Folds A-Z so it can also walk
+-- original-case names decoded from packed blobs.
+function Utils.AccumulateGateMasks(s, cm, im)
+    local prevAlpha = false
+    for i = 1, #s do
+        local b = sbyte(s, i)
+        if b >= 65 and b <= 90 then b = b + 32 end
+        if b >= 97 and b <= 122 then
+            local bitv = lshift(1, b - 97)
+            cm = bor(cm, bitv)
+            if not prevAlpha then im = bor(im, bitv) end
+            prevAlpha = true
+        else
+            prevAlpha = false
+        end
+    end
+    return cm, im
+end
+
+-- PackedCorpus: the packed blob stays the store instead of being unpacked
+-- into thousands of row tables at load. Each included row is represented by
+-- a bare stub table ({ _ri = rowIndex }, ~100 B) whose metatable decodes
+-- fields from the blob on first read and memoizes them onto the stub; shared
+-- per-category fields come from the proto without hydrating. Scoring-gate
+-- masks are precomputed per row into corpus arrays and served through
+-- __index, so the gate and its background fill never touch the blob. The
+-- search index recognizes corpus stubs by the metatable's __pcCorpus tag and
+-- indexes from a transient name decode (see Database/SearchIndex.lua).
+-- Shed() strips memoized fields back off the stubs (spec-known keys only,
+-- foreign runtime writes survive) while stub identity stays stable for
+-- serials, aliases, and pins.
+
+local function CorpusRowEnd(corpus, ri)
+    local nextOff = corpus.offsets[ri + 1]
+    return nextOff and (nextOff - 2) or #corpus.packed
+end
+
+local function CorpusFieldChunk(corpus, ri, fieldIdx)
+    local packed = corpus.packed
+    local pos = corpus.offsets[ri]
+    if not pos then return nil end
+    local rowEnd = CorpusRowEnd(corpus, ri)
+    for _ = 2, fieldIdx do
+        local sep = sfind(packed, SEP_FIELD, pos, true)
+        if not sep or sep > rowEnd then return nil end
+        pos = sep + 1
+    end
+    local sep = sfind(packed, SEP_FIELD, pos, true)
+    local fieldEnd = (sep and sep <= rowEnd) and (sep - 1) or rowEnd
+    if fieldEnd < pos then return "" end
+    return ssub(packed, pos, fieldEnd)
+end
+
+-- wanted (optional): set of field names to decode; every other field is
+-- walked past without slicing or decoding. Include passes that read a few
+-- fields of heavy rows (loot: 4 of 16, three of them lists) skip most of
+-- the allocation this way.
+local function CorpusDecodeRow(corpus, ri, into, wanted)
+    local packed, spec = corpus.packed, corpus.spec
+    local fieldPos = corpus.offsets[ri]
+    if not fieldPos then return into end
+    local rowEnd = CorpusRowEnd(corpus, ri)
+    for f = 1, #spec do
+        if fieldPos > rowEnd + 1 then break end
+        local fieldSep = sfind(packed, SEP_FIELD, fieldPos, true)
+        local fieldEnd
+        if fieldSep and fieldSep <= rowEnd then
+            fieldEnd = fieldSep - 1
+        else
+            fieldEnd = rowEnd
+            fieldSep = nil
+        end
+        local field = spec[f]
+        if not wanted or wanted[field[1]] then
+            local value = DecodeField(ssub(packed, fieldPos, fieldEnd), field[2], field[3])
+            if value ~= nil then into[field[1]] = value end
+        end
+        fieldPos = fieldSep and (fieldSep + 1) or (rowEnd + 2)
+    end
+    return into
+end
+
+-- Index-side casing must match the scorer's contract: SearchText.Normalize
+-- (string.lower skips bytes >= 0x80, so localized names would half-lowercase
+-- and never match the normalized query). Resolved at call time: SearchText
+-- loads before any corpus is built, but not necessarily before this file.
+local function NormalizeLower(s)
+    local st = ns.SearchText
+    if st and st.Normalize then return st.Normalize(s) end
+    return slower(s)
+end
+
+local function CorpusHydrateName(corpus, stub)
+    local chunk = CorpusFieldChunk(corpus, rawget(stub, "_ri"), corpus.nameIdx)
+    local decodedName = chunk and DecodeScalar(chunk)
+    if type(decodedName) ~= "string" then return end
+    rawset(stub, "name", decodedName)
+    rawset(stub, "nameLower", NormalizeLower(decodedName))
+    corpus.shedSet[stub] = true
+end
+
+-- Per-field hydration: decode ONLY the requested field and memoize it.
+-- Full-row hydration on any spec read meant a broad query (whose letters
+-- survive the gate almost everywhere) decoded every candidate's whole
+-- row -- for settings stubs that is the entire step-record payload; the
+-- warmledger showed the cost simply moved from the providers bucket to
+-- scoring. Scoring now touches two strings per candidate; heavy fields
+-- decode only when a row actually renders or acts.
+local function CorpusHydrateField(corpus, stub, fieldIdx)
+    local chunk = CorpusFieldChunk(corpus, rawget(stub, "_ri"), fieldIdx)
+    if chunk == nil then return nil end
+    local field = corpus.spec[fieldIdx]
+    local value = DecodeField(chunk, field[2], field[3])
+    if value ~= nil then
+        rawset(stub, field[1], value)
+        corpus.shedSet[stub] = true
+    end
+    return value
+end
+
+local Corpus = {}
+Corpus.__index = Corpus
+
+function Corpus:StubAt(ri)
+    local stub = self.stubs[ri]
+    if not stub then
+        stub = setmetatable({ _ri = ri }, self.stubMT)
+        self.stubs[ri] = stub
+    end
+    return stub
+end
+
+-- Transient decode for index build: no memoization, the string is the
+-- caller's to drop.
+function Corpus:NameLowerOf(ri)
+    local chunk = CorpusFieldChunk(self, ri, self.nameIdx)
+    local decodedName = chunk and DecodeScalar(chunk)
+    if type(decodedName) ~= "string" then return nil end
+    return NormalizeLower(decodedName)
+end
+
+-- Per-row keywords for the index build (corpora with opts.keywordsFor):
+-- decodes the row into a reused scratch and returns keywordsFor's array,
+-- which is itself a reused buffer -- valid only until the next call.
+local kwScratchRow = {}
+function Corpus:KeywordsOf(ri)
+    local keywordsFor = self.keywordsFor
+    if not keywordsFor then return nil end
+    wipe(kwScratchRow)
+    return keywordsFor(CorpusDecodeRow(self, ri, kwScratchRow, self.keywordFields))
+end
+
+-- Decodes every row into one reused scratch table for inclusion filters.
+-- The scratch is only valid inside the callback. wanted (optional) limits
+-- decoding to those field names.
+function Corpus:EachRow(fn, wanted)
+    local scratch = {}
+    for ri = 1, self.count do
+        wipe(scratch)
+        fn(ri, CorpusDecodeRow(self, ri, scratch, wanted))
+    end
+end
+
+function Corpus:Shed()
+    -- Mutable corpora (loot: stat enrichment, link accrual persisted back
+    -- to the blob) opt out; shedding would drop spec-field mutations.
+    if self.noShed then return end
+    local shedKeys = self.shedKeys
+    for stub in pairs(self.shedSet) do
+        for key in pairs(shedKeys) do
+            rawset(stub, key, nil)
+        end
+    end
+    wipe(self.shedSet)
+end
+
+local function CorpusStubIndex(corpus, stub, key)
+    local protoValue = corpus.proto[key]
+    if protoValue ~= nil then return protoValue end
+    if key == "_efGateMask" then
+        if corpus.ungated then return false end
+        return corpus.gateMasks[rawget(stub, "_ri")]
+    end
+    if key == "_efGateInit" then
+        if corpus.ungated then return false end
+        return corpus.gateInits[rawget(stub, "_ri")]
+    end
+    local lite = corpus.liteValues
+    if lite then
+        local arr = lite[key]
+        if arr then
+            local value = arr[rawget(stub, "_ri")]
+            if value ~= nil then return value end
+        end
+    end
+    if key == "nameLower" or key == "name" then
+        CorpusHydrateName(corpus, stub)
+        return rawget(stub, key)
+    end
+    local fieldIdx = corpus.fieldIdxOf[key]
+    if fieldIdx then
+        local value = CorpusHydrateField(corpus, stub, fieldIdx)
+        if value ~= nil then return value end
+    end
+    local computed = corpus.computed
+    local computeFn = computed and computed[key]
+    if computeFn then
+        local value = computeFn(stub)
+        if value ~= nil then
+            rawset(stub, key, value)
+            corpus.shedSet[stub] = true
+        end
+        return value
+    end
+    return nil
+end
+
+-- opts.computed: map of field -> fn(stub) for values derived outside the
+-- blob (e.g. mountTypeID); computed lazily on read, shed with the rest.
+function Utils.NewPackedCorpus(packed, spec, proto, opts)
+    local corpus = setmetatable({
+        packed = type(packed) == "string" and packed or "",
+        spec = spec, proto = proto or {},
+        stubs = {}, shedSet = {},
+    }, Corpus)
+
+    local nameIdx = 1
+    for i = 1, #spec do
+        if spec[i][1] == "name" then
+            nameIdx = i
+            break
+        end
+    end
+    corpus.nameIdx = nameIdx
+
+    local offsets, rowN = {}, 0
+    local blob = corpus.packed
+    if blob ~= "" then
+        local blobLen = #blob
+        local pos = 1
+        while pos <= blobLen do
+            rowN = rowN + 1
+            offsets[rowN] = pos
+            local rowSep = sfind(blob, SEP_ROW, pos, true)
+            pos = (rowSep or blobLen) + 1
+        end
+    end
+    corpus.offsets = offsets
+    corpus.count = rowN
+
+    -- Proto keywords contribute a constant mask; each row adds its name's
+    -- letters. The decode is escape-aware (DecodeScalar), so no escape
+    -- bytes leak into the masks. Ungated corpora (loot: the scoring gate
+    -- must never skip them) serve false instead and skip the build pass.
+    corpus.ungated = opts and opts.ungated or nil
+    corpus.noShed = opts and opts.noShed or nil
+    -- opts.keywordsFor(scratchRow) -> reused array of lowercase strings:
+    -- corpora whose entries carry PER-ROW keywords (bosses: instance name
+    -- and abbreviations) must contribute them to the gate masks and the
+    -- index, or the gate wrongly skips keyword matches.
+    corpus.keywordsFor = opts and opts.keywordsFor or nil
+    -- opts.keywordFields: the field-name set keywordsFor actually reads
+    -- (plus name for the mask pass); limits the per-row decode.
+    corpus.keywordFields = opts and opts.keywordFields or nil
+    if not corpus.ungated then
+        local protoCm, protoIm = 0, 0
+        local kws = corpus.proto.keywordsLower or corpus.proto.keywords
+        if kws then
+            for k = 1, #kws do
+                if type(kws[k]) == "string" then
+                    protoCm, protoIm = Utils.AccumulateGateMasks(kws[k], protoCm, protoIm)
+                end
+            end
+        end
+        local gateMasks, gateInits = {}, {}
+        local maskScratch = corpus.keywordsFor and {} or nil
+        local maskWanted
+        if maskScratch and corpus.keywordFields then
+            maskWanted = { name = true }
+            for k in pairs(corpus.keywordFields) do maskWanted[k] = true end
+        end
+        for ri = 1, rowN do
+            local cm, im = protoCm, protoIm
+            if maskScratch then
+                wipe(maskScratch)
+                CorpusDecodeRow(corpus, ri, maskScratch, maskWanted)
+                if type(maskScratch.name) == "string" then
+                    cm, im = Utils.AccumulateGateMasks(maskScratch.name, cm, im)
+                end
+                local rowKws = corpus.keywordsFor(maskScratch)
+                if rowKws then
+                    for k = 1, #rowKws do
+                        if type(rowKws[k]) == "string" then
+                            cm, im = Utils.AccumulateGateMasks(rowKws[k], cm, im)
+                        end
+                    end
+                end
+            else
+                local chunk = CorpusFieldChunk(corpus, ri, nameIdx)
+                local decodedName = chunk and DecodeScalar(chunk)
+                if type(decodedName) == "string" then
+                    cm, im = Utils.AccumulateGateMasks(decodedName, cm, im)
+                end
+            end
+            gateMasks[ri] = cm
+            gateInits[ri] = im
+        end
+        corpus.gateMasks = gateMasks
+        corpus.gateInits = gateInits
+    end
+
+    local fieldIdxOf = {}
+    local shedKeys = { nameLower = true }
+    for i = 1, #spec do
+        fieldIdxOf[spec[i][1]] = i
+        shedKeys[spec[i][1]] = true
+    end
+    corpus.fieldIdxOf = fieldIdxOf
+    -- opts.liteFields: spec fields served per row from corpus arrays WITHOUT
+    -- hydrating. The scoring loop reads some fields (category) for every
+    -- entry on every search; hydrating thousands of stubs for a shared
+    -- interned string would defeat the laziness.
+    local liteList = opts and opts.liteFields
+    if liteList then
+        local lite = {}
+        for i = 1, #liteList do
+            local fieldName = liteList[i]
+            local fieldIdx
+            for f = 1, #spec do
+                if spec[f][1] == fieldName then
+                    fieldIdx = f
+                    break
+                end
+            end
+            if fieldIdx then
+                local arr = {}
+                for ri = 1, rowN do
+                    local chunk = CorpusFieldChunk(corpus, ri, fieldIdx)
+                    if chunk then arr[ri] = DecodeScalar(chunk) end
+                end
+                lite[fieldName] = arr
+            end
+        end
+        corpus.liteValues = lite
+    end
+    local computed = opts and opts.computed
+    corpus.computed = computed
+    if computed then
+        for key in pairs(computed) do shedKeys[key] = true end
+    end
+    corpus.shedKeys = shedKeys
+
+    corpus.stubMT = {
+        __pcCorpus = corpus,
+        __index = function(stub, key)
+            return CorpusStubIndex(corpus, stub, key)
+        end,
+    }
+    return corpus
+end
+
+local corpusRegistry = {}
+
+function Utils.RegisterCorpus(name, corpus)
+    corpusRegistry[name] = corpus
+end
+
+function Utils.GetCorpus(name)
+    return corpusRegistry[name]
+end
+
+function Utils.ShedCorpora()
+    for _, corpus in pairs(corpusRegistry) do
+        corpus:Shed()
+    end
+end
+
+-- Sliced synchronous work: fn runs inside a coroutine under a per-frame
+-- time budget; Utils.SliceCheckpoint() calls sprinkled through fn's loops
+-- yield when the budget is spent and the pump resumes next frame. This is
+-- the generic form of the boss scanner's budget pattern: a provider walk
+-- that took one 300-400ms frame becomes ~4ms slices with a ONE-LINE
+-- checkpoint per loop. Checkpoints must sit OUTSIDE any pcall inside fn
+-- (this Lua cannot yield across a C boundary); a checkpoint reached on
+-- the main thread (direct sync calls, dev probes) is a no-op.
+local sliceDeadline
+local dpstop = debugprofilestop
+local coroutine = coroutine
+
+function Utils.SliceCheckpoint()
+    if not sliceDeadline then return end
+    if dpstop() < sliceDeadline then return end
+    if not coroutine.running() then return end
+    coroutine.yield()
+end
+
+-- Returns a handle whose :Cancel() stops the run at its next slice
+-- boundary WITHOUT firing onDone (last-keystroke-wins search dispatch).
+-- onDone is optional. Errors reach onDone(false, err) when given, else
+-- the shared error handler.
+local function slicedDone(onDone, ok, ...)
+    if onDone then
+        onDone(ok, ...)
+    elseif not ok then
+        Utils.ErrorHandler(...)
+    end
+end
+
+function Utils.RunSliced(fn, onDone, budgetMs)
+    if not dpstop then
+        -- No profiler clock (offline harness): run synchronously.
+        local function relay(ok, ...) slicedDone(onDone, ok, ...) end
+        relay(pcall(fn))
+        return { Cancel = function() end }
+    end
+    budgetMs = budgetMs or 4
+    local co = coroutine.create(fn)
+    local handle = {}
+    function handle:Cancel() handle.cancelled = true end
+    local pump
+    local function step(ok, ...)
+        sliceDeadline = nil
+        if not ok then
+            slicedDone(onDone, false, ...)
+            return
+        end
+        if coroutine.status(co) == "dead" then
+            slicedDone(onDone, true, ...)
+            return
+        end
+        Utils.SafeAfter(0, pump)
+    end
+    pump = function()
+        if handle.cancelled then return end
+        sliceDeadline = dpstop() + budgetMs
+        step(coroutine.resume(co))
+    end
+    pump()
+    return handle
+end
+
+-- Dev-tool peek (EasyFindDev memory audit): the registry is file-local and
+-- invisible to ns walks. Shared reference; do not mutate.
+function Utils._DebugPeekCorpora()
+    return corpusRegistry
+end
+
+-- Close-boundary GC sweep, ONE owner for every search surface (main bar,
+-- map search): the client's incremental GC is allocation-paced, so when a
+-- surface closes and allocation stops, the session's garbage sits in every
+-- memory meter for minutes. Two stages per boundary: staggered debt-sized
+-- steps shortly after close (sub-ms each, never a full collect's frame
+-- spike), then the surface's trim plus one full settle at the idle mark,
+-- combat-guarded. A new session on the same surface cancels both stages;
+-- isOpenFn re-checks at every fire.
+local gcSweepSerials = {}
+local GC_SWEEP_TICKS = 40
+
+function Utils.NoteSurfaceClosed(key, isOpenFn, trimFn)
+    local serial = (gcSweepSerials[key] or 0) + 1
+    gcSweepSerials[key] = serial
+    local sweepsLeft = GC_SWEEP_TICKS
+    local function sweepTick()
+        if gcSweepSerials[key] ~= serial then return end
+        if isOpenFn and isOpenFn() then return end
+        collectgarbage("step", 400)
+        sweepsLeft = sweepsLeft - 1
+        if sweepsLeft > 0 then
+            Utils.SafeAfter(0.05, sweepTick)
+        end
+    end
+    Utils.SafeAfter(0.5, sweepTick)
+    Utils.SafeAfter(60, function()
+        if gcSweepSerials[key] ~= serial then return end
+        if isOpenFn and isOpenFn() then return end
+        if trimFn then trimFn() end
+        if not InCombatLockdown() then
+            collectgarbage("collect")
+        end
+    end)
+end
+
 end
 
 function Utils.SecureCall(fn, ...)
@@ -2955,7 +3452,6 @@ local escOwner, escDispatch
 -- Blizzard's key re-attach pass on EasyFind's execution and detonate
 -- protected bar updates (PetActionBar:SetShownBase autopsy).
 local escArmed = false
-local InCombatLockdown = InCombatLockdown
 local SetOverrideBindingClick = SetOverrideBindingClick
 local ClearOverrideBindings = ClearOverrideBindings
 

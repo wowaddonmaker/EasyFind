@@ -343,11 +343,12 @@ function Handlers:RouteCurrencyTransfer(pinData)
     -- Keep the currency-row highlight persistent (no hover-dismiss) because
     -- it's an intermediate step here -- the destination is the Transfer
     -- button on the popup, not the row itself.
-    if ns.Highlight and ns.Highlight.SetPersistentCurrencyHighlight then
-        ns.Highlight:SetPersistentCurrencyHighlight(true)
+    local highlight = ns.RequestGuide()
+    if highlight and highlight.SetPersistentCurrencyHighlight then
+        highlight:SetPersistentCurrencyHighlight(true)
     end
     self:SelectResult(pinData)
-    if not (currencyID and Utils and Utils.SafeAfter and ns.Highlight) then return end
+    if not (currencyID and Utils and Utils.SafeAfter and highlight) then return end
 
     -- Auto-clicking the currency row taints the final transfer call, so we
     -- let the player click it; then we move the highlight to Transfer.

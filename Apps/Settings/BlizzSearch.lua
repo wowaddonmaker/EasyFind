@@ -1,4 +1,10 @@
-local _, ns = ...
+-- EasyFind_Settings companion: the Blizzard settings search bridge,
+-- LoadOnDemand. Loaded by ns.RequestSettingsSearch on the first search
+-- warm or explicit settings query; until then this addon costs nothing.
+local EasyFind = EasyFind
+local ns = EasyFind and EasyFind._ns
+if not ns then return end
+
 local BlizzOptionsSearch = {}
 ns.BlizzOptionsSearch = BlizzOptionsSearch
 
@@ -3204,46 +3210,46 @@ local function SerializeList(src)
     return Utils.PackRows(src, OPTIONS_ROW_SPEC)
 end
 
--- Rebuild a live entry from a plain record. GetSettingsCatMT dedupes protos by
--- (category, catName, path), so same-category entries share one proto exactly
--- as a fresh build does. Copies decouple the live entry from the SavedVariables
--- blob so runtime reads never mutate the persisted cache.
-local function DeserializeEntry(rec)
-    local mt = GetSettingsCatMT(rec.category or "Game Settings", rec.settingsCategory,
-        rec.settingCategoryID, rec.path)
-    local entry = setmetatable({
-        name = rec.name,
-        nameLower = rec.nameLower,
-        keywords = rec.keywords or {},
-        steps = rec.steps,
-        settingVariable = rec.settingVariable,
-        cbVariable = rec.cbVariable,
-        sliderVariable = rec.sliderVariable,
-        dropdownVariable = rec.dropdownVariable,
-        settingType = rec.settingType,
-        settingMin = rec.settingMin,
-        settingMax = rec.settingMax,
-        settingStep = rec.settingStep,
-        bindingAction = rec.bindingAction,
-        customToggle = rec.customToggle,
-        quickKeybindActivate = rec.quickKeybindActivate,
-    }, mt)
-    local var = rec.settingVariable
-    if var then
-        local override = QUALITY_SLIDER_OVERRIDES[var]
-        if override and override.formatter then
-            entry.settingFormatter = override.formatter
-        end
-        local opts = CVAR_DROPDOWN_OPTIONS[var]
-        if opts then entry.settingOptions = opts end
-    end
-    return entry
+-- Restored lists are PackedCorpus stubs: the blob stays the store and a
+-- row's fields decode on first read, so restoring the cache allocates a
+-- handful of arrays instead of ~2k rich entry tables. category is a lite
+-- field (the scoring loop reads it for every entry every search); the
+-- deserialize-time extras (formatter/options overrides, the old
+-- category/keywords defaults) become computed fields that fire only when
+-- the blob has nothing for the key.
+local OPTIONS_CORPUS_PROTO = {}
+
+local OPTIONS_COMPUTED = {
+    category = function() return "Game Settings" end,
+    keywords = function() return {} end,
+    settingFormatter = function(stub)
+        local var = stub.settingVariable
+        local override = var and QUALITY_SLIDER_OVERRIDES[var]
+        return override and override.formatter or nil
+    end,
+    settingOptions = function(stub)
+        local var = stub.settingVariable
+        return var and CVAR_DROPDOWN_OPTIONS[var] or nil
+    end,
+}
+
+local function OptionsRowKeywords(row)
+    return row.keywords
 end
 
-local function DeserializeList(blob)
-    local rows = Utils.UnpackRows(blob, OPTIONS_ROW_SPEC)
+local function DeserializeList(blob, corpusName)
+    local corpus = Utils.GetCorpus(corpusName)
+    if not (corpus and corpus.packed == blob) then
+        corpus = Utils.NewPackedCorpus(blob, OPTIONS_ROW_SPEC, OPTIONS_CORPUS_PROTO, {
+            computed = OPTIONS_COMPUTED,
+            keywordsFor = OptionsRowKeywords,
+            keywordFields = { keywords = true },
+            liteFields = { "category" },
+        })
+        Utils.RegisterCorpus(corpusName, corpus)
+    end
     local out = {}
-    for i = 1, #rows do out[i] = DeserializeEntry(rows[i]) end
+    for ri = 1, corpus.count do out[ri] = corpus:StubAt(ri) end
     return out
 end
 
@@ -3256,9 +3262,9 @@ function BlizzOptionsSearch.DeserializeOptionsCache(cache)
         return nil
     end
     return {
-        entries = DeserializeList(cache.entries),
-        kb = DeserializeList(cache.kb),
-        addon = DeserializeList(cache.addon),
+        entries = DeserializeList(cache.entries, "optionsGame"),
+        kb = DeserializeList(cache.kb, "optionsKb"),
+        addon = DeserializeList(cache.addon, "optionsAddon"),
     }
 end
 

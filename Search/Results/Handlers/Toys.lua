@@ -209,7 +209,7 @@ end
 
 function Handlers:OpenToyInToyBox(data)
     if not data or not data.toyItemID then return end
-    local highlight = ns.Highlight
+    local highlight = ns.RequestGuide()
     local TOY_TAB = 3
     local narrowed = false
 

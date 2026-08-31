@@ -241,7 +241,7 @@ end
 
 function Handlers:OpenMountInJournal(data)
     if not (data and data.mountID) then return end
-    local highlight = ns.Highlight
+    local highlight = ns.RequestGuide()
     local MOUNT_TAB = 1
 
     local function step(attempt)

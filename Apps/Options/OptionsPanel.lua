@@ -1,4 +1,9 @@
-local _, ns = ...
+-- EasyFind_Options companion: the settings panel, LoadOnDemand. Loaded by
+-- EasyFind:EnsureOptionsLoaded on the first options open (slash, ESC
+-- category, tutorial); until then this addon costs nothing at all.
+local EasyFind = EasyFind
+local ns = EasyFind and EasyFind._ns
+if not ns then return end
 
 local Options = {}
 ns.Options = Options
@@ -48,7 +53,6 @@ local OPTIONS_FRAME_LEVEL = 700
 
 local optionsFrame
 local isInitialized = false
-local blizzardRegistered = false
 
 local VISIBILITY_AUTO   = ns.VISIBILITY_AUTO
 local VISIBILITY_SMART  = ns.VISIBILITY_SMART
@@ -3920,7 +3924,6 @@ function Options:Initialize()
     optionsFrame:Hide()
 
     isInitialized = true
-    self:RegisterWithBlizzardOptions()
 end
 
 function Options:DoResetPositions()
@@ -3977,68 +3980,38 @@ function Options:DoResetUIPositions()
     RefreshUIRuntime(true)
 end
 
-function Options:RegisterWithBlizzardOptions()
-    if blizzardRegistered then return end
-    blizzardRegistered = true
+-- Category registration and the settings-root hooks live in Core/Main.lua
+-- (RegisterBlizzardOptionsStub): they must exist from login, before this
+-- LoadOnDemand companion is parsed. The stub panel's OnShow/OnHide land here.
+function Options:EmbedInBlizzardPanel(panel)
+    if not isInitialized then Options:Initialize() end
+    Options.embedded = true
+    Options.embedding = true
 
-    local panel = CreateFrame("Frame")
-    panel.name = "EasyFind"
+    optionsFrame.titleText:Hide()
+    optionsFrame.closeBtn:Hide()
+    -- Keep the themed gloss: hiding it left the panel naked on
+    -- Blizzard's dark canvas, which broke every light theme (dark
+    -- text on a dark background). The OnShow hook sets its alpha.
+    optionsFrame.bgTex:Show()
+    optionsFrame:SetBackdrop(nil)
+    optionsFrame:SetScale(1)
 
-    panel:SetScript("OnShow", function(self)
-        if not isInitialized then Options:Initialize() end
-        Options.embedded = true
-        Options.embedding = true
+    optionsFrame:SetParent(panel)
+    optionsFrame:ClearAllPoints()
+    optionsFrame:SetPoint("TOPLEFT", panel, "TOPLEFT", 0, -10)
+    optionsFrame:SetFrameStrata("HIGH")
+    optionsFrame:SetMovable(false)
+    optionsFrame:RegisterForDrag()
 
-        optionsFrame.titleText:Hide()
-        optionsFrame.closeBtn:Hide()
-        -- Keep the themed gloss: hiding it left the panel naked on
-        -- Blizzard's dark canvas, which broke every light theme (dark
-        -- text on a dark background). The OnShow hook sets its alpha.
-        optionsFrame.bgTex:Show()
-        optionsFrame:SetBackdrop(nil)
-        optionsFrame:SetScale(1)
+    Options:Show()
+    Options.embedding = false
+end
 
-        optionsFrame:SetParent(self)
-        optionsFrame:ClearAllPoints()
-        optionsFrame:SetPoint("TOPLEFT", self, "TOPLEFT", 0, -10)
-        optionsFrame:SetFrameStrata("HIGH")
-        optionsFrame:SetMovable(false)
-        optionsFrame:RegisterForDrag()
-
-        Options:Show()
-        Options.embedding = false
-    end)
-
-    panel:SetScript("OnHide", function()
-        if not Options.embedded then return end
-        Options:RestoreStandalone()
-        optionsFrame:Hide()
-    end)
-
-    if Settings and Settings.RegisterCanvasLayoutCategory then
-        local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
-        Settings.RegisterAddOnCategory(category)
-    else
-        InterfaceOptions_AddCategory(panel)
-    end
-
-    local settingsRoot = SettingsPanel or InterfaceOptionsFrame
-    if settingsRoot then
-        local restoreOnClose = false
-        settingsRoot:HookScript("OnShow", function()
-            local sf = _G["EasyFindSearchFrame"]
-            restoreOnClose = sf and sf:IsShown() or false
-            if sf then sf:Hide() end
-            if ns.Search and ns.Search.HideResults then ns.Search:HideResults() end
-        end)
-        settingsRoot:HookScript("OnHide", function()
-            if restoreOnClose then
-                restoreOnClose = false
-                local sf = _G["EasyFindSearchFrame"]
-                if sf then sf:Show() end
-            end
-        end)
-    end
+function Options:OnBlizzardPanelHide()
+    if not Options.embedded then return end
+    Options:RestoreStandalone()
+    optionsFrame:Hide()
 end
 
 function Options:OpenAtAliases()

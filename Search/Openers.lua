@@ -58,7 +58,7 @@ local function EnsurePlayerSpellsTab(tabIndex)
     if not tabIndex or IsPlayerSpellsTabSelected(tabIndex) then return true end
     local tab = ns.SecureOpeners
         and ns.SecureOpeners.GetTabButtonFor("playerSpells", tabIndex)
-    local highlight = ns.Highlight
+    local highlight = ns.RequestGuide()
     if tab and highlight and highlight.HighlightFrame then
         highlight:HighlightFrame(tab, nil, nil, true)
     end

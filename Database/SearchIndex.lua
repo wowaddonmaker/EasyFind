@@ -52,6 +52,8 @@ local band, bor, lshift, rshift = bit.band, bit.bor, bit.lshift, bit.rshift
 local wipe = wipe
 local pairs = pairs
 local tsort = table.sort
+local getmetatable, rawget = getmetatable, rawget
+local SliceCheckpoint = ns.Utils.SliceCheckpoint
 
 -- Keep in sync with Database/Search.lua's fuzzy thresholds.
 local FUZZY_EDIT1_LEN, FUZZY_EDIT2_LEN = 4, 8
@@ -154,6 +156,14 @@ local function DecodePostings(strMap, tailMap, key)
 end
 
 local seenGrams = {}
+-- All index keys are NUMBERS, never substrings: a gram is b1*256+b2, a
+-- word-lead the same for the word's first two bytes, an initials pair the
+-- same for the two word-initial bytes. The old per-gram/lead/init ssub was
+-- the warm's largest single allocator (measured in the warmledger). The
+-- bases keep the three key classes distinct inside the shared per-entry
+-- seenGrams dedupe table; the storage maps are separate and unprefixed.
+local WORD_SEEN_BASE = 65536
+local INIT_SEEN_BASE = 131072
 local counts = {}
 local wordSet = {}
 local resultSet = {}
@@ -183,20 +193,21 @@ local function IndexText(e, text)
                 -- First letters of the two leading words anchor the pure-
                 -- initials class (1-char words count as words there).
                 if not init1 then
-                    init1 = ssub(text, wordStart, wordStart)
+                    init1 = sbyte(text, wordStart)
                 elseif not init2 then
-                    init2 = ssub(text, wordStart, wordStart)
+                    init2 = sbyte(text, wordStart)
                 end
             end
             if p - wordStart >= 2 then
-                local lead = ssub(text, wordStart, wordStart + 1)
-                local leadKey = "\1" .. lead
-                if not seenGrams[leadKey] then
-                    seenGrams[leadKey] = true
+                local b1, b2 = sbyte(text, wordStart, wordStart + 1)
+                local lead = b1 * 256 + b2
+                if not seenGrams[WORD_SEEN_BASE + lead] then
+                    seenGrams[WORD_SEEN_BASE + lead] = true
                     PostAppend(wordStr, wordTail, lead, e)
                 end
                 for g = wordStart, p - 2 do
-                    local gram = ssub(text, g, g + 1)
+                    local g1, g2 = sbyte(text, g, g + 1)
+                    local gram = g1 * 256 + g2
                     if not seenGrams[gram] then
                         seenGrams[gram] = true
                         PostAppend(gramStr, gramTail, gram, e)
@@ -207,10 +218,9 @@ local function IndexText(e, text)
         end
     end
     if init1 and init2 then
-        local key = init1 .. init2
-        local initKey = "\2" .. key
-        if not seenGrams[initKey] then
-            seenGrams[initKey] = true
+        local key = init1 * 256 + init2
+        if not seenGrams[INIT_SEEN_BASE + key] then
+            seenGrams[INIT_SEEN_BASE + key] = true
             PostAppend(initStr, initTail, key, e)
         end
     end
@@ -238,12 +248,25 @@ local function IndexEntry(data)
     end
     wipe(seenGrams)
     local m = 0
-    local nameLower = data.nameLower
+    -- Corpus stubs (metatable-tagged) index from transient decodes so the
+    -- index build never hydrates them; the values are dropped after this.
+    -- KeywordsOf serves per-row keywords (bosses); corpora without them
+    -- fall through to the proto's shared keyword list.
+    local nameLower, kws
+    local mt = getmetatable(data)
+    local pc = mt and rawget(mt, "__pcCorpus")
+    if pc then
+        local ri = rawget(data, "_ri")
+        nameLower = pc:NameLowerOf(ri)
+        kws = pc:KeywordsOf(ri)
+    else
+        nameLower = data.nameLower
+    end
     if nameLower then
         m = maskOf(nameLower, m)
         IndexText(sid, nameLower)
     end
-    local kws = data.keywordsLower or data.keywords
+    kws = kws or data.keywordsLower or data.keywords
     if kws then
         for k = 1, #kws do
             local kw = kws[k]
@@ -275,14 +298,24 @@ local function Rebuild()
     dirty = false
 end
 
+-- Above this many unindexed appends, a QUERY-TIME Ensure refuses the
+-- synchronous build while the warm chain is still loading: paying the
+-- whole append in one keystroke frame was a 100-400ms stall. The caller
+-- falls back to the full scan (the pre-index behavior) and the chain's
+-- budgeted slices finish the build in the background.
+local SYNC_BUILD_MAX = 800
+
 local function Ensure()
     if dirty then
         Rebuild()
-        return
+        return true
     end
     local dataArr = Database.uiSearchData
     local n = #dataArr
     if builtCount < n then
+        if n - builtCount > SYNC_BUILD_MAX and Database._dynamicBatchLoading then
+            return false
+        end
         for i = builtCount + 1, n do
             IndexEntry(dataArr[i])
         end
@@ -290,6 +323,33 @@ local function Ensure()
     -- Removal compactions can shrink the array; ref-keyed postings do not
     -- care (NoteRemoved handled liveness), only the append watermark moves.
     builtCount = n
+    return true
+end
+
+-- Budgeted incremental build for the warm chain: index appended entries
+-- until budgetMs is spent; returns true when caught up. The chain calls
+-- this between provider loads so first queries never pay the whole build.
+function SearchIndex:EnsureBudget(budgetMs)
+    if dirty then
+        Rebuild()
+        return true
+    end
+    local dataArr = Database.uiSearchData
+    local n = #dataArr
+    if builtCount >= n then
+        builtCount = n
+        return true
+    end
+    local dps = debugprofilestop
+    local start = dps and dps() or 0
+    local i = builtCount + 1
+    while i <= n do
+        IndexEntry(dataArr[i])
+        i = i + 1
+        if dps and (dps() - start) >= budgetMs then break end
+    end
+    builtCount = i - 1
+    return builtCount >= n
 end
 
 function SearchIndex:MarkDirty()
@@ -347,7 +407,8 @@ local function AddContiguous(w)
     wipe(seenGrams)
     local nGrams = 0
     for g = 1, wl - 1 do
-        local gram = ssub(w, g, g + 1)
+        local g1, g2 = sbyte(w, g, g + 1)
+        local gram = g1 * 256 + g2
         if not seenGrams[gram] then
             seenGrams[gram] = true
             nGrams = nGrams + 1
@@ -372,14 +433,16 @@ local function CollectWord(qw)
     wipe(wordSet)
     local L = #qw
     AddContiguous(qw)
-    if L >= 3 and ssub(qw, L, L) == "s" then
+    if L >= 3 and sbyte(qw, L) == 115 then
         AddContiguous(ssub(qw, 1, L - 1))
     end
     -- B2 pure initials: qw must prefix a text's initials string, so its
     -- first two chars equal the text's first two initials; the mask trims
     -- texts that lack qw's remaining letters.
+    local qb1, qb2 = sbyte(qw, 1, 2)
+    local leadKey = qb1 * 256 + qb2
     do
-        local pn = DecodePostings(initStr, initTail, ssub(qw, 1, 2))
+        local pn = DecodePostings(initStr, initTail, leadKey)
         if pn > 0 then
             local qm = maskOf(qw, 0)
             for pi = 1, pn do
@@ -391,7 +454,7 @@ local function CollectWord(qw)
         end
     end
     if L >= 4 then
-        local pn = DecodePostings(wordStr, wordTail, ssub(qw, 1, 2))
+        local pn = DecodePostings(wordStr, wordTail, leadKey)
         if pn > 0 then
             local qm = maskOf(qw, 0)
             for pi = 1, pn do
@@ -411,6 +474,7 @@ local function CollectWord(qw)
             allowed = 1
         end
         for sid = 1, nextSerial do
+            if band(sid, 511) == 0 then SliceCheckpoint() end
             if alive[sid] and not wordSet[sid]
                and MissingWithin(qm, entryMask[sid], allowed) then
                 wordSet[sid] = true
@@ -427,7 +491,7 @@ end
 -- ascending uiSearchData position -- the same iteration order as the full
 -- scan -- so the result cap keeps the exact same tie subset the scan would.
 function SearchIndex:Candidates(queryWords)
-    Ensure()
+    if not Ensure() then return nil end
     if builtCount == 0 then return nil end
     wipe(resultSet)
     local first = true

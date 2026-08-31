@@ -6,6 +6,8 @@ local Utils = ns.Utils
 
 local slower = Utils.slower
 local sfind = Utils.sfind
+local tconcat = Utils.tconcat
+local mfloor = Utils.mfloor
 local CreateFrame = CreateFrame
 local wipe = wipe
 local band = bit.band
@@ -144,7 +146,11 @@ end
 -- Direct category enumeration keeps working in that state, so when
 -- Blizzard's search returns nothing while achievements provably exist,
 -- we build our own name index once (staggered) and serve from it.
-local fallbackIndex
+-- Armed form of the fallback: the packed blob stays the store (a corpus
+-- hydrates rows only for hits), and matching runs over ONE lowercase
+-- names string with a position->row map -- hydrating ~5k row tables just
+-- to substring-scan them was a 4MB allocation the warmledger convicted.
+local fallbackScan
 local fallbackBuilding = false
 
 -- The index persists in SavedVariables keyed to the client build:
@@ -176,8 +182,33 @@ local function PersistFallbackIndex(rows)
     }
 end
 
+local ACH_NAME_ONLY = { name = true }
+
+local function ArmFallbackScan(packed)
+    -- ungated: these stubs never enter the main scoring gate, so skip the
+    -- mask build. noShed: completed flips in place on ACHIEVEMENT_EARNED.
+    local corpus = Utils.NewPackedCorpus(packed, ACH_ROW_SPEC, nil,
+        { ungated = true, noShed = true })
+    if corpus.count == 0 then return false end
+    local parts, riAt = {}, {}
+    local pos = 1
+    corpus:EachRow(function(ri, row)
+        local nm = type(row.name) == "string" and slower(row.name) or ""
+        parts[ri] = nm
+        riAt[ri] = pos
+        pos = pos + #nm + 1
+    end, ACH_NAME_ONLY)
+    fallbackScan = {
+        corpus = corpus,
+        names = tconcat(parts, "\n"),
+        riAt = riAt,
+    }
+    Utils.RegisterCorpus("achievementsFallback", corpus)
+    return true
+end
+
 local function TryHydrateFallbackIndex()
-    if fallbackIndex then return true end
+    if fallbackScan then return true end
     local db = EasyFind and EasyFind.db
     local saved = db and db.achievementIndex
     if type(saved) ~= "table" or saved.version ~= ACH_INDEX_VER
@@ -185,18 +216,7 @@ local function TryHydrateFallbackIndex()
        or saved.packed == "" then
         return false
     end
-    local decoded = Utils.UnpackRows(saved.packed, ACH_ROW_SPEC)
-    local rows = {}
-    for i = 1, #decoded do
-        local row = decoded[i]
-        if row.id and row.name then
-            row.nameLower = slower(row.name)
-            rows[#rows + 1] = row
-        end
-    end
-    if #rows == 0 then return false end
-    fallbackIndex = rows
-    return true
+    return ArmFallbackScan(saved.packed)
 end
 
 local function ClientHasAchievements()
@@ -227,7 +247,7 @@ local function RefreshOpenQuery(expectedQuery)
 end
 
 local function BuildFallbackIndex()
-    if fallbackIndex or fallbackBuilding then return end
+    if fallbackScan or fallbackBuilding then return end
     local getList = _G["GetCategoryList"]
     local getNum = _G["GetCategoryNumAchievements"]
     local getInfo = _G["GetAchievementInfo"]
@@ -271,9 +291,13 @@ local function BuildFallbackIndex()
             catIdx = catIdx + 1
             achIdx = 1
         end
-        fallbackIndex = rows
         fallbackBuilding = false
         PersistFallbackIndex(rows)
+        local db = EasyFind and EasyFind.db
+        local saved = db and db.achievementIndex
+        if saved and type(saved.packed) == "string" and saved.packed ~= "" then
+            ArmFallbackScan(saved.packed)
+        end
         RefreshOpenQuery(nil)
     end
     Utils.SafeAfter(0, step)
@@ -282,14 +306,26 @@ end
 local function CollectFallbackResults(query, mode)
     local results = {}
     local queryLower = slower(query or "")
-    if queryLower == "" then return results end
-    for i = 1, #fallbackIndex do
-        local row = fallbackIndex[i]
-        if sfind(row.nameLower, queryLower, 1, true)
-           and AchievementPassesFilter(row.completed, mode) then
-            results[#results + 1] = GetOrCreateAchievementEntry(row.id, row.name, row.icon, row.isGuild)
-            if #results >= ACH_MAX_RESULTS then break end
+    if queryLower == "" or not fallbackScan then return results end
+    local names = fallbackScan.names
+    local riAt = fallbackScan.riAt
+    local corpus = fallbackScan.corpus
+    local total = corpus.count
+    local namesLen = #names
+    local init = 1
+    while #results < ACH_MAX_RESULTS and init <= namesLen do
+        local at = sfind(names, queryLower, init, true)
+        if not at then break end
+        local lo, hi = 1, total
+        while lo < hi do
+            local mid = mfloor((lo + hi + 1) / 2)
+            if riAt[mid] <= at then lo = mid else hi = mid - 1 end
         end
+        local stub = corpus:StubAt(lo)
+        if stub.id and stub.name and AchievementPassesFilter(stub.completed, mode) then
+            results[#results + 1] = GetOrCreateAchievementEntry(stub.id, stub.name, stub.icon, stub.isGuild)
+        end
+        init = riAt[lo + 1] or (namesLen + 1)
     end
     return results
 end
@@ -299,7 +335,7 @@ end
 -- empty answer hydrates or builds our own index instead of writing the
 -- cache, and later empties are re-checked against it.
 local function ResolveEmptySearchResults(query, mode)
-    if fallbackIndex or TryHydrateFallbackIndex() then
+    if fallbackScan or TryHydrateFallbackIndex() then
         return CollectFallbackResults(query, mode)
     end
     if not fallbackBuilding and ClientHasAchievements() then
@@ -345,11 +381,28 @@ local function EnsureAchievementSearchListener()
             -- Update in place: dropping the index would force a full
             -- rebuild, which trickles for many seconds when the client's
             -- enumeration path is in its broken state.
-            if fallbackIndex and earnedID then
-                for i = 1, #fallbackIndex do
-                    if fallbackIndex[i].id == earnedID then
-                        fallbackIndex[i].completed = true
-                        break
+            if fallbackScan and earnedID then
+                -- Locate the row by its packed id field (field 1, "n<id>")
+                -- and flip completed on the stub; noShed keeps the flip.
+                local corpus = fallbackScan.corpus
+                local packed = corpus.packed
+                local rowStart
+                local at = sfind(packed, "\31n" .. earnedID .. "\30", 1, true)
+                if at then
+                    rowStart = at + 1
+                elseif sfind(packed, "n" .. earnedID .. "\30", 1, true) == 1 then
+                    rowStart = 1
+                end
+                if rowStart then
+                    local offsets = corpus.offsets
+                    local lo, hi = 1, corpus.count
+                    while lo < hi do
+                        local mid = mfloor((lo + hi + 1) / 2)
+                        if offsets[mid] <= rowStart then lo = mid else hi = mid - 1 end
+                    end
+                    if offsets[lo] == rowStart then
+                        local stub = corpus:StubAt(lo)
+                        if stub.id == earnedID then stub.completed = true end
                     end
                 end
             end
@@ -384,7 +437,7 @@ function Providers:RequestAchievementSearch(query)
     -- session with no valid cache start the background build now, while
     -- enumeration is (usually) healthy and cheap. Users then carry a
     -- ready index into any future broken session.
-    if not fallbackIndex and not fallbackBuilding and not TryHydrateFallbackIndex() then
+    if not fallbackScan and not fallbackBuilding and not TryHydrateFallbackIndex() then
         BuildFallbackIndex()
     end
 
@@ -408,4 +461,15 @@ function Providers:RequestAchievementSearch(query)
     achSearchPending = { query = query, mode = mode, key = cacheKey }
     pcall(setSearch, query)
     return nil
+end
+
+-- Dev-tool peek (EasyFindDev /efd achsearch): exercises the fallback path
+-- directly -- arm state, build state, and the blob-scan hits for a query.
+function Providers:_DebugFallbackSearch(query)
+    local armed = fallbackScan ~= nil or TryHydrateFallbackIndex()
+    local results
+    if armed then
+        results = CollectFallbackResults(query, GetAchievementFilterMode())
+    end
+    return armed, fallbackBuilding, results
 end

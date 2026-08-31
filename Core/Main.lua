@@ -575,7 +575,7 @@ local function InstallWhatsNewHyperlinkHook()
     hooksecurefunc("SetItemRef", function(link, text, button, chatFrame)
         if link and link:sub(1, #WHATSNEW_LINK_PREFIX) == WHATSNEW_LINK_PREFIX then
             local version = link:sub(#WHATSNEW_LINK_PREFIX + 1)
-            if ns.Onboarding and ns.Onboarding.ShowWhatsNew then
+            if ns.RequestOnboarding() and ns.Onboarding.ShowWhatsNew then
                 xpcall(ns.Onboarding.ShowWhatsNew, ErrorHandler, ns.Onboarding, version)
             end
         end
@@ -659,12 +659,12 @@ local function OnInitialize()
         elseif msg == "c" or msg == "clear" then
             EasyFind:ClearAll()
         elseif msg == "r" or msg == "reset" then
-            if ns.Options then
+            if ns.RequestOptionsPanel() and ns.Options then
                 ns.Options:Initialize()
                 ns.Options:ConfirmResetAll()
             end
         elseif msg == "reset positions" then
-            if ns.Options then
+            if ns.RequestOptionsPanel() and ns.Options then
                 ns.Options:Initialize()
                 ns.Options:ConfirmResetPositions()
             end
@@ -673,15 +673,17 @@ local function OnInitialize()
         elseif msg == "feature" then
             OpenFeatureRequest()
         elseif msg == "setup" or msg == "tutorial" or msg == "wizard" or msg == "welcome" then
-            if ns.Wizard and ns.Wizard.Show then
+            if ns.RequestOnboarding() and ns.Wizard.Show then
                 EasyFind.db.tutorialDone = false
                 ns.Wizard:Show()
             end
         elseif msg == "whatsnew" then
-            if ns.version == "2.0.0" and ns.Wizard and ns.Wizard.Show then
+            if not ns.RequestOnboarding() then
+                return
+            elseif ns.version == "2.0.0" and ns.Wizard.Show then
                 EasyFind.db.tutorialDone = false
                 ns.Wizard:Show()
-            elseif ns.Onboarding and ns.Onboarding.ShowWhatsNew then
+            elseif ns.Onboarding.ShowWhatsNew then
                 ns.Onboarding:ShowWhatsNew(ns.version)
             end
         elseif msg == "help" or msg == "h" or msg == "?" then
@@ -868,6 +870,54 @@ function EasyFind:ResetAccountKeybindsToDefaults()
     ApplyAccountKeybinds()
 end
 
+-- Blizzard AddOns options category. The panel itself lives in the
+-- EasyFind_Options LoadOnDemand companion; this stub registers the category
+-- at login so EasyFind stays listed under ESC > Options > AddOns, and the
+-- first OnShow loads the companion and embeds the real panel into it.
+local function RegisterBlizzardOptionsStub()
+    local panel = CreateFrame("Frame")
+    panel.name = "EasyFind"
+
+    panel:SetScript("OnShow", function(self)
+        if ns.RequestOptionsPanel() and ns.Options and ns.Options.EmbedInBlizzardPanel then
+            ns.Options:EmbedInBlizzardPanel(self)
+        end
+    end)
+
+    panel:SetScript("OnHide", function()
+        if ns.Options and ns.Options.OnBlizzardPanelHide then
+            ns.Options:OnBlizzardPanelHide()
+        end
+    end)
+
+    if Settings and Settings.RegisterCanvasLayoutCategory then
+        local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
+        Settings.RegisterAddOnCategory(category)
+    elseif InterfaceOptions_AddCategory then
+        InterfaceOptions_AddCategory(panel)
+    end
+
+    -- Hide the search bar while Blizzard settings are open, restoring it on
+    -- close. Independent of the options companion: active from login.
+    local settingsRoot = SettingsPanel or InterfaceOptionsFrame
+    if settingsRoot then
+        local restoreOnClose = false
+        settingsRoot:HookScript("OnShow", function()
+            local sf = _G["EasyFindSearchFrame"]
+            restoreOnClose = sf and sf:IsShown() or false
+            if sf then sf:Hide() end
+            if ns.Search and ns.Search.HideResults then ns.Search:HideResults() end
+        end)
+        settingsRoot:HookScript("OnHide", function()
+            if restoreOnClose then
+                restoreOnClose = false
+                local sf = _G["EasyFindSearchFrame"]
+                if sf then sf:Show() end
+            end
+        end)
+    end
+end
+
 local function OnPlayerLogin()
     -- Start the async scheduler's OnUpdate pump with a 2ms per-frame budget.
     -- Dynamic provider coalescing and any future debounced/dep-aware jobs
@@ -896,17 +946,25 @@ local function OnPlayerLogin()
             EasyFind:Print("|cffff4444" .. (L["ERR_MODULE_INIT_FAILED"]):format(name, tostring(err)) .. "|r")
         end
     end
+    -- The onboarding surface ships as a LoadOnDemand companion; load it at
+    -- login only while something it owns is still pending (fresh-install
+    -- tutorial, or a live feature spotlight). Steady-state sessions skip
+    -- the parse entirely; /ef setup and /ef whatsnew load it explicitly.
+    -- The spotlight id mirrors FeatureSpotlight:Initialize -- update both
+    -- when a release adds a spotlight.
+    local spotlightsDone = EasyFind.db.spotlightsDone
+    if not EasyFind.db.tutorialDone
+       or not (spotlightsDone and spotlightsDone.iconSearch30) then
+        ns.RequestOnboarding()
+    end
+
     if EasyFind.db.enableMapSearch ~= false then
         SafeInit(ns.MapSearch,  "MapSearch")
     end
     SafeInit(ns.Search,        "UI")
-    SafeInit(ns.Highlight, "Highlight")
-    SafeInit(ns.FeatureSpotlight, "FeatureSpotlight")
-    if ns.Options and ns.Options.RegisterWithBlizzardOptions then
-        local ok, err = xpcall(ns.Options.RegisterWithBlizzardOptions, ErrorHandler, ns.Options)
-        if not ok then
-            EasyFind:Print("|cffff4444" .. (L["ERR_OPTIONS_REGISTER_FAILED"]):format(tostring(err)) .. "|r")
-        end
+    local regOk, regErr = xpcall(RegisterBlizzardOptionsStub, ErrorHandler)
+    if not regOk then
+        EasyFind:Print("|cffff4444" .. (L["ERR_OPTIONS_REGISTER_FAILED"]):format(tostring(regErr)) .. "|r")
     end
     InstallClassFilterHooks()
     if ns.ControlSync and ns.ControlSync.ArmAllAtLogin then
@@ -1031,6 +1089,14 @@ local function OnPlayerLogin()
 
     ApplyAccountKeybinds()
     if ns.Shortkeys and ns.Shortkeys.ApplyAll then ns.Shortkeys:ApplyAll() end
+
+    -- A login (cold launch especially) parses every file with the
+    -- incremental GC deep in debt, and it then sits on the parse garbage
+    -- for minutes -- memory meters show it as resident usage (audited:
+    -- shown 16.6MB vs 8.2MB live; same mechanism as the post-warm collect
+    -- in Database/Dynamic.lua). One settle pass once login I/O has quieted
+    -- so the meter shows the real floor instead of collector debt.
+    SafeAfter(8, function() collectgarbage("collect") end)
 end
 
 local outfitRefreshTimer
@@ -1314,7 +1380,7 @@ function EasyFind:ToggleChatFrames()
 end
 
 function EasyFind:OpenOptions()
-    if ns.Options then ns.Options:Toggle() end
+    if ns.RequestOptionsPanel() and ns.Options then ns.Options:Toggle() end
 end
 
 function EasyFind:ClearAll()
@@ -1332,8 +1398,9 @@ function EasyFind:StartGuide(guideData)
     if ns.Utils.GuideBlockedInCombat and ns.Utils.GuideBlockedInCombat(guideData) then
         return
     end
-    if ns.Highlight then
-        ns.Highlight:StartGuide(guideData)
+    local highlight = ns.RequestGuide()
+    if highlight then
+        highlight:StartGuide(guideData)
     end
 end
 

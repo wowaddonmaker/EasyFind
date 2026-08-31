@@ -106,12 +106,24 @@ function tests.append_isIncremental()
 end
 
 function tests.postings_areCompressed()
+    -- Suite order is randomized and the removal/compaction tests rebuild the
+    -- index with fewer live entries, shrinking the frozen-string volume this
+    -- test measures. Force a full rebuild so the measurement is deterministic.
+    SearchIndex:MarkDirty()
+    candidateSet({ "shadow" })
     local peek = SearchIndex:_DebugPeek()
     local strBytes, tailSlots, buckets = 0, 0, 0
+    -- A bucket is either a finalized string or a chunk-list not yet
+    -- concatenated (DecodePostings finalizes lazily on first query); both
+    -- forms carry the same packed bytes, so sum them the same way.
     for _, map in ipairs({ peek.gramStr, peek.wordStr, peek.initStr }) do
         for _, s in pairs(map) do
             buckets = buckets + 1
-            strBytes = strBytes + #s
+            if type(s) == "table" then
+                for c = 1, #s do strBytes = strBytes + #s[c] end
+            else
+                strBytes = strBytes + #s
+            end
         end
     end
     for _, map in ipairs({ peek.gramTail, peek.wordTail, peek.initTail }) do

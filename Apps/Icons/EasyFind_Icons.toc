@@ -4,6 +4,7 @@
 ## Author: justawower
 ## Version: 3.0.0
 ## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
+## Group: EasyFind
 ## Category: UI
 ## RequiredDeps: EasyFind
 ## LoadOnDemand: 1

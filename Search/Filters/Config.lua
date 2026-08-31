@@ -176,8 +176,8 @@ local UI_FILTER_OPTIONS = {
     -- Interact crosshair cursor file, used whole (not a sheet crop).
     { key = "options",     label = _G["OPTIONS"] or "Options",     iconTex = 4675635,
       flyoutSubFilters = {
-          { key = "gameOptions",  label = L["FILTER_GAME_OPTIONS"],  iconAtlas = "QuestLog-icon-setting" },
-          { key = "addonOptions", label = L["FILTER_ADDON_OPTIONS"], iconAtlas = "QuestLog-icon-setting", iconColor = { 1.0, 0.78, 0.35 } },
+          { key = "gameOptions",  label = L["FILTER_GAME_OPTIONS"],  iconAtlas = "QuestLog-icon-setting", companion = "EasyFind_Settings" },
+          { key = "addonOptions", label = L["FILTER_ADDON_OPTIONS"], iconAtlas = "QuestLog-icon-setting", iconColor = { 1.0, 0.78, 0.35 }, companion = "EasyFind_Settings" },
       } },
     { key = "professions", label = _G["TRADE_SKILLS"] or "Professions",
       iconAtlas = "UI-HUD-MicroMenu-Professions-Up", hasFlyout = true,

@@ -38,9 +38,10 @@ end
 function Handlers:OpenBagItemLocation(data)
     if not data then return end
     self:OpenContainerBagLocations(data.bagLocations, data.bagID)
-    if data.steps and #data.steps >= 2 and ns.Highlight and ns.Highlight.StartGuideAtStep then
+    local highlight = data.steps and #data.steps >= 2 and ns.RequestGuide() or nil
+    if highlight and highlight.StartGuideAtStep then
         data.steps[2]._efContainerSlotFound = nil
-        ns.Highlight:StartGuideAtStep(data, 2)
+        highlight:StartGuideAtStep(data, 2)
     end
 end
 

@@ -9,6 +9,30 @@ local Icons = ns.ResultIcons
 local select, ipairs = Utils.select, Utils.ipairs
 local sfind = Utils.sfind
 local InCombatLockdown = InCombatLockdown
+local sgsub, supper = string.gsub, string.upper
+
+-- The catalog blob stores names lowercase-only (the in-place scan needs a
+-- lowercase corpus, and storing both cases would double 6.3MB), so the
+-- uncached-item fallback used to flash raw lowercase until GetItemInfo
+-- resolved. Title-case the placeholder instead: visually right for nearly
+-- every item name, and the official name still replaces it on resolve.
+-- Small connective words stay lowercase per item-name convention.
+local TITLE_SMALL_WORDS = {
+    ["of"] = true, ["the"] = true, ["a"] = true, ["an"] = true,
+    ["and"] = true, ["or"] = true, ["in"] = true, ["on"] = true,
+    ["to"] = true, ["for"] = true, ["with"] = true, ["from"] = true,
+    ["at"] = true, ["by"] = true,
+}
+local titleCaseFirst
+local function TitleCaseWord(word)
+    if not titleCaseFirst and TITLE_SMALL_WORDS[word] then return word end
+    titleCaseFirst = false
+    return (sgsub(word, "^%l", supper))
+end
+local function TitleCaseName(lower)
+    titleCaseFirst = true
+    return (sgsub(lower, "%S+", TitleCaseWord))
+end
 local collapsedNodes = Results._collapsedNodes
 
 -- Inline amounts (statistic values, quantities, owned counts). The warm
@@ -542,7 +566,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
             if ns.ItemSearch and ns.ItemSearch.NoteUncachedItem then
                 ns.ItemSearch:NoteUncachedItem(id)
             end
-            displayName = data.nameLower or entry.name
+            displayName = TitleCaseName(data.nameLower or entry.name or "")
         end
         if not displayName or displayName == "" then displayName = "Item #" .. tostring(id) end
         local qc = data.quality and _G["ITEM_QUALITY_COLORS"] and _G["ITEM_QUALITY_COLORS"][data.quality]

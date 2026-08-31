@@ -65,9 +65,9 @@ Filters.quickFilterOptions = {
     -- @items landed on Loot.
     { key = "loot",           canonical = "loot",            label = _G["LOOT"] or "Loot",            categories = { "Loot" }, aliases = { "l", "g", "gear", "loot" } },
     { key = "map",            canonical = "map",             label = L["FILTER_MAP_SEARCH"],      aliases = { "map", "maps", "zone", "zones", "location", "locations" } },
-    { key = "options",        canonical = "options",         label = _G["OPTIONS"] or "Options",         categories = { "Game Settings", "AddOn Settings" }, aliases = { "op", "opt", "option", "options", "setting", "settings" } },
-    { key = "gameOptions",    canonical = "game-options",    label = L["FILTER_GAME_OPTIONS"],    categories = { "Game Settings" }, aliases = { "go", "game", "game-option", "game-options", "game-setting", "game-settings" } },
-    { key = "addonOptions",   canonical = "addon-options",   label = L["FILTER_ADDON_OPTIONS"],   categories = { "AddOn Settings" }, aliases = { "ao", "addon", "addons", "addon-option", "addon-options", "addon-setting", "addon-settings" } },
+    { key = "options",        canonical = "options",         label = _G["OPTIONS"] or "Options",         categories = { "Game Settings", "AddOn Settings" }, aliases = { "op", "opt", "option", "options", "setting", "settings" }, companion = "EasyFind_Settings" },
+    { key = "gameOptions",    canonical = "game-options",    label = L["FILTER_GAME_OPTIONS"],    categories = { "Game Settings" }, aliases = { "go", "game", "game-option", "game-options", "game-setting", "game-settings" }, companion = "EasyFind_Settings" },
+    { key = "addonOptions",   canonical = "addon-options",   label = L["FILTER_ADDON_OPTIONS"],   categories = { "AddOn Settings" }, aliases = { "ao", "addon", "addons", "addon-option", "addon-options", "addon-setting", "addon-settings" }, companion = "EasyFind_Settings" },
     { key = "reputations",    canonical = "reputations",     label = _G["REPUTATION"] or "Reputations",     categories = { "Reputation" }, aliases = { "r", "rep", "reps", "reputation", "reputations" } },
     { key = "talents",        canonical = "talents",         label = _G["TALENTS"] or "Talents",         categories = { "Talent" }, aliases = { "ta", "tal", "talent", "talents" } },
     { key = "titles",         canonical = "titles",          label = _G["TITLES"] or "Titles",          categories = { "Title" }, aliases = { "ti", "title", "titles" } },
@@ -526,6 +526,12 @@ function Filters:ApplyQuickFilter(def, remainingText)
     -- one-time load where a keystroke could not.
     if (def.key == "items" or def.key == "catalog") and ns.RequestItemCatalog then
         ns.RequestItemCatalog(true)
+    end
+    -- Same for the settings bridge: @options / @game-options / @addon-options
+    -- are explicit asks for settings rows.
+    if (def.key == "options" or def.key == "gameOptions" or def.key == "addonOptions")
+       and ns.RequestSettingsSearch then
+        ns.RequestSettingsSearch(true)
     end
     local editBox = Search:GetSearchFrame() and Search:GetSearchFrame().editBox
     -- Kill any inline ghost BEFORE touching text: a live candidate (e.g.

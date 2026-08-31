@@ -52,7 +52,7 @@ local dynamicProviders = {
     { key = "reputations", category = providerCategory["reputations"],           fn = "PopulateDynamicReputations", eager = true },
     { key = "achievements", category = providerCategory["achievements"], fn = "PopulateDynamicAchievements" },
     { key = "statistics", category = providerCategory["statistics"],            fn = "PopulateDynamicStatistics", asyncFn = "PopulateDynamicStatisticsAsync" },
-    { key = "mounts", category = providerCategory["mounts"],          fn = "PopulateDynamicMounts" },
+    { key = "mounts", category = providerCategory["mounts"],          fn = "PopulateDynamicMounts", asyncFn = "PopulateDynamicMountsAsync", keepOnTrim = true },
     { key = "toys", category = providerCategory["toys"],            fn = "PopulateDynamicToys" },
     { key = "housing", category = providerCategory["housing"],      asyncFn = "PopulateDynamicHousingAsync" },
     { key = "pets", category = providerCategory["pets"],            fn = "PopulateDynamicPets" },
@@ -65,7 +65,7 @@ local dynamicProviders = {
     { key = "talents", category = providerCategory["talents"],         fn = "PopulateDynamicTalents" },
     { key = "bags", category = providerCategory["bags"],            fn = "PopulateDynamicBags" },
     { key = "bank", category = providerCategory["bank"],            fn = "PopulateDynamicBank" },
-    { key = "transmogSets", category = providerCategory["transmogSets"], fn = "PopulateDynamicTransmogSets", pre = "SyncTransmogSetFiltersFromUI" },
+    { key = "transmogSets", category = providerCategory["transmogSets"], fn = "PopulateDynamicTransmogSets", asyncFn = "PopulateDynamicTransmogSetsAsync", pre = "SyncTransmogSetFiltersFromUI", keepOnTrim = true },
     { key = "appearanceItems", category = providerCategory["appearanceItems"], fn = "PopulateDynamicAppearanceItems", asyncFn = "PopulateDynamicAppearanceItemsAsync", pre = "SyncAppearanceItemFiltersFromUI" },
     { key = "loot", category = providerCategory["loot"],           fn = "PopulateDynamicLoot", asyncFn = "PopulateDynamicLootAsync" },
     { key = "bosses", category = providerCategory["bosses"],           fn = "PopulateDynamicBosses", asyncFn = "PopulateDynamicBossesAsync" },
@@ -190,25 +190,33 @@ local function runProviderJob(database, provider, schedDone)
         return
     end
 
-    local ok, readyOrErr = xpcall(fn, Utils.ErrorHandler, database)
-    if ok and readyOrErr == false then
-        provider.loaded = false
-        provider.dirty = true
-        -- Backoff: a not-ready provider must not repopulate on every
-        -- keystroke (a legitimately empty collection is indistinguishable
-        -- from un-streamed data and would otherwise retry all session).
-        -- Its dirty event clears this the moment real data arrives.
-        provider.notReadyAt = GetTime()
-        local removed = ConsumePopulateBookkeeping(database)
-        if removed ~= nil and database.ResetSearchCache then
-            database:ResetSearchCache()
+    -- Sync providers run SLICED: the populate executes in a coroutine
+    -- under a per-frame budget, yielding at the SliceCheckpoint calls in
+    -- its walk loops. The one-frame 300-400ms cold walks the bench
+    -- convicted become ~4ms slices; providers without checkpoints just
+    -- complete in their first slice.
+    Utils.RunSliced(function()
+        return fn(database)
+    end, function(ok, readyOrErr)
+        if ok and readyOrErr == false then
+            provider.loaded = false
+            provider.dirty = true
+            -- Backoff: a not-ready provider must not repopulate on every
+            -- keystroke (a legitimately empty collection is indistinguishable
+            -- from un-streamed data and would otherwise retry all session).
+            -- Its dirty event clears this the moment real data arrives.
+            provider.notReadyAt = GetTime()
+            local removed = ConsumePopulateBookkeeping(database)
+            if removed ~= nil and database.ResetSearchCache then
+                database:ResetSearchCache()
+            end
+            NotifyProviderWaiters(provider, false)
+            schedDone()
+            return
         end
-        NotifyProviderWaiters(provider, false)
-        schedDone()
-        return
-    end
-    provider.notReadyAt = nil
-    FinishDynamicProvider(database, provider, ok, readyOrErr, true, finishWaiters)
+        provider.notReadyAt = nil
+        FinishDynamicProvider(database, provider, ok, readyOrErr, true, finishWaiters)
+    end)
 end
 
 -- Registers all dynamic provider jobs against the active scheduler.
@@ -394,7 +402,21 @@ function Database:LoadEagerDynamicProviders()
                     -- allocation from stacking every provider's build
                     -- garbage before the end-of-chain full collect.
                     collectgarbage("step", 400)
-                    Utils.SafeAfter(0, step)
+                    -- Index this provider's appended entries NOW, in
+                    -- budgeted slices across frames: the first query used
+                    -- to pay the whole index build in one 100-400ms
+                    -- keystroke frame. While the chain is loading, an
+                    -- oversized query-time build refuses and falls back
+                    -- to the full scan instead (SearchIndex.Ensure).
+                    local function indexSlice()
+                        if ns.SearchIndex and ns.SearchIndex.EnsureBudget
+                           and not ns.SearchIndex:EnsureBudget(3) then
+                            Utils.SafeAfter(0, indexSlice)
+                            return
+                        end
+                        Utils.SafeAfter(0, step)
+                    end
+                    indexSlice()
                 end)
                 return
             end
@@ -423,7 +445,21 @@ function Database:LoadDeferredSyncProvidersStaggered()
                     -- allocation from stacking every provider's build
                     -- garbage before the end-of-chain full collect.
                     collectgarbage("step", 400)
-                    Utils.SafeAfter(0, step)
+                    -- Index this provider's appended entries NOW, in
+                    -- budgeted slices across frames: the first query used
+                    -- to pay the whole index build in one 100-400ms
+                    -- keystroke frame. While the chain is loading, an
+                    -- oversized query-time build refuses and falls back
+                    -- to the full scan instead (SearchIndex.Ensure).
+                    local function indexSlice()
+                        if ns.SearchIndex and ns.SearchIndex.EnsureBudget
+                           and not ns.SearchIndex:EnsureBudget(3) then
+                            Utils.SafeAfter(0, indexSlice)
+                            return
+                        end
+                        Utils.SafeAfter(0, step)
+                    end
+                    indexSlice()
                 end)
                 return
             end
@@ -480,7 +516,12 @@ function Database:UnloadDynamicSearchData(includeCore)
     if self.CancelDynamicScans then self:CancelDynamicScans(true) end
     for i = 1, #dynamicProviders do
         local provider = dynamicProviders[i]
-        if includeCore or provider.asyncFn then
+        -- keepOnTrim: cache-backed corpus providers (mounts, transmogSets)
+        -- became asyncFn for the budget-sliced WALK only; their resident
+        -- cost is stubs, and a trim-unload would make every post-trim
+        -- search re-walk instead of re-hydrating. They keep their old
+        -- sync-provider residency.
+        if includeCore or (provider.asyncFn and not provider.keepOnTrim) then
             if provider.category then self:_RemoveEntriesByCategory(provider.category) end
             provider.loaded = false
             provider.dirty = true

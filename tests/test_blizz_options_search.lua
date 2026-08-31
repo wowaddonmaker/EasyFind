@@ -42,7 +42,10 @@ local function loadOptionsSearch(opts)
         self.resetCount = (self.resetCount or 0) + 1
     end
 
-    H.loadModule("Options/BlizzSearch.lua", env, ns)
+    -- The module ships as the EasyFind_Settings companion, which reads the
+    -- parent addon's ns via the EasyFind._ns handshake.
+    env.EasyFind._ns = ns
+    H.loadModule("Apps/Settings/BlizzSearch.lua", env, ns)
     return ns
 end
 

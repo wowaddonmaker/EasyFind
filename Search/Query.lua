@@ -10,6 +10,7 @@ local SearchText = ns.SearchText
 
 local pairs = Utils.pairs
 local InCombatLockdown = InCombatLockdown
+local GetTime = GetTime
 local slower = SearchText.Normalize
 local tinsert, tsort = Utils.tinsert, Utils.tsort
 local wipe = wipe
@@ -69,12 +70,20 @@ local searchRefreshQueued = false
 -- item-info responses stream in bursts for seconds after a loot query,
 -- so each burst forced full rescans and repaints: visible keystroke lag
 -- and result lists swapping after they were already shown.
+local lastProviderRefreshAt = 0
 local function RefreshSearchAfterProviderLoad(anyChanged)
     if not anyChanged then return end
     if searchRefreshQueued then return end
     searchRefreshQueued = true
-    Utils.SafeAfter(0, function()
+    -- Leading edge paints next frame; arrivals inside the trailing window
+    -- coalesce into one paint. The staggered warm chain lands one provider
+    -- per frame, and the old per-frame coalesce still re-rendered per
+    -- provider (41 renders, 3.7MB, in the warmledger); a 0.3s window turns
+    -- the chain into a handful of paints without delaying the first one.
+    local delay = (GetTime() - lastProviderRefreshAt) > 0.5 and 0 or 0.3
+    Utils.SafeAfter(delay, function()
         searchRefreshQueued = false
+        lastProviderRefreshAt = GetTime()
         Search:RefreshActiveSearch()
         -- A provider finishing may have added the row a shortkey points at;
         -- rebind any shortkeys skipped because their provider had not loaded
@@ -160,7 +169,28 @@ local function FloatPinnedFirst(list, n)
     end
 end
 
+-- Front door for EVERY search dispatch (keystrokes, refreshes, filter
+-- changes): the real body runs in a budgeted coroutine, so a wide query's
+-- scoring spreads across 2-3 frames instead of spiking one (p95 was 39ms
+-- in a single keystroke frame). A new dispatch cancels the in-flight pass
+-- -- last keystroke wins -- and fast queries complete in their first
+-- slice, same frame, unchanged. Yield points are ONLY the strided
+-- checkpoints in the scoring loop and the index sweep; everything past
+-- SearchUI (providers, sort, render) runs whole in the final slice.
+-- OnSearchTextChangedNow is the synchronous body (bench timings use it).
+local sliceHandle
+local pendingSliceText, pendingSliceForce
+local function RunPendingSearch()
+    Search:OnSearchTextChangedNow(pendingSliceText, pendingSliceForce)
+end
+
 function Search:OnSearchTextChanged(text, force)
+    if sliceHandle then sliceHandle:Cancel() end
+    pendingSliceText, pendingSliceForce = text, force
+    sliceHandle = Utils.RunSliced(RunPendingSearch, nil, 6)
+end
+
+function Search:OnSearchTextChangedNow(text, force)
     -- The search UI is dormant in combat (the bar hides at combat start
     -- and cannot reopen), and rendering results would resize/show frames
     -- that ancestor secure row buttons -- protected operations. Any stray

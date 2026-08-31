@@ -88,7 +88,7 @@ function Commands:RunSearchBarCommand(command)
     elseif canonical == "options" then
         EasyFind:OpenOptions()
     elseif canonical == "tutorial" then
-        if ns.Wizard and ns.Wizard.Show then
+        if ns.RequestOnboarding() and ns.Wizard.Show then
             EasyFind.db.tutorialDone = false
             ns.Wizard:Show()
         end

@@ -161,7 +161,7 @@ function SecureOpeners.GetTabButtonFor(key, tabIndex)
     local cached = spec.tabButtons[tabIndex]
     if cached then return cached end
     if not _G[spec.panel] then return nil end
-    local highlight = ns.Highlight
+    local highlight = ns.RequestGuide and ns.RequestGuide() or nil
     if not (highlight and highlight.GetTabButton) then return nil end
     local tab = highlight:GetTabButton(spec.panel, tabIndex)
     spec.tabButtons[tabIndex] = tab

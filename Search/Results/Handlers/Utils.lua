@@ -14,7 +14,7 @@ local Handlers = ns.ResultHandlers
 -- clears/edits the toy box search), so a validator that confirms the frame
 -- still represents the target clears the glow the moment it no longer does.
 function Handlers:HighlightRevealedFrame(frame, validator)
-    local highlight = ns.Highlight
+    local highlight = frame and ns.RequestGuide() or nil
     if not (frame and highlight and highlight.HighlightFrame) then return false end
     highlight:HighlightFrame(frame, nil, validator)
     return true

@@ -1,4 +1,9 @@
-local _, ns = ...
+-- EasyFind_Onboarding companion: tutorial wizard, LoadOnDemand. Loaded at
+-- login only while onboarding is pending (fresh install, unfinished
+-- spotlight) and by /ef setup; steady-state sessions never parse it.
+local EasyFind = EasyFind
+local ns = EasyFind and EasyFind._ns
+if not ns then return end
 
 local Wizard = {}
 ns.Wizard = Wizard
@@ -878,7 +883,7 @@ local function BuildPage2(parent)
         local linkDispatch = {
             ["options:aliases"] = function()
                 FinishWizard(false)
-                if ns.Options and ns.Options.OpenAtAliases then
+                if ns.RequestOptionsPanel() and ns.Options and ns.Options.OpenAtAliases then
                     ns.Options:OpenAtAliases()
                 end
             end,

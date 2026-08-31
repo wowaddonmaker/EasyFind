@@ -1,6 +1,6 @@
 ## Interface: 120100, 120007, 120001, 120000
-## Title: EasyFind [Item Catalog]
-## Notes: Item catalog search companion for EasyFind, loaded on first use
+## Title: EasyFind [Onboarding]
+## Notes: Tutorial, What's New, and new-feature spotlight companion for EasyFind, loaded while onboarding is pending
 ## Author: justawower
 ## Version: 3.0.0
 ## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
@@ -10,5 +10,6 @@
 ## LoadOnDemand: 1
 ## DefaultState: enabled
 
-Data.lua
-ItemSearch.lua
+WhatsNew.lua
+FeatureSpotlight.lua
+TutorialWizard.lua

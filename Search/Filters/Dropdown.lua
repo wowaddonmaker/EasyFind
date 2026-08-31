@@ -26,6 +26,17 @@ function Filters:RerunActiveSearch()
             ns.RequestItemCatalog(false)
         end
     end
+    -- Same for the settings bridge: re-checking either settings bucket makes
+    -- it eligible again.
+    if ns.RequestSettingsSearch and not ns.BlizzOptionsSearch and ns.CategoryMap then
+        local uiFilters = EasyFind.db and EasyFind.db.uiSearchFilters
+        local bothOff = uiFilters
+            and ns.CategoryMap.IsProviderFilterOff(uiFilters, "gameOptions")
+            and ns.CategoryMap.IsProviderFilterOff(uiFilters, "addonOptions")
+        if not bothOff then
+            ns.RequestSettingsSearch(false)
+        end
+    end
     local typed = Search.GetTypedQuery and Search:GetTypedQuery() or ""
     if typed ~= "" then
         Search:OnSearchTextChanged(typed)

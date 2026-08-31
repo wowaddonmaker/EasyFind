@@ -87,8 +87,9 @@ function Handlers:OpenTalentInTalentsTab(data)
                     btn.SearchIcon:SetFrameLevel(btn:GetFrameLevel() + 10)
                 end
                 btn.SearchIcon:Show()
-                if ns.Highlight and ns.Highlight.RegisterTalentSearchIcon then
-                    ns.Highlight:RegisterTalentSearchIcon(btn, targetLower, nameOf)
+                local highlight = ns.RequestGuide()
+                if highlight and highlight.RegisterTalentSearchIcon then
+                    highlight:RegisterTalentSearchIcon(btn, targetLower, nameOf)
                 end
                 return
             end

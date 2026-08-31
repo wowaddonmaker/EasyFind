@@ -1,4 +1,8 @@
-local _, ns = ...
+-- EasyFind_Onboarding companion file; see TutorialWizard.lua for the load
+-- contract.
+local EasyFind = EasyFind
+local ns = EasyFind and EasyFind._ns
+if not ns then return end
 
 local Onboarding = ns.Onboarding
 local L = ns.L

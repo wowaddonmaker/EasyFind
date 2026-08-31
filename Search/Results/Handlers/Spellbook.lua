@@ -624,7 +624,7 @@ local function FindSpellbookButton(root, target, scroll, candidate)
 end
 
 function Handlers:OpenAbilityInSpellbook(data, stepGuide)
-    local highlight = ns.Highlight
+    local highlight = ns.RequestGuide()
     local targetElement
 
     local spellbookTab = ns.SecureOpeners and ns.SecureOpeners.TAB_SPELLBOOK or 3

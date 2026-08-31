@@ -29,6 +29,7 @@ local isAscii = SearchText.IsAscii
 local mmin, mmax, mabs, mfloor = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mfloor
 local wipe = wipe
 local rawget = rawget
+local SliceCheckpoint = Utils.SliceCheckpoint
 local uiSearchData = Database.uiSearchData
 
 local function IsLootStatSearchWord(word)
@@ -468,21 +469,10 @@ local GATE = {
     sawNil = false, gatedN = 0, skipStatistic = false, fillPending = false,
 }
 
-local function AccumulateGateMasks(s, cm, im)
-    local prevAlpha = false
-    for i = 1, #s do
-        local b = sbyte(s, i)
-        if b >= 97 and b <= 122 then
-            local bitv = lshift(1, b - 97)
-            cm = bor(cm, bitv)
-            if not prevAlpha then im = bor(im, bitv) end
-            prevAlpha = true
-        else
-            prevAlpha = false
-        end
-    end
-    return cm, im
-end
+-- Shared with PackedCorpus, which walks original-case decoded names; the
+-- inputs here are already lowercase, so the fold in the shared version is
+-- a no-op for this caller.
+local AccumulateGateMasks = Utils.AccumulateGateMasks
 
 local function FillEntryGateMask(e)
     if e.lootEntry then
@@ -1044,6 +1034,10 @@ function Database:WarmSearchHotPath()
         and map.IsProviderFilterOff(filters, "gameOptions")
         and map.IsProviderFilterOff(filters, "addonOptions")
     local options = ns.BlizzOptionsSearch
+    if not options and not settingsOff and ns.RequestSettingsSearch
+       and ns.RequestSettingsSearch() then
+        options = ns.BlizzOptionsSearch
+    end
     if options and not settingsOff then
         -- Settings' completion never routed through RefreshSearchAfterProviderLoad
         -- -- a shortkey pointing at a setting row stayed unbound until the user
@@ -1147,6 +1141,7 @@ function Database:TrimSearchMemory()
     prevSkipKey = ""
     wipe(prevCandidates)
     ClearResultCache()
+    Utils.ShedCorpora()
 end
 
 -- Per-category minimum query length: entries of a gated category are skipped
@@ -1441,6 +1436,10 @@ function Database:SearchUI(query, skipCategories)
     local hideRooms = not (EasyFind and EasyFind.db and EasyFind.db.housingShowRooms == true)
     local searchCount = #searchSet
     for i = 1, searchCount do
+        -- Strided slice checkpoint: under the sliced dispatch a wide scan
+        -- yields here every 128 candidates; a direct synchronous call
+        -- (bench identity) makes this a no-op.
+        if band(i, 127) == 0 then SliceCheckpoint() end
         local data = searchSet[i]
         if not (skipCategories and skipCategories[data.category])
            and not (data.isRoom and hideRooms)

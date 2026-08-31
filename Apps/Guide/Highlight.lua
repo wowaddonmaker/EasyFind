@@ -1,4 +1,9 @@
-local _, ns = ...
+-- EasyFind_Guide companion: the step-by-step guidance engine, LoadOnDemand.
+-- Loaded by ns.RequestGuide on the first guide-flavored gesture (starting a
+-- guide, a tab hint, a revealed-frame glow); until then it costs nothing.
+local EasyFind = EasyFind
+local ns = EasyFind and EasyFind._ns
+if not ns then return end
 
 local Highlight = {}
 ns.Highlight = Highlight
@@ -3740,4 +3745,11 @@ function Highlight:Cancel()
     currentStepIndex = nil
 
     self:NotifyClearButton()
+end
+
+-- Self-init: this file loads on demand (login is long past), so the pcall
+-- wrapper Core gives login-time Initialize calls is applied here instead.
+local initOk, initErr = pcall(function() Highlight:Initialize() end)
+if not initOk then
+    ns.Utils.DebugPrint("Highlight init failed: " .. tostring(initErr))
 end

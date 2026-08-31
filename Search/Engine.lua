@@ -193,7 +193,6 @@ function Engine:RequestOptions(ctx, onChanged, resultCount)
         return false
     end
     local options = ns.BlizzOptionsSearch
-    if not options then return false end
 
     local explicit = self:LooksLikeOptions(ctx)
     local queryLen = #(ctx.query or "")
@@ -205,6 +204,17 @@ function Engine:RequestOptions(ctx, onChanged, resultCount)
     if not explicit and not lowResultFallback then return false end
     local needsMoreOptions = lowResultFallback or explicit
     if not needsMoreOptions then return false end
+
+    -- The settings bridge is a LoadOnDemand companion; an explicit or
+    -- zero-result settings query is the load signal. Announce only on
+    -- explicit asks so a disabled companion explains itself.
+    if not options then
+        if not (ns.RequestSettingsSearch and ns.RequestSettingsSearch(explicit)) then
+            return false
+        end
+        options = ns.BlizzOptionsSearch
+        if not options then return false end
+    end
 
     local addonOnlyQuickFilter = self:QuickFilterIncludes(ctx, "addonOptions")
         and not self:QuickFilterIncludes(ctx, "gameOptions")

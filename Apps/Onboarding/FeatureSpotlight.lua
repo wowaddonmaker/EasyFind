@@ -1,4 +1,8 @@
-local _, ns = ...
+-- EasyFind_Onboarding companion file; see TutorialWizard.lua for the load
+-- contract.
+local EasyFind = EasyFind
+local ns = EasyFind and EasyFind._ns
+if not ns then return end
 
 -- Feature spotlight engine: a persistent click-through nudge for a newly
 -- shipped feature (the coach-mark pattern). A spotlight names an ordered
@@ -242,6 +246,14 @@ function Spotlight:Initialize()
         end
         Spotlight:Refresh()
     end)
+end
+
+-- Self-init: the companion loads on demand (pending onboarding at login,
+-- or /ef setup), so the pcall wrapper Core gives login-time Initialize
+-- calls is applied here instead.
+local initOk, initErr = pcall(function() Spotlight:Initialize() end)
+if not initOk then
+    ns.Utils.DebugPrint("FeatureSpotlight init failed: " .. tostring(initErr))
 end
 
 return Spotlight
