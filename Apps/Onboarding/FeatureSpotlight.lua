@@ -186,6 +186,14 @@ function Spotlight:Complete(id)
 end
 
 function Spotlight:Initialize()
+    -- Spotlights announce features to UPDATING users only. A fresh install
+    -- meets the current feature set in the tutorial itself (the Apps deck
+    -- covers Icon Search), so a pending tutorial marks every current
+    -- spotlight done up front instead of pulsing at a brand-new user.
+    if EasyFind and EasyFind.db and not EasyFind.db.tutorialDone then
+        EasyFind.db.spotlightsDone = EasyFind.db.spotlightsDone or {}
+        EasyFind.db.spotlightsDone.iconSearch30 = true
+    end
     -- 3.0.0: Icon Search. Step 1 pulses the apps button whenever the bar
     -- is up; step 2 takes over on the Icon Search row while the apps menu
     -- is open. Completed by reaching the grid through ANY entry point

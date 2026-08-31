@@ -39,7 +39,6 @@ end
 -- White disc (the filter-circle art): tintable to any theme color,
 -- unlike the gold Indicator-Yellow orb it replaced.
 local DOT_FILLED = "Interface\\AddOns\\EasyFind\\textures\\FilterButtonCircle"
-local CALCULATOR_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\calculator-icon"
 -- HD Gauntlet cursor (same FileDataID and texCoord as the HD Gauntlet
 -- indicator style), reused for slide overlay hints. texCoord is read-only.
 local GAUNTLET_CURSOR_TEX = 6116532
@@ -205,7 +204,10 @@ local USE_TUTORIAL_SLIDES = {
         text = L["TUT_SLIDE_INLINE_SETTINGS"],
     },
 }
-local CALCULATOR_TUTORIAL_SLIDES = {
+-- One deck for the whole app family: a slide (or two) per app, growing as
+-- apps land. Calculator keeps its pair; Icon Search adds one; future apps
+-- join here when they ship.
+local APPS_TUTORIAL_SLIDES = {
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-calculator-visual-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
@@ -224,6 +226,15 @@ local CALCULATOR_TUTORIAL_SLIDES = {
             size = 30,
             ox = 382, oy = 100,
         },
+    },
+    {
+        -- Portrait-ish capture: the texCoord crops to the actual 592x420
+        -- content (no in-region transparent padding, which the alpha-less
+        -- palettized format would render black), and w tracks the aspect.
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-iconsearch-hires",
+        texCoord = TutorialTexCoord(592, 420, 1024, 512),
+        w = 296, h = 210,
+        text = L["TUT_SLIDE_ICONSEARCH"],
     },
 }
 local MAP_SEARCH_TUTORIAL_SLIDES = {
@@ -990,7 +1001,7 @@ local function BuildPage2(parent)
     local d2 = CreateCarouselDetailView(L["TUT_FEATURE_MAP"], MAP_SEARCH_TUTORIAL_SLIDES)
     local d3 = CreateCarouselDetailView(L["TUT_FEATURE_ACTIONS"], USE_TUTORIAL_SLIDES)
     actionsDeck = d3
-    local d4 = CreateCarouselDetailView(L["TUT_FEATURE_CALCULATOR"], CALCULATOR_TUTORIAL_SLIDES)
+    local d4 = CreateCarouselDetailView(L["TUT_FEATURE_APPS"], APPS_TUTORIAL_SLIDES)
 
     local t1 = FeatureTile(grid, nil, "Interface\\AddOns\\EasyFind\\textures\\Spyglass", nil,
         L["TUT_FEATURE_SEARCH"],
@@ -1012,10 +1023,19 @@ local function BuildPage2(parent)
         function() ShowDetail(d3) end)
     t3:SetPoint("TOPLEFT", grid, "TOPLEFT", 38, -222)
 
-    local t4 = FeatureTile(grid, nil, CALCULATOR_ICON_TEX, nil,
-        L["TUT_FEATURE_CALCULATOR"],
-        L["TUT_FEATURE_CALCULATOR_DESC"],
+    local t4 = FeatureTile(grid, nil, nil, nil,
+        L["TUT_FEATURE_APPS"],
+        L["TUT_FEATURE_APPS_DESC"],
         function() ShowDetail(d4) end)
+    -- The tile wears the live bar button's own waffle (drawn, not shipped)
+    -- so the tutorial points at exactly what the user will see on the bar.
+    local waffle = ns.CreateGridGlyph and ns.CreateGridGlyph(t4.tile, 30)
+    if waffle then
+        waffle:SetPoint("CENTER", t4.tile.icon, "CENTER", 0, 0)
+        for i = 1, #waffle.dots do
+            waffle.dots[i]:SetVertexColor(Utils.RGB(GOLD))
+        end
+    end
     t4:SetPoint("TOPRIGHT", grid, "TOPRIGHT", -38, -222)
 
     p.OnEnter = ShowGrid

@@ -100,6 +100,9 @@ local function CreateGridGlyph(parent, size)
     end
     return glyph
 end
+-- The tutorial's Apps tile draws the same waffle so the tile and the live
+-- bar button read as one thing; exported so that replica cannot drift.
+ns.CreateGridGlyph = CreateGridGlyph
 
 function AppsMenu:SetGlyphColor(r, g, b, a)
     local glyph = self.button and self.button.glyph
