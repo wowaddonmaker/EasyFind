@@ -69,6 +69,13 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
     -- (map results, currencies, settings, etc.) leaves it alone, so
     -- without this clear a recycled row keeps the previous sweep.
     if resultRow.iconCooldown then resultRow.iconCooldown:Hide() end
+    -- Same recycled-row rule for the overlays that only ONE branch
+    -- manages: the gear-set spec badge and the outfit lock overlay were
+    -- cleared inside their own branch, so a row reused by any OTHER
+    -- branch kept the previous render's badge (a loot row wearing the
+    -- player's spec icon). Branches that want them re-show them below.
+    if resultRow._specBadge then resultRow._specBadge:Hide() end
+    if resultRow._lockOverlay then Search:UpdateOutfitLockOverlay(resultRow, false) end
     local isCurrencyItem = data and data.category == "Currency"
     local isCurrencyLeaf = isCurrencyItem and not entry.isPathNode
     local isReputationLeaf = data and data.category == "Reputation" and not entry.isPathNode
