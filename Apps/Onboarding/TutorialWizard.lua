@@ -228,12 +228,9 @@ local APPS_TUTORIAL_SLIDES = {
         },
     },
     {
-        -- Portrait-ish capture: the texCoord crops to the actual 592x420
-        -- content (no in-region transparent padding, which the alpha-less
-        -- palettized format would render black), and w tracks the aspect.
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-iconsearch-hires",
-        texCoord = TutorialTexCoord(592, 420, 1024, 512),
-        w = 296, h = 210,
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
         text = L["TUT_SLIDE_ICONSEARCH"],
     },
 }
@@ -1027,14 +1024,12 @@ local function BuildPage2(parent)
         L["TUT_FEATURE_APPS"],
         L["TUT_FEATURE_APPS_DESC"],
         function() ShowDetail(d4) end)
-    -- The tile wears the live bar button's own waffle (drawn, not shipped)
-    -- so the tutorial points at exactly what the user will see on the bar.
+    -- The tile wears the live bar button's own waffle (drawn, not shipped,
+    -- default white dots) so the tutorial points at exactly what the user
+    -- will see on the bar.
     local waffle = ns.CreateGridGlyph and ns.CreateGridGlyph(t4.tile, 30)
     if waffle then
         waffle:SetPoint("CENTER", t4.tile.icon, "CENTER", 0, 0)
-        for i = 1, #waffle.dots do
-            waffle.dots[i]:SetVertexColor(Utils.RGB(GOLD))
-        end
     end
     t4:SetPoint("TOPRIGHT", grid, "TOPRIGHT", -38, -222)
 
