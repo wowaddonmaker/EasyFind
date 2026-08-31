@@ -340,7 +340,12 @@ function Search:OnSearchTextChangedNow(text, force)
     -- SCRATCH.aliasSeen, which must stay populated until then.
     wipe(SCRATCH.aliasSeen)
     wipe(SCRATCH.mapBoostSeen)
+    wipe(SCRATCH.catalogBoostSeen)
     local seenMapRows = SCRATCH.mapBoostSeen
+    -- Catalog rows are rebuilt per query (never shared tables), so identity
+    -- dedupe in aliasSeen cannot catch them; promoted catalog picks register
+    -- their itemID here and the natural ItemSearch hit is skipped.
+    local seenCatalogItems = SCRATCH.catalogBoostSeen
     if ns.Aliases then
         local aliasMatches = ns.Aliases:GetMatches(slower(text))
         if aliasMatches then
@@ -374,6 +379,9 @@ function Search:OnSearchTextChangedNow(text, force)
                     tinsert(results, 1, { data = wrapped, score = aliasScore, isAlias = true })
                 elseif data and not promoted[data] then
                     promoted[data] = true
+                    if data.catalogItem and data.itemID then
+                        seenCatalogItems[data.itemID] = true
+                    end
                     tinsert(results, 1, { data = data, score = aliasScore, isAlias = true })
                 end
             end
@@ -434,6 +442,9 @@ function Search:OnSearchTextChangedNow(text, force)
                 tinsert(results, 1, { data = wrapped, score = LEARNED_SCORE, isAlias = true })
             elseif not promoted[learned] then
                 promoted[learned] = true
+                if learned.catalogItem and learned.itemID then
+                    seenCatalogItems[learned.itemID] = true
+                end
                 tinsert(results, 1, { data = learned, score = LEARNED_SCORE, isAlias = true })
             end
         end
@@ -637,7 +648,12 @@ function Search:OnSearchTextChangedNow(text, force)
             return ns.Database:ScoreName(nameLower, ql, qLen)
         end)
         if itemHits then
-            for ii = 1, #itemHits do combined[#combined + 1] = itemHits[ii] end
+            for ii = 1, #itemHits do
+                local hitData = itemHits[ii].data
+                if not (hitData and hitData.itemID and seenCatalogItems[hitData.itemID]) then
+                    combined[#combined + 1] = itemHits[ii]
+                end
+            end
         end
     end
 

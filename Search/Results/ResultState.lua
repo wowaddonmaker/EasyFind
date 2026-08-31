@@ -13,6 +13,7 @@ local SCRATCH = {
     catSepYPositions = {},
     aliasSeen = {},
     mapBoostSeen = {},
+    catalogBoostSeen = {},
     calculatorResults = {},
     filteredResults = {},
     quickFilterResults = {},

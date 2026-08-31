@@ -4,7 +4,7 @@ local _, ns = ...
 ---@field text string original (untrimmed) alias text
 ---@field key string canonical entry key produced by Aliases:GetEntryKey
 ---@field name string display name of the aliased entry
----@field snapshot table? captured fields for map/zone aliases (see Aliases:Add)
+---@field snapshot table? captured fields for map/zone and catalog-item aliases (see Aliases:Add)
 
 ---@class Aliases
 local Aliases = {}
@@ -112,6 +112,7 @@ function Aliases:GetEntryKey(data)
     if data.macroIndex    then return "macro:"          .. data.macroIndex end
     if data.factionID     then return "reputation:"     .. data.factionID end
     if data.itemID and data.category == "Loot" then return "loot:" .. data.itemID end
+    if data.catalogItem and data.itemID then return "catalogitem:" .. data.itemID end
     if data.category == "Currency" and data.steps then
         for i = 1, #data.steps do
             local cid = data.steps[i].currencyID
@@ -179,6 +180,21 @@ end
 -- nil for rows that resolve normally from uiSearchData (collections, abilities,
 -- panels), which intentionally bind only where they currently exist.
 function Aliases:BuildSnapshot(data)
+    -- Catalog items never live in uiSearchData (their rows are built per
+    -- query from the packed item blob), so FindEntryByKey can never resolve
+    -- them; the snapshot IS the row. Mirror the exact field set ItemSearch
+    -- builds so the captured row renders and acts like a natural one.
+    if data and data.catalogItem and data.itemID then
+        return {
+            itemID = data.itemID,
+            catalogItem = true,
+            lookupRow = true,
+            category = data.category,
+            name = data.name,
+            nameLower = data.nameLower,
+            quality = data.quality,
+        }
+    end
     if not IsMapAliasTarget(data) then return nil end
     local currentMapID = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
     return {

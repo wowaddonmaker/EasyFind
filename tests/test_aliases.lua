@@ -331,6 +331,36 @@ function tests.learned_recordAndBoost()
     ns.Database.uiSearchData = nil
 end
 
+function tests.entryKey_catalogItem()
+    H.assertEq(Aliases:GetEntryKey({ catalogItem = true, itemID = 2077, category = "Item" }),
+        "catalogitem:2077")
+end
+
+function tests.learned_catalogItemRoundTrip()
+    -- Catalog rows never live in uiSearchData (rebuilt per query from the
+    -- packed blob), so the learned pick must come back from the snapshot
+    -- with the full working field set.
+    env.EasyFind.db.aliases = {}
+    env.EasyFind.db.queryLearn = {}
+    env.EasyFind.db.learnFromPicks = true
+    Aliases:InvalidateKeyIndex()
+    ns.Database.uiSearchData = {}
+    local catalogEntry = { catalogItem = true, lookupRow = true, itemID = 19019,
+        category = "Item", name = "thunderfury", nameLower = "thunderfury", quality = 5 }
+    ns.Learned:RecordPick(catalogEntry, "thund")
+    local rec = env.EasyFind.db.queryLearn["thund"]
+    H.assertNotNil(rec, "pick was not recorded")
+    H.assertEq(rec.key, "catalogitem:19019")
+    local boosted = ns.Learned:GetBoost("thund")
+    H.assertNotNil(boosted, "catalog pick must boost")
+    H.assertEq(boosted.itemID, 19019)
+    H.assertEq(boosted.catalogItem, true)
+    H.assertEq(boosted.lookupRow, true, "snapshot must stay a lookup row")
+    H.assertEq(boosted.nameLower, "thunderfury")
+    H.assertEq(boosted.quality, 5)
+    ns.Database.uiSearchData = nil
+end
+
 function tests.learned_lastPickWins()
     env.EasyFind.db.queryLearn = {}
     env.EasyFind.db.learnFromPicks = true

@@ -19,6 +19,11 @@ local SIMPLE_FIELDS = {
     "isCollected", "isUsable", "shouldHideOnChar", "isToyboxOnly",
     "macroIndex", "macroIsChar", "bagID", "bagSlot", "bagItemLink",
     "itemID", "encounterID", "instanceID", "lootSlotName", "lootSourceName", "lootInstanceName", "lootSourceType",
+    -- Catalog items: itemID alone is not enough -- catalogItem is the
+    -- renderer's branch discriminator (icon resolution, name fallback) and
+    -- lookupRow drives the click/drag pickup; without them a pinned catalog
+    -- row showed "?" and acted like nothing.
+    "catalogItem", "lookupRow", "quality",
     "transmogSetID",
     -- Collection action IDs each SelectResult branch gates on; absent, a cold
     -- title/gear-set/talent/appearance shortkey fell through to a panel open.
@@ -66,6 +71,16 @@ local TABLE_FIELDS = {
 
 function UIPins.GetKey(data)
     if not data or not data.name then return "" end
+    -- Catalog items: name|path collapses rarity variants of the same item
+    -- name into ONE pin (they have no path and share the name) -- pinning
+    -- one pinned them all. Their identity is the itemID, via the same
+    -- GetEntryKey the aliases/learned/blacklist systems share. Other row
+    -- kinds keep the historical name|path key: every existing pin and
+    -- shortkey is stored under it, and a wholesale rekey would orphan them.
+    if data.catalogItem and data.itemID and ns.Aliases and ns.Aliases.GetEntryKey then
+        local entryKey = ns.Aliases:GetEntryKey(data)
+        if entryKey then return entryKey end
+    end
     return data.name .. "|" .. tconcat(data.path or {}, ">")
 end
 
