@@ -46,14 +46,16 @@ local offsets, tabs = {}, {}
 local total = 0
 
 local function EnsureIndex()
-    if blob then return total end
-    local b = ns.ICON_SEARCH_BLOB
-    if type(b) ~= "string" then return 0 end
-    blob = b
-    blobLen = #b
-    -- The blob is retained (it IS the database); the SV field ref clears
-    -- so nothing double-roots it.
-    ns.ICON_SEARCH_BLOB = nil
+    if total > 0 then return total end
+    if not blob then
+        local b = ns.ICON_SEARCH_BLOB
+        if type(b) ~= "string" then return 0 end
+        blob = b
+        blobLen = #b
+        -- The blob is retained (it IS the database); the field ref clears
+        -- so nothing double-roots it.
+        ns.ICON_SEARCH_BLOB = nil
+    end
     local pos = 1
     while pos <= blobLen do
         local nl = sfind(blob, "\n", pos, true) or (blobLen + 1)
@@ -237,6 +239,18 @@ end
 -- matched[rec] == matchGen marks a completed branch.
 local mark, hitStamp, matched = {}, {}, {}
 local markBase, hitGen, matchGen = 0, 0, 0
+
+-- Close-boundary release: the offset/tab index (two 33k-slot arrays) and
+-- the match scratch (three hashes that grow to one entry per record and
+-- keep that capacity) together dwarf the blob. Fresh tables drop the
+-- capacity -- wipe() would keep it -- and EnsureIndex rebuilds the index
+-- from the retained blob in one pass on the next use.
+function IconSearch:ReleaseMemory()
+    offsets, tabs = {}, {}
+    total = 0
+    mark, hitStamp, matched = {}, {}, {}
+    markBase, hitGen, matchGen = 0, 0, 0
+end
 
 -- Scan the blob for one PLAIN alternate. Ascending occurrences drive a
 -- moving record pointer; a settled record skips ahead to the next, so

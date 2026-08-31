@@ -5080,7 +5080,10 @@ function Utils.AttachHoverPopup(owner, popup, opts)
     -- the highlight immediately instead of waiting out the hide grace.
     if owner.LockHighlight then
         local function HoldHighlight()
-            owner:LockHighlight()
+            -- SetHoldVisual, not raw LockHighlight: wash themes run the
+            -- built-in highlight texture at alpha 0, so the raw lock showed
+            -- nothing once the cursor left the owner for the popup.
+            SetHoldVisual(owner, true)
             local _, hold = FindFlyoutHighlightHold(owner, popup)
             if hold then
                 hold.held = true
@@ -5094,7 +5097,7 @@ function Utils.AttachHoverPopup(owner, popup, opts)
             if popup:IsShown() then HoldHighlight() end
         end)
         popup:HookScript("OnHide", function()
-            owner:UnlockHighlight()
+            SetHoldVisual(owner, false)
             local i = FindFlyoutHighlightHold(owner, popup)
             if i then tremove(flyoutHighlightHolds, i) end
         end)
@@ -5729,14 +5732,31 @@ end
 -- (or additive glow on Black) hover shows, uniform with result rows, grid
 -- cells and the apps menu. No extra overlay: the old gold QuestTitle slab
 -- painted ON TOP of the pill read as an off-theme double highlight.
+-- Must go through SetMenuHighlightFocused where installed: wash themes run
+-- the built-in highlight texture at alpha 0 (the pill is the visible
+-- hover), so a raw LockHighlight engages an invisible texture and keyboard
+-- focus shows NOTHING on every theme but Black -- the same trap the flyout
+-- holds hit (see SetHoldVisual).
 local function CursorMenuPaintKeyboardSelection(self)
     if not self.rows then return end
+    local focusRow = self.rows[self.keyboardIndex or 0]
     for i = 1, #self.rows do
         local row = self.rows[i]
-        if row and row.UnlockHighlight then row:UnlockHighlight() end
+        if row and row ~= focusRow then
+            if row.SetMenuHighlightFocused then
+                row:SetMenuHighlightFocused(false)
+            elseif row.UnlockHighlight then
+                row:UnlockHighlight()
+            end
+        end
     end
-    local row = self.rows[self.keyboardIndex or 0]
-    if row and row.LockHighlight then row:LockHighlight() end
+    if focusRow then
+        if focusRow.SetMenuHighlightFocused then
+            focusRow:SetMenuHighlightFocused(true)
+        elseif focusRow.LockHighlight then
+            focusRow:LockHighlight()
+        end
+    end
 end
 
 local function CursorMenuSetKeyboardIndex(self, index)
@@ -5764,8 +5784,32 @@ local function CursorMenuSetKeyboardIndex(self, index)
     return false
 end
 
+-- Mouse precedence: hovering a selectable row moves the keyboard
+-- selection there, so exactly one row is ever highlighted -- the pill
+-- under the cursor IS the selection, and arrows/Enter continue from it.
+-- Menus with no keyboard selection (mouse-opened, un-arrowed) are
+-- untouched; their hover pill is already the only highlight.
+local function CursorMenuRoot(menu)
+    while menu._parentMenu do menu = menu._parentMenu end
+    return menu
+end
+
+local function CursorMenuHoverSyncsKeyboard(menu, row)
+    -- While the keyboard was the last input device (_mouseYields), a parked
+    -- cursor must not steal the selection -- OnEnter also fires when a menu
+    -- SPAWNS under the resting mouse, which would knock a Tab-opened menu's
+    -- focus off row 1. Real cursor movement clears the flag (OnUpdate).
+    if CursorMenuRoot(menu)._mouseYields then return end
+    if not menu.keyboardIndex then return end
+    local idx = row._efMenuRowIndex
+    if idx and idx ~= menu.keyboardIndex and CursorMenuIsSelectableRow(row) then
+        CursorMenuSetKeyboardIndex(menu, idx)
+    end
+end
+
 local function CursorMenuMoveKeyboardIndex(self, delta)
     if not self.rows then return false end
+    CursorMenuRoot(self)._mouseYields = true
     local index = (self.keyboardIndex or (delta > 0 and 0 or #self.rows + 1)) + delta
     if index < 1 then index = #self.rows end
     if index > #self.rows then index = 1 end
@@ -5797,6 +5841,7 @@ end
 
 local function CursorMenuFocusKeyboard(self, index)
     self.keyboardMode = true
+    CursorMenuRoot(self)._mouseYields = true
     Utils.SafeCallMethod(self, "EnableKeyboard", true)
     Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
     if self.Raise then self:Raise() end
@@ -5828,6 +5873,8 @@ end
 local function CursorMenuOnHide(self)
     self._outsideSince = nil
     self._hasEntered = false
+    self._mouseYields = nil
+    self._lastCursorX, self._lastCursorY = nil, nil
     CursorMenuSetKeyboardIndex(self, nil)
     Utils.SafeCallMethod(self, "EnableKeyboard", false)
     self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
@@ -5865,7 +5912,7 @@ end
 -- (the parent row stays engaged while its child is open). Driving from one
 -- place survives anything that stomps per-row script hooks and needs no
 -- enter/leave bookkeeping.
-local function CursorMenuDriveRowHighlights(menu)
+local function CursorMenuDriveRowHighlights(menu, mouseYields)
     local rows = menu.rows
     if not rows then return end
     for i = 1, #rows do
@@ -5874,7 +5921,12 @@ local function CursorMenuDriveRowHighlights(menu)
             -- The explicit lock (_efWashFocused, result-row pattern: set at
             -- child open, cleared at child close) is authoritative; hover and
             -- the cascade link are additional signals, never overrides.
-            local engaged = row._efWashFocused or row:IsMouseOver() or menu._openSubmenuRow == row
+            -- Last input device wins: while the keyboard holds the floor
+            -- (mouseYields, set by arrow moves and cleared by real cursor
+            -- movement), a PARKED cursor's IsMouseOver is ignored so the
+            -- keyboard selection is the single highlight.
+            local engaged = row._efWashFocused or (not mouseYields and row:IsMouseOver())
+                or menu._openSubmenuRow == row
             if row._efWashActive then
                 Utils.UpdateRoundedRowWash(row, engaged)
             else
@@ -5896,9 +5948,14 @@ local function CursorMenuOnUpdate(self)
     -- Submenus never drive anything; the root owns the whole cascade, so
     -- there is exactly one owner of the hover/close decisions.
     if self._parentMenu then return end
+    local cx, cy = GetCursorPosition()
+    if self._lastCursorX ~= nil and (cx ~= self._lastCursorX or cy ~= self._lastCursorY) then
+        self._mouseYields = nil
+    end
+    self._lastCursorX, self._lastCursorY = cx, cy
     local node = self
     while node do
-        if node:IsShown() then CursorMenuDriveRowHighlights(node) end
+        if node:IsShown() then CursorMenuDriveRowHighlights(node, self._mouseYields) end
         node = node._openSubmenu
     end
     -- stayOpen menus close only on click-outside (handled in OnEvent), never on
@@ -5954,14 +6011,21 @@ local function CursorMenuOnKeyDown(self, key)
         end
     elseif navKey == "TAB" then
         -- Tab descends into the focused row's submenu (Send link etc.);
-        -- on rows without one it steps the selection like DOWN (Shift+Tab
-        -- steps back), so the whole menu is walkable from the keyboard.
+        -- on rows without one it steps the selection like DOWN, so the
+        -- whole menu is walkable from the keyboard. Shift+Tab mirrors the
+        -- Tab that opened the menu: back out one level -- a submenu
+        -- returns to its parent, the root closes and its opener (result
+        -- row or grid cell) takes the keyboard back through onHide.
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
-        local row = self.rows and self.rows[self.keyboardIndex or 0]
-        if CursorMenuIsSelectableRow(row) and row._submenuRows then
-            CursorMenuActivateKeyboardIndex(self)
+        if IsShiftKeyDown and IsShiftKeyDown() then
+            self:Hide()
         else
-            CursorMenuMoveKeyboardIndex(self, (IsShiftKeyDown and IsShiftKeyDown()) and -1 or 1)
+            local row = self.rows and self.rows[self.keyboardIndex or 0]
+            if CursorMenuIsSelectableRow(row) and row._submenuRows then
+                CursorMenuActivateKeyboardIndex(self)
+            else
+                CursorMenuMoveKeyboardIndex(self, 1)
+            end
         end
     elseif navKey == "RIGHT" then
         -- RIGHT descends like Tab but only on submenu rows; anywhere else
@@ -5974,9 +6038,12 @@ local function CursorMenuOnKeyDown(self, key)
             Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
         end
     elseif navKey == "LEFT" then
-        -- LEFT backs out of a submenu to its parent; the root menu lets
-        -- the key through.
-        if self._parentMenu then
+        -- LEFT backs out of a submenu to its parent. On a keyboard-opened
+        -- root it closes back to the opener, mirroring RIGHT/Tab opening
+        -- it (the grid cell or row regains the keyboard through onHide).
+        -- A mouse-opened root lets the key through: no nav context is
+        -- waiting behind it, so LEFT stays a movement key.
+        if self._parentMenu or self.keyboardMode then
             Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
             self:Hide()
         else
@@ -6104,7 +6171,10 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 Utils.InstallMenuRowHighlight(row)
                 -- Hovering a row opens its submenu beside it (or closes a
                 -- sibling's); the current row's spec lives in row._submenuRows.
-                row:HookScript("OnEnter", function(self) CursorMenuRowEntered(menu, self) end)
+                row:HookScript("OnEnter", function(self)
+                    CursorMenuHoverSyncsKeyboard(menu, self)
+                    CursorMenuRowEntered(menu, self)
+                end)
                 row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 -- Populate owns this color (gold family per theme).
                 row.label._efOwnColor = true
@@ -6126,6 +6196,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row.sep:Hide()
                 menu.rows[shown] = row
             end
+            row._efMenuRowIndex = shown
             local isSep = def.isSeparator
             local sepH = 7
             -- Pooled rows shed any stale cascade lock on repopulate; a fresh

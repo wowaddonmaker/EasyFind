@@ -1278,6 +1278,15 @@ function Search:CreateSearchFrame()
         if key == "TAB" then
             Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
             if not (self.HasAutocomplete and self:HasAutocomplete()) then
+                -- With the icon grid open, Tab commits to the grid (focus
+                -- the first visible cell, same entry as Down) instead of
+                -- the toolbar ring: the ring's focus is invisible next to
+                -- a full-panel grid, so this read as Tab doing nothing.
+                -- A second Tab on the focused cell opens its context menu.
+                if Results.IsIconGridShown and Results:IsIconGridShown()
+                   and Results.MoveIconGridFocus and Results:MoveIconGridFocus(0, 0) then
+                    return
+                end
                 self._menuUnfocus = true
                 self:ClearFocus()
                 self._menuUnfocus = nil
@@ -1545,6 +1554,20 @@ function Search:CreateSearchFrame()
             return
         end
 
+        -- RIGHT on a focused result row opens its context menu, like Tab:
+        -- nothing lives to the right of a row, so the key is free. Only on
+        -- the row list -- the grid consumed LEFT/RIGHT above for cell
+        -- movement (Tab is the grid's only menu key). LEFT stays a game
+        -- key here; with a menu open it closes the menu instead (the menu
+        -- owns the keyboard then).
+        if key == "RIGHT" and selectedIndex > 0 and not toggleFocused then
+            local row = resultButtons[selectedIndex]
+            if row and Rows.ShowResultContextMenu and Rows:ShowResultContextMenu(row, true) then
+                if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
+            end
+            return
+        end
+
         if key == "DOWN" then
             if ctrl then
                 Results:JumpToEnd()
@@ -1759,7 +1782,11 @@ function Search:CreateSearchFrame()
         elseif (key == "LEFT" or key == "RIGHT")
             and Results.IsIconGridNavActive and Results:IsIconGridNavActive() then
             -- Horizontal moves only exist on the icon grid; everywhere else
-            -- LEFT/RIGHT stay game keys (turning).
+            -- LEFT stays a game key (turning).
+            consume = true
+        elseif key == "RIGHT" and selectedIndex > 0 and not toggleFocused then
+            -- RIGHT on a focused row opens its context menu (see the
+            -- handler); it must not also turn the character.
             consume = true
         elseif Calculator:IsCalculatorCopyKey(key) then
             consume = true

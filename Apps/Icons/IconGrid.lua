@@ -20,7 +20,6 @@ local L = ns.L
 
 local mceil, mfloor, mmax = Utils.mceil, Utils.mfloor, Utils.mmax
 local sformat = Utils.sformat
-local wipe = wipe
 local InCombatLockdown = InCombatLockdown
 local GameTooltip = GameTooltip
 local hooksecurefunc = hooksecurefunc
@@ -106,6 +105,10 @@ local function CreateMacroWithIcon(iconID, withTooltip)
     end
 end
 
+-- Forward-declared: ShowCellMenu's onHide repaints to restore the nav
+-- cell's locked highlight after the menu-cell unlock.
+local Repaint
+
 local function ShowCellMenu(cellBtn, keyboardMode)
     local iconID, iconName = cellBtn.iconID, cellBtn.iconName
     if not iconID then return end
@@ -133,7 +136,14 @@ local function ShowCellMenu(cellBtn, keyboardMode)
     cellBtn:LockHighlight()
     -- Keyboard-opened (Tab on the focused cell): anchor beside the CELL
     -- instead of the cursor, and hand the menu keyboard focus, exactly like
-    -- a row's Tab context menu.
+    -- a row's Tab context menu. The handoff needs BOTH sides: the navFrame
+    -- keeps swallowing every key while its keyboard is enabled, so the
+    -- menu's first-row focus never takes effect until the navFrame lets go
+    -- (same dance as ShowResultContextMenu); it gets the keyboard back on
+    -- menu close while grid nav is still active.
+    if keyboardMode then
+        Utils.SafeCallMethod(Search:GetNavFrame(), "EnableKeyboard", false)
+    end
     Utils.ShowCursorMenu("EasyFindIconCellMenu", rows, {
         scale = EasyFind.db.uiSearchScale or 1.0,
         anchorFrame = keyboardMode and cellBtn or nil,
@@ -143,11 +153,19 @@ local function ShowCellMenu(cellBtn, keyboardMode)
                 menuCell:UnlockHighlight()
                 menuCell = nil
             end
+            if keyboardMode and navIndex > 0
+               and Search:GetSearchFrame() and Search:GetSearchFrame():IsShown() then
+                Utils.SafeCallMethod(Search:GetNavFrame(), "EnableKeyboard", true)
+            end
+            -- The unlock above also stripped the nav-focused cell when the
+            -- menu belonged to it; Repaint re-locks from navIndex so the
+            -- cell stays visibly selected after LEFT/Shift+Tab closes.
+            if host and host:IsShown() then Repaint() end
         end,
     })
 end
 
-local function Repaint()
+function Repaint()
     -- The page block sits at the first visible row's absolute position
     -- inside the full-height host, so the shared scrollFrame moves it
     -- like real content while only one page of cells ever exists.
@@ -418,9 +436,11 @@ end
 -- Release the 33k-entry filter array when the grid is dismissed for a
 -- while; rebuilt on the next @icons use.
 function Results:ReleaseIconGridMemory()
-    wipe(filtered)
+    -- Fresh table, not wipe(): a 33k-entry pass leaves capacity behind.
+    filtered = {}
     filteredN = 0
     lastQuery = nil
+    if IconSearch.ReleaseMemory then IconSearch:ReleaseMemory() end
 end
 
 -- ==== Keyboard navigation (the bar's nav system routes here) ============
