@@ -809,6 +809,33 @@ end
 local gcSweepSerials = {}
 local GC_SWEEP_TICKS = 40
 
+-- Automatic-GC hold for cold construction bursts. A fresh install's first
+-- search focus allocates ~23MB of provider builds in seconds; at that rate
+-- Lua's incremental collector escalates into repeated synchronous assist
+-- steps, felt as massive hitching (proven live: the memory ledger's
+-- GC-stopped metering made the same burst run smooth twice, and unmetered
+-- runs hitched twice). The warm chains already pace themselves with bounded
+-- explicit collectgarbage("step") calls and a full end-of-chain collect;
+-- holding the AUTOMATIC collector for the window completes that design.
+-- Refcounted (chains overlap) with a per-hold watchdog so the collector can
+-- never be left off by a crashed chain.
+local gcHolds = {}
+function Utils.HoldGC(tag, maxSeconds)
+    if not gcHolds[tag] then
+        gcHolds[tag] = true
+        collectgarbage("stop")
+    end
+    Utils.SafeAfter(maxSeconds or 30, function() Utils.ReleaseGC(tag) end)
+end
+
+function Utils.ReleaseGC(tag)
+    if not gcHolds[tag] then return end
+    gcHolds[tag] = nil
+    if next(gcHolds) == nil then
+        collectgarbage("restart")
+    end
+end
+
 function Utils.NoteSurfaceClosed(key, isOpenFn, trimFn)
     local serial = (gcSweepSerials[key] or 0) + 1
     gcSweepSerials[key] = serial

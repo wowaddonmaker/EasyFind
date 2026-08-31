@@ -391,6 +391,10 @@ end
 function Database:LoadEagerDynamicProviders()
     if self._loadingEagerProviders then return end
     self._loadingEagerProviders = true
+    -- Hold the automatic GC for the burst (see Utils.HoldGC): the bounded
+    -- per-provider steps below stay the only collector work until the
+    -- chain's end sweep.
+    Utils.HoldGC("eagerProviders", 30)
     local index = 1
     local function step()
         while index <= #dynamicProviders do
@@ -422,6 +426,11 @@ function Database:LoadEagerDynamicProviders()
             end
         end
         self._loadingEagerProviders = false
+        Utils.ReleaseGC("eagerProviders")
+        if ns.SearchIndex and ns.SearchIndex.EnsureBudget then
+            ns.SearchIndex:EnsureBudget(3)
+        end
+        Utils.SafeAfter(0.05, function() collectgarbage("collect") end)
     end
     -- Deferred so the load lands after the login frame (which is kept light)
     -- and after the first few frames of API data settling.
@@ -431,6 +440,7 @@ end
 function Database:LoadDeferredSyncProvidersStaggered()
     -- Suppress per-provider ResetSearchCache; rebuild the prefix index
     -- once at the end of the staggered chain.
+    Utils.HoldGC("staggeredProviders", 60)
     self._dynamicBatchLoading = true
     self._dynamicBatchChanged = false
     local index = 1
@@ -476,6 +486,7 @@ function Database:LoadDeferredSyncProvidersStaggered()
         -- meter as EasyFind usage (audited: shown 16.6MB vs 8.2MB live).
         -- Collect two frames out so the sweep never shares a frame with
         -- the warm's last step.
+        Utils.ReleaseGC("staggeredProviders")
         if ns.Utils and ns.Utils.SafeAfter then
             ns.Utils.SafeAfter(0.05, function()
                 collectgarbage("collect")
