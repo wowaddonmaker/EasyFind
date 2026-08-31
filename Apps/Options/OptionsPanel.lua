@@ -52,6 +52,24 @@ local OPTIONS_FRAME_STRATA = "FULLSCREEN_DIALOG"
 local OPTIONS_FRAME_LEVEL = 700
 
 local optionsFrame
+
+-- ONE close-panel-and-open-wizard path, shared by the Home quickstart
+-- link and the sidebar Tutorial button (they must never drift: the button
+-- shipped broken once because only the link learned to request the
+-- onboarding companion). The wizard lives in EasyFind_Onboarding, loaded
+-- on demand; embedded in Blizzard's Settings > AddOns, hiding only our
+-- frame leaves the Settings window open ON TOP of the wizard, so the
+-- whole surface closes (its hide callback restores standalone state).
+local function OpenTutorialWizard()
+    if _G.InCombatLockdown and _G.InCombatLockdown() then return end
+    if not (ns.RequestOnboarding and ns.RequestOnboarding()) then return end
+    if Options.embedded and _G.SettingsPanel and _G.HideUIPanel then
+        _G.HideUIPanel(_G.SettingsPanel)
+    else
+        optionsFrame:Hide()
+    end
+    if ns.Wizard and ns.Wizard.Show then ns.Wizard:Show(ns.Wizard.FEATURES_PAGE) end
+end
 local isInitialized = false
 
 local VISIBILITY_AUTO   = ns.VISIBILITY_AUTO
@@ -1170,27 +1188,7 @@ local function BuildHomeTab(ctx)
             maptab = function()
                 if ns.MapTab and ns.MapTab.Focus then ns.MapTab:Focus() end
             end,
-            tutorial = function()
-                -- The wizard lives in the EasyFind_Onboarding companion,
-                -- loaded on demand: request it BEFORE touching ns.Wizard, or
-                -- a steady-state session (no pending onboarding at login)
-                -- makes this button a silent no-op. Keep the panel open on
-                -- failure so the funnel's disabled-module message lands on
-                -- something instead of an empty screen.
-                if _G.InCombatLockdown and _G.InCombatLockdown() then return end
-                if not (ns.RequestOnboarding and ns.RequestOnboarding()) then return end
-                -- Reached through Blizzard's Settings > AddOns, our frame is
-                -- EMBEDDED: hiding it alone leaves the Settings window open
-                -- on top of the wizard, which reads as the click doing
-                -- nothing. Close the whole surface (its hide callback
-                -- restores the standalone state).
-                if Options.embedded and _G.SettingsPanel and _G.HideUIPanel then
-                    _G.HideUIPanel(_G.SettingsPanel)
-                else
-                    optionsFrame:Hide()
-                end
-                if ns.Wizard and ns.Wizard.Show then ns.Wizard:Show(ns.Wizard.FEATURES_PAGE) end
-            end,
+            tutorial = OpenTutorialWizard,
         },
     })
     homeQuick:SetPoint("TOPLEFT", homeIcon, "BOTTOMLEFT", 0, -20)
@@ -3813,10 +3811,7 @@ function Options:Initialize()
         SetNavButtonBg(self, NAV_CLEAR)
         RestyleTutorialLink()
     end)
-    tutorialBtn:SetScript("OnClick", function()
-        optionsFrame:Hide()
-        if ns.Wizard and ns.Wizard.Show then ns.Wizard:Show(ns.Wizard.FEATURES_PAGE) end
-    end)
+    tutorialBtn:SetScript("OnClick", OpenTutorialWizard)
 
     local function GetCurrentKeybindText(action)
         -- Account store only; see SyncOptionControls for why native
