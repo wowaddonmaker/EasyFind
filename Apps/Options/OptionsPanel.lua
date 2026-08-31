@@ -1171,6 +1171,13 @@ local function BuildHomeTab(ctx)
                 if ns.MapTab and ns.MapTab.Focus then ns.MapTab:Focus() end
             end,
             tutorial = function()
+                -- The wizard lives in the EasyFind_Onboarding companion,
+                -- loaded on demand: request it BEFORE touching ns.Wizard, or
+                -- a steady-state session (no pending onboarding at login)
+                -- makes this button a silent no-op. Keep the panel open on
+                -- failure so the funnel's disabled-module message lands on
+                -- something instead of an empty screen.
+                if not (ns.RequestOnboarding and ns.RequestOnboarding()) then return end
                 optionsFrame:Hide()
                 if ns.Wizard and ns.Wizard.Show then ns.Wizard:Show(ns.Wizard.FEATURES_PAGE) end
             end,
