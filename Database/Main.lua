@@ -4166,15 +4166,17 @@ function Database:PopulateDynamicAbilities()
         if lineName and lineName ~= "" then
             kw[#kw + 1] = slower(lineName)
         end
-        -- M+ dungeon teleports answer to their dungeon's name ("karazhan"
-        -- finds Path of the Fallen Guardian), not just their flavor name.
-        if ns.AppendDungeonTeleportKeywords then
-            ns.AppendDungeonTeleportKeywords(kw, spellID)
-        end
+        -- M+ dungeon teleports answer to their dungeon's name, not just
+        -- their flavor name; the score bonus keeps the actionable teleport
+        -- above the item catalog's name matches inside the result cap
+        -- (measured: 'karazhan' ranked the teleport 16th of a 15-row cap).
+        local isTeleport = ns.AppendDungeonTeleportKeywords
+            and ns.AppendDungeonTeleportKeywords(kw, spellID)
         uiSearchData[#uiSearchData + 1] = {
             name = displayName,
             nameLower = nameLower,
             keywords = kw,
+            scoreBonus = isTeleport and 500 or nil,
             category = "Ability",
             treeName = lineName,
             isOffSpec = isOffSpec or false,

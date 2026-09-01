@@ -53,8 +53,23 @@ end
 
 function tests.keywords_unmappedSpellNoOp()
     local kw = { "fireball" }
-    ns.AppendDungeonTeleportKeywords(kw, 133)
+    local hit = ns.AppendDungeonTeleportKeywords(kw, 133)
     H.assertEq(#kw, 1, "unmapped spell must not grow keywords")
+    H.assertEq(hit, false, "unmapped spell reports no hit")
+end
+
+function tests.append_reportsTeleportHit()
+    local kw = {}
+    H.assertEq(ns.AppendDungeonTeleportKeywords(kw, 354463), true,
+        "mapped teleport reports hit (drives the score bonus)")
+end
+
+function tests.triggers_containDungeonWordsNotStopwords()
+    local t = ns.DUNGEON_TELEPORT_TRIGGERS
+    H.assertTrue(t.plaguefall and t.mots and t.boralus, "dungeon words trigger")
+    H.assertTrue(t.teleport and t.keystone, "shared terms trigger")
+    H.assertTrue(not t.the and not t.of, "stopwords never trigger")
+    H.assertTrue(not t.nw and not t.pf, "2-char abbreviations stay off triggers")
 end
 
 function tests.keywords_journalNameCached()

@@ -166,10 +166,11 @@ end
 -- Appends this teleport's dungeon keywords to an ability row's keyword
 -- list: localized dungeon name (whole, plus per-word for word-overlap
 -- scoring), English fallback name, abbreviations, shared teleport terms.
+-- Returns true when spellID is a mapped teleport (keywords appended).
 function ns.AppendDungeonTeleportKeywords(kw, spellID)
     local map = ns.DUNGEON_TELEPORT_SPELLS
     local entry = map and map[spellID]
-    if not entry then return end
+    if not entry then return false end
     if not sharedTeleportKw then
         sharedTeleportKw = { "teleport", "tp", "portal", "dungeon", "keystone", "mythic" }
     end
@@ -190,4 +191,5 @@ function ns.AppendDungeonTeleportKeywords(kw, spellID)
     for i = 1, #sharedTeleportKw do
         kw[#kw + 1] = sharedTeleportKw[i]
     end
+    return true
 end

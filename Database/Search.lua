@@ -1609,7 +1609,11 @@ function Database:SearchUI(query, skipCategories)
                     resultEntryPool[resultsN] = r
                 end
                 r.data = data
-                r.score = score
+                -- scoreBonus: per-row rank lift, applied per MATCH (not per
+                -- candidate, so off the scoring hot path). Dungeon teleports
+                -- carry it so an actionable "Path of ..." row outranks the
+                -- catalog's name-substring item rows inside the result cap.
+                r.score = score + (data.scoreBonus or 0)
                 r.isAlias = nil
                 results[resultsN] = r
                 candidateIdx = candidateIdx + 1
