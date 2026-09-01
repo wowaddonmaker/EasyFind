@@ -103,7 +103,12 @@ end
 local function AttachMacroListSearch(frame)
     if not frame or frame.efMacroListSearch then return end
     local sel = frame.MacroSelector
-    if not (sel and sel.getSelectionByIndex and sel.getNumSelections and sel.UpdateSelections) then
+    -- Only the selector itself is required here: its lowercase accessors
+    -- are installed by the DATA-PROVIDER push on first show, after this
+    -- ADDON_LOADED attach, so they are captured lazily (ReinstallIfDisplaced
+    -- on show and on every keystroke), never demanded up front -- requiring
+    -- them here silently skipped the whole attach.
+    if not (sel and sel.UpdateSelections) then
         return
     end
     -- Another addon's search box on the macro window wins; one bar per frame.
@@ -158,6 +163,9 @@ local function AttachMacroListSearch(frame)
     if frame.SetCharacterMacros then hooksecurefunc(frame, "SetCharacterMacros", Reapply) end
     if frame.Update then hooksecurefunc(frame, "Update", Reapply) end
 
+    frame:HookScript("OnShow", function()
+        ReinstallIfDisplaced(frame.MacroSelector)
+    end)
     frame:HookScript("OnHide", function()
         filtered = nil
         searchBox:SetText("")
