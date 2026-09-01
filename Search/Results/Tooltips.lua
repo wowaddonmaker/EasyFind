@@ -261,14 +261,10 @@ function Tooltips:CreateUnearnedTooltip()
     -- on every show (the panel refills then too).
     unearnedTooltip._efOnThemeRestyle = function(self)
         local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
-        if theme and theme.lightTheme then
-            local c = theme.pathColorHover or theme.leafColor
-            self.text:SetTextColor(c[1], c[2], c[3], 1)
-            self.text:SetShadowColor(0, 0, 0, 0)
-        else
-            local gold = ns.GOLD_COLOR
-            self.text:SetTextColor(gold[1], gold[2], gold[3], 1)
-        end
+        -- Shared tooltip color rule -- never gold on themed fills.
+        local r, g, b = ns.TooltipTextColor()
+        self.text:SetTextColor(r, g, b, 1)
+        self.text:SetShadowColor(0, 0, 0, (theme and theme.lightTheme) and 0 or 1)
     end
     unearnedTooltip:HookScript("OnShow", unearnedTooltip._efOnThemeRestyle)
     unearnedTooltip._efOnThemeRestyle(unearnedTooltip)

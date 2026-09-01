@@ -1598,6 +1598,15 @@ function Database:SearchUI(query, skipCategories)
                     if #entryQueryWords >= 2 then
                         score = mmax(score, Database:ScoreEntryFields(data, entryQueryWords))
                     end
+                    -- A snippet's trigger keyword is its second name: scored
+                    -- with the name tiers so typing it exactly ranks the
+                    -- snippet like an exact name hit, not a keyword alias.
+                    local snippetKw = data.snippetKeywordLower
+                    if snippetKw then
+                        local kwNameScore = Database:ScoreName(snippetKw,
+                            entryQuery, entryQueryLen, entryQueryWords)
+                        if kwNameScore > score then score = kwNameScore end
+                    end
                 end
             end
 

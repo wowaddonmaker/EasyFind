@@ -1999,6 +1999,14 @@ ns.SEARCH_WINDOW_FILL_COLOR = {0.052, 0.052, 0.060}
 ns.TEXT_PRIMARY = {1.00, 0.97, 0.86}
 ns.TEXT_BODY = {0.78, 0.78, 0.80}
 ns.TEXT_DIM = {0.55, 0.55, 0.58}
+-- Snippet category glyph: shipped white line-art in the app-icon style
+-- (chat/notes), tintable, immune to Blizzard sprite-sheet reshuffles.
+-- Filter row and result rows share it.
+ns.SNIPPET_ICON_TEX    = "Interface\\AddOns\\EasyFind\\textures\\snippet-icon"
+ns.SNIPPET_ICON_COORDS = { 0, 1, 0, 1 }
+-- One chat line's character budget; snippet bodies cap here so an
+-- expansion can never overflow a single message.
+ns.CHAT_MESSAGE_MAX_CHARS = 255
 -- Cool blue-gray fills so interactive buttons read as such against the
 -- neutral near-black panels (color as affordance, not brightness).
 ns.BTN_FILL_NORMAL = {0.160, 0.190, 0.250}
@@ -3653,6 +3661,79 @@ end
 -- at arm time and at dispatch: false means this entry neither binds nor
 -- consumes ESC right now. Callers whose predicate inputs change while
 -- the frame stays shown must call Utils.RefreshEscArm() on those changes.
+-- Strip WoW display markup for plain-text surfaces (autocomplete
+-- suggestions, snippet previews): atlas / texture / color / hyperlink codes
+-- go, a link keeps its bracketed display text. Covers both the legacy
+-- |cffRRGGBB color form and the modern |cnColorName: form; without this a
+-- byte-length truncation can cut inside an escape and render as nothing.
+function Utils.StripMarkup(s)
+    if not s then return s end
+    s = s:gsub("|A:[^|]*|a", "")
+    s = s:gsub("|T[^|]*|t", "")
+    s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cn[^:|]*:", ""):gsub("|r", "")
+    s = s:gsub("|H[^|]+|h(.-)|h", "%1")
+    s = s:gsub("%s+", " ")
+    s = s:match("^%s*(.-)%s*$") or s
+    return s
+end
+
+-- One owner for "hook Blizzard's insert-link routing" (shift-clicked items,
+-- achievements, spells). 12.1 routes these through ChatFrameUtil.InsertLink;
+-- the legacy ChatEdit_InsertLink global still exists but no longer sees the
+-- call (probe-verified), so hooking it catches nothing on live clients.
+function Utils.HookInsertLink(fn)
+    if not hooksecurefunc then return end
+    if ChatFrameUtil and type(ChatFrameUtil.InsertLink) == "function" then
+        hooksecurefunc(ChatFrameUtil, "InsertLink", fn)
+    else
+        hooksecurefunc("ChatEdit_InsertLink", fn)
+    end
+end
+
+-- ONE rule for text color on themed dialog chrome (labels, hints): theme
+-- leaf on dark fills, the darker hover accent on light fills. Gold is
+-- never correct on themed fills.
+function ns.TooltipTextColor()
+    local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    if theme and theme.lightTheme then
+        local c = theme.pathColorHover or theme.leafColor
+        return c[1], c[2], c[3]
+    end
+    local c = (theme and theme.leafColor) or { 1, 1, 1 }
+    return c[1], c[2], c[3]
+end
+
+-- Ctrl-C confirmation shared by the copy dialogs. Addons cannot read the
+-- clipboard, but a focused editbox fires OnKeyDown for the copy chord, so a
+-- detected Ctrl+C flashes "Copied" (title color) and fades it out. The flash
+-- holder is created on `parent` and hangs centered under `anchorTo`; returns
+-- the holder so callers can include its height in dialog sizing.
+function Utils.AttachCopiedFlash(editBox, parent, anchorTo, yOffset)
+    local holder = CreateFrame("Frame", nil, parent)
+    holder:SetPoint("TOP", anchorTo, "BOTTOM", 0, yOffset or -4)
+    holder:SetSize(140, 16)
+    holder:Hide()
+    local copied = holder:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    copied._efOwnColor = true
+    copied:SetPoint("CENTER")
+    copied:SetText(L["COPIED"])
+    local copiedFade = holder:CreateAnimationGroup()
+    local fadeAnim = copiedFade:CreateAnimation("Alpha")
+    fadeAnim:SetFromAlpha(1)
+    fadeAnim:SetToAlpha(0)
+    fadeAnim:SetStartDelay(0.8)
+    fadeAnim:SetDuration(0.8)
+    copiedFade:SetScript("OnFinished", function() holder:Hide() end)
+    editBox:SetScript("OnKeyDown", function(_, key)
+        if key ~= "C" or not IsControlKeyDown() then return end
+        copiedFade:Stop()
+        holder:SetAlpha(1)
+        holder:Show()
+        copiedFade:Play()
+    end)
+    return holder
+end
+
 function Utils.AttachEscClose(frame, close, shouldEat)
     EnsureEscDispatch()
     close = close or function() frame:Hide() end
@@ -3724,31 +3805,7 @@ local function EnsureCopyBox()
         editBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
         f.editBox = editBox
 
-        -- Ctrl-C confirmation. Addons cannot read the clipboard, but while the
-        -- field is focused the editbox fires OnKeyDown for the copy chord, so a
-        -- detected Ctrl+C flashes "Copied" (title color) and fades it out.
-        local copiedHolder = CreateFrame("Frame", nil, f)
-        copiedHolder:SetPoint("TOP", field, "BOTTOM", 0, -6)
-        copiedHolder:SetSize(140, 16)
-        copiedHolder:Hide()
-        local copied = copiedHolder:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        copied._efOwnColor = true
-        copied:SetPoint("CENTER")
-        copied:SetText(L["COPIED"])
-        local copiedFade = copiedHolder:CreateAnimationGroup()
-        local fadeAnim = copiedFade:CreateAnimation("Alpha")
-        fadeAnim:SetFromAlpha(1)
-        fadeAnim:SetToAlpha(0)
-        fadeAnim:SetStartDelay(0.8)
-        fadeAnim:SetDuration(0.8)
-        copiedFade:SetScript("OnFinished", function() copiedHolder:Hide() end)
-        editBox:SetScript("OnKeyDown", function(_, key)
-            if key ~= "C" or not IsControlKeyDown() then return end
-            copiedFade:Stop()
-            copiedHolder:SetAlpha(1)
-            copiedHolder:Show()
-            copiedFade:Play()
-        end)
+        Utils.AttachCopiedFlash(editBox, f, field, -6)
 
         -- Rendered-link mode: shows the real hyperlink (colored, hoverable)
         -- instead of a Ctrl-C field; clicking it inserts the link into the
@@ -4259,6 +4316,14 @@ function ns.GetResultLink(data)
             data.encounterID, data.difficultyID or 14, data.name or "")
     elseif data.spellID and (data.category == "Ability" or data.category == "Talent") then
         return ResultSpellLink(data.spellID)
+    elseif data.category == "Snippet" and data.snippetIndex then
+        -- The shareable payload of a snippet IS its chat text (placeholders
+        -- resolved at send time), like statistics share synthesized text.
+        local snippets = ns.Snippets
+        if snippets and snippets.GetChatTextByName then
+            return snippets:GetChatTextByName(data.name)
+        end
+        return nil
     elseif data.housingRecordID and C_HousingDecor and C_HousingDecor.GetDecorHyperlink then
         local ok, link = pcall(C_HousingDecor.GetDecorHyperlink, data.housingRecordID)
         if ok and link and link ~= "" then return link end
@@ -6641,6 +6706,18 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     end
     if extra and extra.onDestroyItem then
         extras[#extras + 1] = { text = L["CTX_DESTROY_ITEM"], onClick = extra.onDestroyItem }
+    end
+    if extra and extra.onSnippetInsert then
+        extras[#extras + 1] = { text = L["SNIPPET_INSERT_CHAT"], onClick = extra.onSnippetInsert }
+    end
+    if extra and extra.onSnippetEdit then
+        extras[#extras + 1] = { text = _G["EDIT"] or "Edit", onClick = extra.onSnippetEdit }
+    end
+    if extra and extra.onSnippetInsertNote then
+        extras[#extras + 1] = { text = L["SNIPPET_INSERT_NOTE"], onClick = extra.onSnippetInsertNote }
+    end
+    if extra and extra.onSnippetDelete then
+        extras[#extras + 1] = { text = _G["DELETE"] or "Delete", onClick = extra.onSnippetDelete }
     end
     -- Alphabetical within each section (per-locale, since labels are
     -- localized); the separator keeps standard and extra actions apart.

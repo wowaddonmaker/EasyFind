@@ -104,6 +104,27 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
             Handlers:DestroyBagItem(pinData)
         end
     end
+    if pinData.snippetIndex then
+        local snippetIndex = pinData.snippetIndex
+        extra.onSnippetInsert = function()
+            ns.Snippets:RunByName(pinData.name)
+        end
+        extra.onSnippetEdit = function()
+            ns.Snippets:OpenEditor(snippetIndex)
+        end
+        extra.onSnippetDelete = function()
+            ns.Snippets:DeleteWithConfirm(snippetIndex)
+        end
+        -- Notes is a separate sibling addon; offer the note action only
+        -- when it is installed and enabled for this character.
+        local notesState = C_AddOns and C_AddOns.GetAddOnEnableState
+            and C_AddOns.GetAddOnEnableState("EasyFind_Notes")
+        if notesState and notesState > 0 then
+            extra.onSnippetInsertNote = function()
+                ns.Snippets:InsertIntoNote(pinData.name)
+            end
+        end
+    end
     local wowheadUrl = ns.GetWowheadLink and ns.GetWowheadLink(pinData)
     if wowheadUrl then
         extra.onWowhead = function()

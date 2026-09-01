@@ -64,6 +64,7 @@ Filters.quickFilterOptions = {
     -- aliases resolve last-writer-wins this entry was silently stealing them --
     -- @items landed on Loot.
     { key = "loot",           canonical = "loot",            label = _G["LOOT"] or "Loot",            categories = { "Loot" }, aliases = { "l", "g", "gear", "loot" } },
+    { key = "snippets",       canonical = "snippets",        label = L["FILTER_SNIPPETS"],        categories = { "Snippet" }, aliases = { "snip", "snips", "snippet", "snippets" } },
     { key = "map",            canonical = "map",             label = L["FILTER_MAP_SEARCH"],      aliases = { "map", "maps", "zone", "zones", "location", "locations" } },
     { key = "options",        canonical = "options",         label = _G["OPTIONS"] or "Options",         categories = { "Game Settings", "AddOn Settings" }, aliases = { "op", "opt", "option", "options", "setting", "settings" }, companion = "EasyFind_Settings" },
     { key = "gameOptions",    canonical = "game-options",    label = L["FILTER_GAME_OPTIONS"],    categories = { "Game Settings" }, aliases = { "go", "game", "game-option", "game-options", "game-setting", "game-settings" }, companion = "EasyFind_Settings" },

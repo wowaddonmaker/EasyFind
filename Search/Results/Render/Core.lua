@@ -494,6 +494,13 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
             if resultRow.pinIcon then resultRow.pinIcon:Hide() end
             if resultRow.pinToggle then resultRow.pinToggle:Hide() end
             if resultRow.pinHeaderLine then resultRow.pinHeaderLine:Hide() end
+            if resultRow.snippetCreateBadge then
+                local showCreate = data and data.snippetCreate or false
+                resultRow.snippetCreateBadge:SetShown(showCreate)
+                if resultRow.snippetCreateGlow then
+                    resultRow.snippetCreateGlow:SetShown(showCreate)
+                end
+            end
             resultRow._efShortcutIndex = nil
             resultRow._efShortcutBindingReady = nil
             resultRow._efContentTop = rowContentTop

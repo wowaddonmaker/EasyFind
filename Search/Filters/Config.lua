@@ -211,6 +211,13 @@ local UI_FILTER_OPTIONS = {
               { dbKey = "hideTooltips.talents", label = L["FILTER_HIDE_TOOLTIPS"] },
           },
       } },
+    { key = "snippets",    label = L["FILTER_SNIPPETS"], iconTex = ns.SNIPPET_ICON_TEX,
+      iconCoords = ns.SNIPPET_ICON_COORDS,
+      flyoutRadio = {
+          checkboxes = {
+              { dbKey = "snippetChatExpansion", label = L["SNIPPET_EXPAND_IN_CHAT"] },
+          },
+      } },
     -- Title icon from PaperDollSidebarTab2 (Titles tab) spritesheet 514608.
     -- Titles you have not earned are opt-in: they outnumber earned ones many
     -- times over, so the default stays Earned and the other modes are a

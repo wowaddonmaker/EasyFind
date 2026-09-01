@@ -70,6 +70,7 @@ local dynamicProviders = {
     { key = "loot", category = providerCategory["loot"],           fn = "PopulateDynamicLoot", asyncFn = "PopulateDynamicLootAsync" },
     { key = "bosses", category = providerCategory["bosses"],           fn = "PopulateDynamicBosses", asyncFn = "PopulateDynamicBossesAsync" },
     { key = "commands", category = providerCategory["commands"],        fn = "PopulateDynamicCommands", eager = true },
+    { key = "snippets", category = providerCategory["snippets"],        fn = "PopulateDynamicSnippets", eager = true },
     { key = "professions", category = providerCategory["professions"],  fn = "PopulateDynamicProfessions", eager = true },
 }
 

@@ -293,7 +293,13 @@ local function OnShortkeyButtonClick(self, _, down)
         -- Enter -- runs ActivateSettingResult first; the shortkey must too, or
         -- it falls through to SelectResult and merely opens the Settings panel
         -- (the Alt fallthrough) instead of flipping the setting.
-        if not (ns.ResultRows and ns.ResultRows.ActivateSettingResult
+        -- A snippet's click/Enter action is "open the editor", but its
+        -- shortkey FIRES the snippet into chat, exactly as if its keyword
+        -- had been typed -- a bound snippet is for using, not editing.
+        -- (The create row keeps the default action: it has nothing to fire.)
+        if data.category == "Snippet" and not data.snippetCreate and ns.Snippets then
+            ns.Snippets:RunByName(data.name)
+        elseif not (ns.ResultRows and ns.ResultRows.ActivateSettingResult
                 and ns.ResultRows:ActivateSettingResult(data)) then
             ns.ResultHandlers:SelectResult(data)
         end

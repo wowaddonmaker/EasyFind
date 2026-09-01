@@ -241,6 +241,18 @@ local function buildUtilsStub(clock)
     Utils.pairs = pairs Utils.ipairs = ipairs Utils.type = type
     Utils.select = select Utils.unpack = tunpack Utils.next = next
 
+    -- Mirrors Shared/Utils.lua StripMarkup (pure string code).
+    function Utils.StripMarkup(s)
+        if not s then return s end
+        s = s:gsub("|A:[^|]*|a", "")
+        s = s:gsub("|T[^|]*|t", "")
+        s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cn[^:|]*:", ""):gsub("|r", "")
+        s = s:gsub("|H[^|]+|h(.-)|h", "%1")
+        s = s:gsub("%s+", " ")
+        s = s:match("^%s*(.-)%s*$") or s
+        return s
+    end
+
     Utils.tinsert = table.insert Utils.tsort = table.sort
     Utils.tconcat = table.concat Utils.tremove = table.remove
 

@@ -82,6 +82,7 @@ Search/Filters/HousingOptions.lua
 Search/Filters/ProfessionOptions.lua
 Search/Filters/Dropdown.lua
 Search/Providers/Achievements.lua
+Search/Snippets.lua
 Search/Aliases.lua
 Search/History.lua
 Search/Answers.lua

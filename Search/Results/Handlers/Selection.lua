@@ -282,6 +282,17 @@ function Handlers:SelectResult(data, forceGuide)
         return
     end
 
+    -- Snippet rows resolve by name (stable across pins and list edits;
+    -- the create row carries nativeRun and never reaches this branch).
+    -- Selecting opens the editor; inserting into chat goes through the
+    -- keyword expansion or the row's context menu.
+    if data.category == "Snippet" and ns.Snippets then
+        local snippetName = data.name
+        self:FinishResultSelection()
+        ns.Snippets:EditByName(snippetName)
+        return
+    end
+
     -- Pinned native command: storage keeps only strings, so the run
     -- callback is re-resolved by name. Secure ones carry slashCommand and
     -- already ran via the row's macrotext attribute instead.

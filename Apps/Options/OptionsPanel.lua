@@ -2607,31 +2607,9 @@ local function BuildAliasesTab(ctx)
         f.editBox = eb
         Utils.CreateMinimalScrollBar(scroll, boxFrame)
 
-        -- Ctrl-C confirmation, matching the Wowhead copy box: flash
-        -- "Copied" under the code box and fade it out. No bottom Close
-        -- button; the top-right X covers dismissal.
-        local copiedHolder = CreateFrame("Frame", nil, f)
-        copiedHolder:SetPoint("TOP", boxFrame, "BOTTOM", 0, -4)
-        copiedHolder:SetSize(140, 16)
-        copiedHolder:Hide()
-        local copied = copiedHolder:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        copied._efOwnColor = true
-        copied:SetPoint("CENTER")
-        copied:SetText(L["COPIED"])
-        local copiedFade = copiedHolder:CreateAnimationGroup()
-        local fadeAnim = copiedFade:CreateAnimation("Alpha")
-        fadeAnim:SetFromAlpha(1)
-        fadeAnim:SetToAlpha(0)
-        fadeAnim:SetStartDelay(0.8)
-        fadeAnim:SetDuration(0.8)
-        copiedFade:SetScript("OnFinished", function() copiedHolder:Hide() end)
-        eb:SetScript("OnKeyDown", function(_, key)
-            if key ~= "C" or not IsControlKeyDown() then return end
-            copiedFade:Stop()
-            copiedHolder:SetAlpha(1)
-            copiedHolder:Show()
-            copiedFade:Play()
-        end)
+        -- Ctrl-C confirmation, matching the Wowhead copy box. No bottom
+        -- Close button; the top-right X covers dismissal.
+        Utils.AttachCopiedFlash(eb, f, boxFrame, -4)
 
         f.importBtn = ns.CreateModernButton(f, L["SHORTKEY_IMPORT"], 90, 22)
         f.importBtn:SetPoint("BOTTOMRIGHT", -14, 12)
@@ -3425,6 +3403,232 @@ local function BuildBlacklistTab(ctx)
     end)
 end
 
+local function BuildSnippetsTab(ctx)
+    local CreateTab, FRAME_W = ctx.CreateTab, ctx.FRAME_W
+    local snippetsTab = CreateTab(L["FILTER_SNIPPETS"])
+    Options._snippetsTabIndex = snippetsTab.tabIndex
+
+    local snTitle = snippetsTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    snTitle:SetPoint("TOPLEFT", snippetsTab, "TOPLEFT", 8, -8)
+    snTitle:SetText(L["FILTER_SNIPPETS"])
+
+    local snHeader = snippetsTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    snHeader:SetPoint("TOPLEFT", snTitle, "BOTTOMLEFT", 0, -6)
+    snHeader:SetPoint("RIGHT", snippetsTab, "RIGHT", -10, 0)
+    snHeader:SetJustifyH("LEFT")
+    snHeader:SetText(L["OPT_SNIPPETS_HINT"])
+
+    local RefreshSnippetsList
+    local snTools = CreateFrame("Frame", nil, snippetsTab)
+    snTools:SetPoint("TOPLEFT", snHeader, "BOTTOMLEFT", 0, -8)
+    snTools:SetPoint("RIGHT", snippetsTab, "RIGHT", -8, 0)
+    snTools:SetHeight(24)
+
+    local createSnippetBtn = CreateModernButton(snTools, L["SNIPPET_CREATE"], 130, 22)
+    createSnippetBtn:SetPoint("RIGHT", snTools, "RIGHT", 0, 0)
+    createSnippetBtn:SetScript("OnClick", function()
+        if ns.Snippets then ns.Snippets:OpenEditor(nil) end
+    end)
+
+    local snSearchShell = CreateFrame("Frame", nil, snTools)
+    snSearchShell:SetPoint("LEFT", snTools, "LEFT", 0, 0)
+    snSearchShell:SetPoint("RIGHT", createSnippetBtn, "LEFT", -8, 0)
+    snSearchShell:SetHeight(22)
+    ns.CreateRoundedRectBorder(snSearchShell)
+    ns.SetRoundedRectBarHeight(snSearchShell, 10)
+    HideRoundedFrameBorder(snSearchShell)
+    PaintControlFill(snSearchShell, ns.BTN_FILL_NORMAL, 1)
+
+    local snSearchIcon = snSearchShell:CreateTexture(nil, "OVERLAY")
+    snSearchIcon:SetSize(13, 13)
+    snSearchIcon:SetPoint("LEFT", snSearchShell, "LEFT", 7, 0)
+    snSearchIcon:SetAtlas("common-search-magnifyingglass")
+    snSearchIcon:SetAlpha(0.65)
+
+    local snSearchBox = CreateFrame("EditBox", nil, snSearchShell)
+    snSearchBox:SetPoint("LEFT", snSearchIcon, "RIGHT", 6, 0)
+    snSearchBox:SetPoint("RIGHT", snSearchShell, "RIGHT", -8, 0)
+    snSearchBox:SetHeight(18)
+    snSearchBox:SetAutoFocus(false)
+    snSearchBox:SetFontObject(SMALL_HIGHLIGHT_FONT)
+    snSearchBox:SetMaxLetters(64)
+
+    local snSearchPlaceholder = snSearchBox:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    snSearchPlaceholder:SetPoint("LEFT", snSearchBox, "LEFT", 0, 0)
+    snSearchPlaceholder:SetText(L["OPT_SEARCH_SNIPPETS_PLACEHOLDER"])
+    snSearchPlaceholder:SetTextColor(0.78, 0.78, 0.80, 1)
+    snSearchBox:SetScript("OnTextChanged", function(self)
+        snSearchPlaceholder:SetShown((self:GetText() or "") == "")
+        if RefreshSnippetsList then RefreshSnippetsList() end
+    end)
+    snSearchBox:SetScript("OnEscapePressed", function(self)
+        if (self:GetText() or "") ~= "" then
+            self:SetText("")
+        else
+            self:ClearFocus()
+        end
+    end)
+
+    local NAME_LEFT = 10
+    local REMOVE_W = 20
+    local REMOVE_RIGHT = 4
+    local KEYWORD_W = 110
+    local HEADER_H = 14
+    local HEADER_TOP = 7
+    local DIVIDER_Y = HEADER_TOP + HEADER_H + 3
+    local SCROLL_TOP = DIVIDER_Y + 4
+
+    local snList = CreateFrame("Frame", nil, snippetsTab)
+    snList:SetPoint("TOPLEFT", snTools, "BOTTOMLEFT", 0, -8)
+    snList:SetPoint("BOTTOMRIGHT", snippetsTab, "BOTTOMRIGHT", -8, 8)
+    ns.CreateRoundedRectBorder(snList)
+    ns.SetRoundedRectBarHeight(snList, 8)
+    HideRoundedFrameBorder(snList)
+    ns.ApplyCardFill(snList)
+
+    local snColHeader = CreateFrame("Frame", nil, snList)
+    snColHeader:SetSize(FRAME_W - 42, HEADER_H)
+    snColHeader:SetPoint("TOPLEFT", snList, "TOPLEFT", 10, -HEADER_TOP)
+    local hName = snColHeader:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hName:SetText(L["SNIPPET_NAME"])
+    hName:SetJustifyH("LEFT")
+    hName:SetTextColor(0.92, 0.92, 0.92, 1)
+    hName:SetPoint("LEFT", snColHeader, "LEFT", NAME_LEFT, 0)
+    local hKeyword = snColHeader:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hKeyword:SetText(L["SNIPPET_KEYWORD"])
+    hKeyword:SetJustifyH("LEFT")
+    hKeyword:SetTextColor(0.92, 0.92, 0.92, 1)
+    hKeyword:SetPoint("RIGHT", snColHeader, "RIGHT", -(REMOVE_RIGHT + REMOVE_W + 6), 0)
+    hKeyword:SetWidth(KEYWORD_W)
+
+    local snDivider = snList:CreateTexture(nil, "ARTWORK")
+    snDivider:SetColorTexture(1, 1, 1, 0.09)
+    snDivider:SetHeight(1)
+    snDivider:SetPoint("TOPLEFT", snList, "TOPLEFT", 8, -DIVIDER_Y)
+    snDivider:SetPoint("TOPRIGHT", snList, "TOPRIGHT", -8, -DIVIDER_Y)
+
+    local snScroll = CreateFrame("ScrollFrame", nil, snList)
+    snScroll:SetPoint("TOPLEFT", snList, "TOPLEFT", 6, -SCROLL_TOP)
+    snScroll:SetPoint("BOTTOMRIGHT", snList, "BOTTOMRIGHT", -10, 6)
+
+    local snContent = CreateFrame("Frame", nil, snScroll)
+    snContent:SetSize(FRAME_W - 42, 1)
+    snScroll:SetScrollChild(snContent)
+
+    local snScrollBar = Utils.CreateMinimalScrollBar and Utils.CreateMinimalScrollBar(snScroll, snList)
+    local snEmpty = snContent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    snEmpty:SetPoint("TOPLEFT", snContent, "TOPLEFT", 8, -8)
+    snEmpty:SetText(L["OPT_NO_SNIPPETS"])
+    snEmpty:SetTextColor(0.92, 0.92, 0.92, 1)
+
+    local snRowPool = {}
+    local function ReleaseSnippetRows()
+        for i = 1, #snRowPool do snRowPool[i]:Hide() end
+    end
+    local function UpdateSnippetScrollBar()
+        if not snScrollBar then return end
+        local contentH = snContent:GetHeight() or 0
+        local viewH = snScroll:GetHeight() or 0
+        if contentH > viewH + 1 then
+            snScrollBar:Show()
+            snScrollBar:UpdateThumb(contentH, viewH)
+        else
+            snScroll:SetVerticalScroll(0)
+            snScrollBar:Hide()
+        end
+    end
+
+    local function AcquireSnippetRow(idx)
+        local row = snRowPool[idx]
+        if row then row:Show(); return row end
+        row = CreateFrame("Button", nil, snContent)
+        row:SetSize(FRAME_W - 42, 26)
+        row:EnableMouse(true)
+        row.bg = CreateFrame("Frame", nil, row)
+        row.bg:SetAllPoints()
+        row.bg:EnableMouse(false)
+        ns.CreateRoundedRectBorder(row.bg)
+        ns.SetRoundedRectBarHeight(row.bg, 8)
+        HideRoundedFrameBorder(row.bg)
+        PaintRoundedFill(row.bg, 1, 1, 1, 0)
+
+        row.removeBtn = CreateModernButton(row, "x", REMOVE_W, 18)
+        row.removeBtn:SetPoint("RIGHT", row, "RIGHT", -REMOVE_RIGHT, 0)
+
+        row.keywordText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.keywordText:SetPoint("RIGHT", row.removeBtn, "LEFT", -6, 0)
+        row.keywordText:SetWidth(KEYWORD_W)
+        row.keywordText:SetJustifyH("LEFT")
+        row.keywordText:SetWordWrap(false)
+        row.keywordText:SetShadowColor(0, 0, 0, 0)
+
+        row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.nameText:SetPoint("LEFT", row, "LEFT", NAME_LEFT, 0)
+        row.nameText:SetPoint("RIGHT", row.keywordText, "LEFT", -8, 0)
+        row.nameText:SetJustifyH("LEFT")
+        row.nameText:SetWordWrap(false)
+        row.nameText:SetShadowColor(0, 0, 0, 0)
+
+        row:SetScript("OnEnter", function(self)
+            PaintRoundedFill(self.bg, 1, 1, 1, 0.055)
+        end)
+        row:SetScript("OnLeave", function(self)
+            PaintRoundedFill(self.bg, 1, 1, 1, 0)
+        end)
+        snRowPool[idx] = row
+        return row
+    end
+
+    RefreshSnippetsList = function()
+        ReleaseSnippetRows()
+        local query = (snSearchBox and snSearchBox:GetText() or ""):lower()
+
+        local list = (EasyFindDB and EasyFindDB.snippets) or {}
+        local entries, total = {}, 0
+        for i = 1, #list do
+            local snippet = list[i]
+            if type(snippet) == "table" and snippet.name then
+                total = total + 1
+                local keyword = snippet.keyword or ""
+                if query == "" or string.find(snippet.name:lower(), query, 1, true)
+                   or (keyword ~= "" and string.find(keyword:lower(), query, 1, true)) then
+                    entries[#entries + 1] = { index = i, name = snippet.name, keyword = keyword }
+                end
+            end
+        end
+
+        snEmpty:SetText(total == 0 and L["OPT_NO_SNIPPETS"] or L["OPT_NO_BLACKLIST_MATCH"])
+        snEmpty:SetShown(#entries == 0)
+
+        local rowH = 28
+        local y = -4
+        for i = 1, #entries do
+            local e = entries[i]
+            local row = AcquireSnippetRow(i)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", snContent, "TOPLEFT", 4, y)
+            row.nameText:SetText(e.name)
+            row.keywordText:SetText(e.keyword)
+            row:SetScript("OnClick", function()
+                if ns.Snippets then ns.Snippets:OpenEditor(e.index) end
+            end)
+            row.removeBtn:SetScript("OnClick", function()
+                if ns.Snippets then ns.Snippets:DeleteWithConfirm(e.index) end
+            end)
+            y = y - rowH
+        end
+        snContent:SetHeight(math.max(32, -y + 4))
+        UpdateSnippetScrollBar()
+        Utils.SafeAfter(0, UpdateSnippetScrollBar)
+    end
+    snScroll:SetScript("OnSizeChanged", UpdateSnippetScrollBar)
+    snContent:HookScript("OnSizeChanged", UpdateSnippetScrollBar)
+    snippetsTab:HookScript("OnShow", RefreshSnippetsList)
+    -- Snippets.lua calls this after any save/delete so an open tab stays live.
+    Options.RefreshSnippetsList = RefreshSnippetsList
+end
+
+
 local function BuildFeedbackTab(ctx)
     local CreateTab, RESET_BTN_W = ctx.CreateTab, ctx.RESET_BTN_W
     local feedbackTab = CreateTab(L["OPT_TAB_FEEDBACK"])
@@ -3929,6 +4133,7 @@ function Options:Initialize()
     BuildShortcutsTab(ctx)
     BuildAliasesTab(ctx)
     BuildBlacklistTab(ctx)
+    BuildSnippetsTab(ctx)
     BuildFeedbackTab(ctx)
 
     SwitchToTab(1)
@@ -4030,6 +4235,13 @@ function Options:OpenAtAliases()
     self:Show()
     if optionsFrame and optionsFrame.SwitchToTab and self._aliasesTabIndex then
         optionsFrame.SwitchToTab(self._aliasesTabIndex)
+    end
+end
+
+function Options:OpenAtSnippets()
+    self:Show()
+    if optionsFrame and optionsFrame.SwitchToTab and self._snippetsTabIndex then
+        optionsFrame.SwitchToTab(self._snippetsTabIndex)
     end
 end
 

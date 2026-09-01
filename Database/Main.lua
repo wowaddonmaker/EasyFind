@@ -2586,6 +2586,17 @@ function Database:PopulateDynamicOutfits()
     return true
 end
 
+function Database:PopulateDynamicSnippets()
+    RemoveEntriesByCategory("Snippet")
+    local entries = ns.Snippets and ns.Snippets.BuildSearchData
+        and ns.Snippets:BuildSearchData()
+    if not entries then return false end
+    for i = 1, #entries do
+        uiSearchData[#uiSearchData + 1] = entries[i]
+    end
+    return true
+end
+
 function Database:PopulateDynamicCommands()
     RemoveEntriesByCategory("Command")
     local entries = ns.SearchCommands and ns.SearchCommands.BuildCommandSearchData

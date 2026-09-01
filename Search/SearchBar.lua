@@ -876,16 +876,8 @@ function Search:CreateSearchFrame()
     -- Markup is usually preceded by a space ("Item Name |A:...|a"); after
     -- stripping the markup, also collapse runs of whitespace and trim the
     -- result so the suggestion ends cleanly.
-    local function StripMarkup(s)
-        if not s then return s end
-        s = s:gsub("|A:[^|]*|a", "")
-        s = s:gsub("|T[^|]*|t", "")
-        s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
-        s = s:gsub("|H[^|]+|h(.-)|h", "%1")
-        s = s:gsub("%s+", " ")
-        s = s:match("^%s*(.-)%s*$") or s
-        return s
-    end
+    -- Shared with the snippet row preview; Utils.StripMarkup owns the rules.
+    local StripMarkup = Utils.StripMarkup
 
     Utils.AttachAutocomplete(editBox, {
         enabled = function() return EasyFind.db.searchAutocomplete ~= false end,
@@ -948,7 +940,7 @@ function Search:CreateSearchFrame()
     -- when our box is the active typing target.
     if not Search._chatLinkHooked then
         Search._chatLinkHooked = true
-        hooksecurefunc("ChatEdit_InsertLink", function(text)
+        Utils.HookInsertLink(function(text)
             if not text or text == "" then return end
             local box = searchFrame and searchFrame.editBox
             if box and box:IsVisible() and box:HasFocus() then

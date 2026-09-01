@@ -1,4 +1,5 @@
 local _, ns = ...
+local L = ns.L
 
 local Results = ns.Results
 local Utils = ns.Utils
@@ -39,6 +40,25 @@ function ns.BuildApplicationEntries()
             end,
         }
     end
+    -- Snippets opens the options panel landed on its tab: the tab is the
+    -- one management surface (list, search, create, edit), and the menu is
+    -- its discoverable front door. category "Snippet" gives the row its
+    -- glyph; nativeRun runs BEFORE the snippet-category branch in
+    -- SelectResult, so this opens the list, not the per-snippet editor.
+    -- The panel is a LoadOnDemand companion: request it before touching
+    -- ns.Options (the options tutorial button shipped broken for skipping
+    -- exactly this).
+    apps[#apps + 1] = {
+        name = L["FILTER_SNIPPETS"],
+        category = "Snippet",
+        noPin = true,
+        nativeRun = function()
+            if ns.RequestOptionsPanel and ns.RequestOptionsPanel()
+               and ns.Options and ns.Options.OpenAtSnippets then
+                ns.Options:OpenAtSnippets()
+            end
+        end,
+    }
     return apps
 end
 
