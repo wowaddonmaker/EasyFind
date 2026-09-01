@@ -101,8 +101,16 @@ local function AttachMacroListSearch(frame)
     -- obvious from the window itself).
     local title = frame.GetTitleText and frame:GetTitleText()
     if title then title:Hide() end
-    searchBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 70, -7)
-    searchBox:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -32, -27)
+    -- Vertically centered ON the close button by construction (corner
+    -- anchoring kept landing the bar below the X's line); width spans from
+    -- right of the portrait to left of the X.
+    searchBox:SetHeight(20)
+    searchBox:SetWidth(frame:GetWidth() - 70 - 40)
+    if frame.CloseButton then
+        searchBox:SetPoint("RIGHT", frame.CloseButton, "LEFT", -4, 0)
+    else
+        searchBox:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -32, -6)
+    end
     -- Above every header chrome frame: the NineSlice border band and the
     -- portrait/title containers are CHILD FRAMES whose levels sit above the
     -- root's, so a root-relative +10 still rendered the box underneath the
