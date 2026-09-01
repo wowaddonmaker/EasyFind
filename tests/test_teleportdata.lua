@@ -4,9 +4,17 @@ local H = require("Harness")
 local env = H.newEnv()
 local ns = H.newNs(env)
 
--- Stub the journal: Court of Stars resolves localized, everything else fails.
+-- ONE journal stub for the whole file (tests must never swap it: the
+-- module's name cache is shared state across the randomized suite).
+-- Court of Stars resolves localized; Mists counts calls for the caching
+-- test; everything else fails.
+local mistsCalls = 0
 env.EJ_GetInstanceInfo = function(instanceID)
     if instanceID == 800 then return "Hof der Sterne" end
+    if instanceID == 1184 then
+        mistsCalls = mistsCalls + 1
+        return "Mists of Tirna Scithe"
+    end
     error("no journal data")
 end
 
@@ -50,15 +58,11 @@ function tests.keywords_unmappedSpellNoOp()
 end
 
 function tests.keywords_journalNameCached()
-    local calls = 0
-    env.EJ_GetInstanceInfo = function(instanceID)
-        calls = calls + 1
-        if instanceID == 800 then return "Court of Stars" end
-        error("no journal data")
-    end
-    keywordSet(393766)
-    keywordSet(393766)
-    H.assertTrue(calls <= 1, "journal lookups are cached per entry")
+    -- Own entry (Mists, 354464): the resolvedNames cache is module state
+    -- shared across the randomized suite, so no other test may touch it.
+    keywordSet(354464)
+    keywordSet(354464)
+    H.assertTrue(mistsCalls <= 1, "journal lookups are cached per entry")
 end
 
 local pass, fail, failures = H.runSuite("TeleportData", tests)

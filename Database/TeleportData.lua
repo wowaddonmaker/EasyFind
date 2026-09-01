@@ -110,6 +110,26 @@ ns.DUNGEON_TELEPORT_SPELLS = {
     [1286812] = { en = "Altar of Fangs", kw = { "fangs" } },
 }
 
+-- Trigger words for the search engine: the abilities provider is LAZY and
+-- loads on its own trigger words or a low-result fallback -- a dungeon-name
+-- query like "karazhan" trips neither (the catalog alone yields plenty of
+-- results), so without these the teleport rows silently cannot exist in
+-- the search until something else loads abilities. Static words come from
+-- the table at load; localized dungeon-name words join as the journal
+-- resolves them. Two-character abbreviations stay out (they ride the
+-- low-result fallback instead); stopwords never trigger.
+local TRIGGER_STOPWORDS = { ["the"] = true, ["of"] = true, ["de"] = true, ["la"] = true }
+local triggers = { teleport = true, portal = true, dungeon = true, keystone = true, mythic = true }
+ns.DUNGEON_TELEPORT_TRIGGERS = triggers
+
+local function AddTriggerWords(text)
+    for word in text:gmatch("[^%s:,!']+") do
+        if #word >= 3 and not TRIGGER_STOPWORDS[word] then
+            triggers[word] = true
+        end
+    end
+end
+
 -- Shared terms every teleport row answers to. (A localized "teleport"
 -- keyword would need a probe-verified Blizzard GlobalString key; the
 -- localized DUNGEON name below is the piece that matters per locale.)
@@ -117,6 +137,16 @@ local sharedTeleportKw
 
 local slower = string.lower
 local resolvedNames = {}
+
+for _, entry in pairs(ns.DUNGEON_TELEPORT_SPELLS) do
+    AddTriggerWords(slower(entry.en))
+    local extra = entry.kw
+    if extra then
+        for i = 1, #extra do
+            AddTriggerWords(extra[i])
+        end
+    end
+end
 
 local function InstanceNameOf(mapEntry)
     local cached = resolvedNames[mapEntry]
@@ -126,6 +156,7 @@ local function InstanceNameOf(mapEntry)
         local ok, ejName = pcall(EJ_GetInstanceInfo, mapEntry.ej)
         if ok and type(ejName) == "string" and ejName ~= "" then
             name = ejName
+            AddTriggerWords(slower(ejName))
         end
     end
     resolvedNames[mapEntry] = name or false

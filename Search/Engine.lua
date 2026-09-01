@@ -47,7 +47,9 @@ local EXPLICIT_FILTER_OVERRIDE = {
 }
 
 local PROVIDERS = {
-    { key = "abilities", words = { "ability", "abilities", "spell", "spells" }, loadOnLowResults = true },
+    -- teleportTriggers: dungeon-name words (see Database/TeleportData.lua)
+    -- also load abilities, so "karazhan" surfaces its teleport spell cold.
+    { key = "abilities", words = { "ability", "abilities", "spell", "spells" }, teleportTriggers = true, loadOnLowResults = true },
     { key = "talents", words = { "talent", "talents", "spec", "specialization" }, loadOnLowResults = true },
     { key = "macros", words = { "macro", "macros" }, loadOnLowResults = true },
     { key = "currencies", words = { "currency", "currencies", "cur" }, loadOnLowResults = true },
@@ -274,6 +276,8 @@ function Engine:RequestProviders(ctx, onChanged, resultCount)
         -- entirely, even if a caller passes ctx.filters by mistake.
         local viaPill = self:QuickFilterIncludes(ctx, key)
         local explicit = viaPill or self:HasAnyWord(ctx, spec.lookup)
+            or (spec.teleportTriggers and ns.DUNGEON_TELEPORT_TRIGGERS
+                and self:HasAnyWord(ctx, ns.DUNGEON_TELEPORT_TRIGGERS))
         if viaPill or self:FilterAllows(ctx, key, explicit) then
             local shouldRequest = explicit
                 or (spec.loadWhenEnabled and ctx.filters and ctx.filters[key] == true)
