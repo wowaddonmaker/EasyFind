@@ -2,132 +2,150 @@ local _, ns = ...
 
 -- A search bar in the game's own macro window, filtering the visible macro
 -- grid on the CURRENT tab (general or character) to macros whose name or
--- body matches. Sits in the title strip (portrait to close button).
+-- body matches. Sits in the title strip, centered on the close button.
 --
--- Mechanism (from the Blizzard_MacroUI source, not inference): the
--- selector's data provider is MacroFrameGetMacroInfo, whose accessor
--- returns (name, texture, body) for a POSITION, buttons render purely
--- from those returns via the setup callback, and every click funnels
--- through MacroFrame:GetMacroDataIndex(position) to reach the real
--- macro. True filtering is therefore two position remaps kept in sync:
--- the accessor overlay forwards ALL provider returns for the mapped
--- slot (an earlier build forwarded one value and rendered garbage),
--- and the GetMacroDataIndex overlay maps a clicked position to its
--- true slot. Clearing the query falls straight through to the
--- originals.
+-- Identity model: while a query is active, the selector gets OUR data
+-- provider, returning one filtered entry table per shown position, and OUR
+-- setup callback stamps each rendered button with the entry's TRUE macro
+-- index (SetSelectionIndex + GetElementData). Every downstream consumer
+-- (click, SaveMacro, SelectMacro, the editor pane, selection highlight)
+-- then operates on true indices with no remapping anywhere. MacroFrame's
+-- Update is parked on a no-op for the duration (restored on clear) so
+-- saves, UPDATE_MACROS, and tab plumbing cannot shove the stock provider
+-- back underneath the filter; tab switches and macro changes re-run the
+-- search instead.
 
 local Utils = ns.Utils
 local slower, sfind = Utils.slower, Utils.sfind
 
 local CreateFrame = CreateFrame
 local GetMacroInfo = GetMacroInfo
-local hooksecurefunc = hooksecurefunc
-local select = select
+local GetNumMacros = GetNumMacros
 local pcall = pcall
+local type = type
 
-local filterSlots = nil  -- [shownPosition] = true slot, while a query is active
-local origByIndex, origNum
+local BUILD = "identity-remap-v10"
 
-local function MacroMatches(frame, slot, query)
-    local name, _, body = GetMacroInfo((frame.macroBase or 0) + slot)
-    if not name then return false end
-    if sfind(slower(name), query, 1, true) then return true end
-    return body and sfind(slower(body), query, 1, true) or false
+local filtered = {}      -- reused entry tables: {index, name, texture}
+local filteredCount = 0
+local searching = false
+local origUpdate = nil
+
+local function NoOpUpdate() end
+
+local function FilteredGetMacroInfo(selectionIndex)
+    if selectionIndex > filteredCount then return nil end
+    return filtered[selectionIndex]
 end
 
-local function InstallOverlay(frame, sel)
-    origByIndex = sel.getSelectionByIndex
-    origNum = sel.getNumSelections
-    if not (origByIndex and origNum) then return false end
-    -- Plain (index) closures, index as the last argument either way.
-    sel.getSelectionByIndex = function(...)
-        local idx = select(select("#", ...), ...)
-        if filterSlots then
-            local slot = filterSlots[idx]
-            if not slot then return nil end
-            return origByIndex(slot)
-        end
-        return origByIndex(idx)
-    end
-    sel.getNumSelections = function(...)
-        if filterSlots then return #filterSlots end
-        return origNum(...)
-    end
-    if not frame.efMacroDataIndexWrapped and frame.GetMacroDataIndex then
-        frame.efMacroDataIndexWrapped = true
-        local origDataIndex = frame.GetMacroDataIndex
-        frame.GetMacroDataIndex = function(self, index)
-            if filterSlots and filterSlots[index] then
-                return origDataIndex(self, filterSlots[index])
+local function FilteredGetNumMacros()
+    return filteredCount
+end
+
+local function CollectMatches(frame, query)
+    local base = frame.macroBase or 0
+    local numAccount, numCharacter = GetNumMacros()
+    local total = base == 0 and (numAccount or 0) or (numCharacter or 0)
+    filteredCount = 0
+    for slot = 1, total do
+        local name, texture, body = GetMacroInfo(base + slot)
+        if name and (sfind(slower(name), query, 1, true)
+                or (body and sfind(slower(body), query, 1, true))) then
+            filteredCount = filteredCount + 1
+            local entry = filtered[filteredCount]
+            if not entry then
+                entry = {}
+                filtered[filteredCount] = entry
             end
-            return origDataIndex(self, index)
+            entry.index, entry.name, entry.texture = slot, name, texture
         end
     end
-    return true
+    for i = filteredCount + 1, #filtered do
+        filtered[i] = nil
+    end
 end
 
--- Tab switches and updates re-push the provider, reinstalling Blizzard's
--- accessors over ours: capture the fresh originals and re-wrap.
-local function ReinstallIfDisplaced(frame)
-    local sel = frame.MacroSelector
-    if not sel then return end
-    local mine = sel.efMacroSearchAccessors
-    if mine and sel.getSelectionByIndex == mine[1] and sel.getNumSelections == mine[2] then
+-- Replaces the stock setup callback for the life of the frame. The stock
+-- payload is the GetMacroInfo multi-return (name string first); our
+-- filtered provider hands over the entry table instead, and that branch
+-- stamps the button with the entry's true index.
+local function InitMacroButton(macroButton, _, name, texture)
+    if type(name) == "table" then
+        local entry = name
+        macroButton.efTrueIndex = entry.index
+        if not macroButton.efGetTrueIndex then
+            -- GetElementData is an instance closure the scroll view installs
+            -- per frame (not a mixin method): keep the original to restore,
+            -- and NEVER nil the field -- the view's Release path calls it.
+            macroButton.efOrigGetElementData = macroButton.GetElementData
+            macroButton.efGetTrueIndex = function() return macroButton.efTrueIndex end
+        end
+        macroButton.GetElementData = macroButton.efGetTrueIndex
+        if macroButton.SetSelectionIndex then
+            macroButton:SetSelectionIndex(entry.index)
+        end
+        macroButton:SetIconTexture(entry.texture)
+        macroButton.Name:SetText(entry.name)
+        macroButton:Enable()
         return
     end
-    if InstallOverlay(frame, sel) then
-        sel.efMacroSearchAccessors = { sel.getSelectionByIndex, sel.getNumSelections }
+    if macroButton.efOrigGetElementData then
+        macroButton.GetElementData = macroButton.efOrigGetElementData
+    end
+    if name then
+        macroButton:SetIconTexture(texture)
+        macroButton.Name:SetText(name)
+        macroButton:Enable()
+    else
+        macroButton:SetIconTexture("")
+        macroButton.Name:SetText("")
+        macroButton:Disable()
     end
 end
 
-local reapplying = false
+local function ResetMacroSearch(frame)
+    if not searching then return end
+    searching = false
+    filteredCount = 0
+    frame.Update = origUpdate
+    origUpdate = nil
+    if frame.Update then pcall(frame.Update, frame) end
+end
 
 local function ApplyMacroSearch(frame, searchBox)
     local sel = frame.MacroSelector
-    if not (sel and sel.UpdateSelections) then return end
-    ReinstallIfDisplaced(frame)
-    -- The TRUE slot currently selected, resolved through the outgoing map,
-    -- so the selection (and the editor pane below) can follow the filter.
-    local prevPos = sel.GetSelectedIndex and sel:GetSelectedIndex()
-    local prevTrue = prevPos and (filterSlots and filterSlots[prevPos] or prevPos)
+    if not (sel and sel.SetSelectionsDataProvider) then return end
     local query = slower((searchBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", ""))
     if query == "" then
-        filterSlots = nil
-    else
-        filterSlots = searchBox.efSlots or {}
-        searchBox.efSlots = filterSlots
-        wipe(filterSlots)
-        local total = origNum and origNum() or 0
-        for slot = 1, total do
-            if MacroMatches(frame, slot, query) then
-                filterSlots[#filterSlots + 1] = slot
-            end
-        end
+        ResetMacroSearch(frame)
+        return
     end
-    pcall(sel.UpdateSelections, sel)
-    -- Sync the selection to the new view: keep the same macro when it
-    -- still matches, else take the first match -- otherwise the editor
-    -- pane keeps showing whatever was selected before the filter.
-    if frame.SelectMacro then
-        local target
-        if filterSlots then
-            for i = 1, #filterSlots do
-                if filterSlots[i] == prevTrue then target = i break end
-            end
-            if not target and #filterSlots > 0 then target = 1 end
-        else
-            target = prevTrue
+    if not searching then
+        searching = true
+        origUpdate = frame.Update
+        frame.Update = NoOpUpdate
+    end
+    CollectMatches(frame, query)
+    pcall(sel.SetSelectionsDataProvider, sel, FilteredGetMacroInfo, FilteredGetNumMacros)
+    if frame.UpdateButtons then pcall(frame.UpdateButtons, frame) end
+    -- Selection (and the editor pane a click would SAVE into) follows the
+    -- filter: kept when the selected macro still matches, else the first
+    -- match. Selected indices are true indices in both modes.
+    if filteredCount > 0 and frame.SelectMacro then
+        local current = sel.GetSelectedIndex and sel:GetSelectedIndex()
+        for i = 1, filteredCount do
+            if filtered[i].index == current then return end
         end
-        if target then
-            reapplying = true
-            pcall(frame.SelectMacro, frame, target)
-            reapplying = false
-        end
+        pcall(frame.SelectMacro, frame, filtered[1].index, true)
     end
 end
 
 local function AttachMacroListSearch(frame)
     if not frame or frame.efMacroListSearch then return end
+    local sel = frame.MacroSelector
+    if not (sel and sel.SetSetupCallback) then return end
+
+    sel:SetSetupCallback(InitMacroButton)
 
     local searchBox = CreateFrame("EditBox", "EasyFindMacroListSearchBox", frame, "SearchBoxTemplate")
     searchBox:SetAutoFocus(false)
@@ -135,20 +153,22 @@ local function AttachMacroListSearch(frame)
     -- obvious from the window itself).
     local title = frame.GetTitleText and frame:GetTitleText()
     if title then title:Hide() end
-    -- Vertically centered ON the close button by construction (corner
-    -- anchoring kept landing the bar below the X's line); width spans from
-    -- right of the portrait to left of the X.
-    searchBox:SetHeight(16)
-    searchBox:SetWidth(frame:GetWidth() - 70 - 48)
+    -- Vertically centered ON the close button by construction; width spans
+    -- from right of the portrait to left of the X. The template's border
+    -- art is fixed-size textures, so SetHeight cannot shrink it visually:
+    -- scale the whole box and divide the on-screen width and gap by the
+    -- scale to compensate.
+    local scale = 0.75
+    searchBox:SetScale(scale)
+    searchBox:SetHeight(20)
+    searchBox:SetWidth((frame:GetWidth() - 70 - 48) / scale)
     if frame.CloseButton then
-        searchBox:SetPoint("RIGHT", frame.CloseButton, "LEFT", -12, 0)
+        searchBox:SetPoint("RIGHT", frame.CloseButton, "LEFT", -26 / scale, 0)
     else
-        searchBox:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -40, -8)
+        searchBox:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -40 / scale, -8 / scale)
     end
-    -- Above every header chrome frame: the NineSlice border band and the
-    -- portrait/title containers are CHILD FRAMES whose levels sit above the
-    -- root's, so a root-relative +10 still rendered the box underneath the
-    -- title bar art.
+    -- Above the header chrome: NineSlice and the title/portrait containers
+    -- are child frames whose levels sit above the root's.
     local topLevel = frame:GetFrameLevel()
     for _, chrome in next, { frame.NineSlice, frame.TitleContainer, frame.PortraitContainer } do
         if chrome and chrome.GetFrameLevel then
@@ -174,32 +194,40 @@ local function AttachMacroListSearch(frame)
     end)
     searchBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 
-    -- Tab switches, Blizzard updates, AND the click path (SelectMacro can
-    -- re-push the stock provider, which un-filtered the grid mid-click)
-    -- re-assert the filtered view. reapplying guards our own SelectMacro
-    -- sync from recursing back in here.
-    local function Reapply()
-        if reapplying then return end
-        ReinstallIfDisplaced(frame)
-        if (searchBox:GetText() or "") ~= "" then
-            reapplying = true
+    -- Tab switches change macroBase under a parked Update; macro edits,
+    -- creates, and deletes fire UPDATE_MACROS. Both re-run the live search.
+    local function ResearchIfActive()
+        if searching then
             ApplyMacroSearch(frame, searchBox)
-            reapplying = false
         end
     end
-    if frame.SetAccountMacros then hooksecurefunc(frame, "SetAccountMacros", Reapply) end
-    if frame.SetCharacterMacros then hooksecurefunc(frame, "SetCharacterMacros", Reapply) end
-    if frame.Update then hooksecurefunc(frame, "Update", Reapply) end
-    if frame.SelectMacro then hooksecurefunc(frame, "SelectMacro", Reapply) end
+    local tab1, tab2 = _G.MacroFrameTab1, _G.MacroFrameTab2
+    if tab1 then tab1:HookScript("OnClick", ResearchIfActive) end
+    if tab2 then tab2:HookScript("OnClick", ResearchIfActive) end
 
-    frame:HookScript("OnShow", function()
-        ReinstallIfDisplaced(frame)
+    searchBox:RegisterEvent("UPDATE_MACROS")
+    searchBox:RegisterEvent("PLAYER_REGEN_DISABLED")
+    searchBox:RegisterEvent("PLAYER_REGEN_ENABLED")
+    searchBox:SetScript("OnEvent", function(self, event)
+        if event == "UPDATE_MACROS" then
+            ResearchIfActive()
+        elseif event == "PLAYER_REGEN_DISABLED" then
+            -- Macro writes are blocked in combat; a click while filtered
+            -- would try to SaveMacro. Park the whole feature until regen.
+            self:SetText("")
+            self:ClearFocus()
+            self:Disable()
+        elseif event == "PLAYER_REGEN_ENABLED" then
+            self:Enable()
+        end
     end)
+
     frame:HookScript("OnHide", function()
-        filterSlots = nil
         searchBox:SetText("")
+        ResetMacroSearch(frame)
     end)
 
+    searchBox.efBuild = BUILD
     frame.efMacroListSearch = searchBox
 end
 
