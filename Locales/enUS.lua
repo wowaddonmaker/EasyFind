@@ -236,6 +236,7 @@ L["TUT_CALC_COPY_DESC"]                 = "Hover over either the expression or t
 L["TUT_FEATURE_APPS"]                   = "Apps"
 L["TUT_FEATURE_APPS_DESC"]              = "Tools built into the search bar: icon search and calculator. More coming soon."
 L["TUT_SLIDE_ICONSEARCH"]               = "Browse and filter every game icon. Copy an icon's ID, name, or path, or create a macro with it, right from the grid. Open it from the apps menu, search \"Icon Search\", or type @icons."
+L["TUT_SLIDE_SNIPPETS"]                 = "Snippets store reusable text. Insert one from search results, or type \\keyword in chat and it expands as you type. Curly-brace variables fill in when used, and a snippet pastes cleanly into a macro."
 L["TUT_THEME_HEADER"]                   = "Which EasyFind theme would you like?"
 L["TUT_THEME_RESIZE_NOTE"]              = "You can change your selection at any time from the options menu. Resizing is also available there."
 L["TUT_KEYBIND_HEADER"]                 = "Pick your hotkeys (applies to every character)"

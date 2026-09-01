@@ -215,6 +215,7 @@ L["TUT_CALC_COPY_DESC"]                 = "將滑鼠懸停在算式或結果上�
 L["TUT_FEATURE_APPS"]                   = "應用程式"
 L["TUT_FEATURE_APPS_DESC"]              = "內建於搜尋列的工具：圖示搜尋和計算機。更多工具即將推出。"
 L["TUT_SLIDE_ICONSEARCH"]               = "瀏覽並篩選遊戲中的所有圖示。可直接在網格中複製圖示的 ID、名稱或路徑，或用它建立巨集。從應用程式選單開啟、搜尋\"圖示搜尋\"或輸入 @icons。"
+L["TUT_SLIDE_SNIPPETS"]                 = "文字片段保存可重複使用的文字。從搜尋結果插入，或在聊天視窗輸入 \\關鍵字 即可邊打邊展開。大括號變數在使用時填入，片段還能乾淨地貼進巨集。"
 L["TUT_THEME_HEADER"]                   = "你想要哪種 EasyFind 主題？"
 L["TUT_THEME_RESIZE_NOTE"]              = "你可以隨時在選項中更改你的選擇。也可以在那裡調整大小。"
 L["TUT_KEYBIND_HEADER"]                 = "選擇你的快捷鍵（套用至每個角色）"

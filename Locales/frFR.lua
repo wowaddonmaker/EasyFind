@@ -215,6 +215,7 @@ L["TUT_CALC_COPY_DESC"]                 = "Survolez l'expression ou le résultat
 L["TUT_FEATURE_APPS"]                   = "Applications"
 L["TUT_FEATURE_APPS_DESC"]              = "Des outils intégrés à la barre de recherche : recherche d'icônes et calculatrice. D'autres arrivent bientôt."
 L["TUT_SLIDE_ICONSEARCH"]               = "Parcourez et filtrez toutes les icônes du jeu. Copiez l'ID, le nom ou le chemin d'une icône, ou créez une macro avec, directement depuis la grille. Ouvrez-la depuis le menu des applications, cherchez \"Recherche d'icônes\" ou tapez @icons."
+L["TUT_SLIDE_SNIPPETS"]                 = "Les fragments stockent du texte réutilisable. Insérez-en un depuis les résultats de recherche, ou tapez \\motclé dans le chat et il se déploie pendant la frappe. Les variables entre accolades se remplissent à l'usage, et un fragment se colle proprement dans une macro."
 L["TUT_THEME_HEADER"]                   = "Quel thème EasyFind souhaitez-vous ?"
 L["TUT_THEME_RESIZE_NOTE"]              = "Vous pouvez modifier votre sélection à tout moment depuis les options. Le redimensionnement y est aussi disponible."
 L["TUT_KEYBIND_HEADER"]                 = "Choisissez vos raccourcis (s'applique à chaque personnage)"

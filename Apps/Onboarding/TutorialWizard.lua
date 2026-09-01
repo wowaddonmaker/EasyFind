@@ -233,6 +233,12 @@ local APPS_TUTORIAL_SLIDES = {
         w = 454, h = 210,
         text = L["TUT_SLIDE_ICONSEARCH"],
     },
+    {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-snippets-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_SLIDE_SNIPPETS"],
+    },
 }
 local MAP_SEARCH_TUTORIAL_SLIDES = {
     {

@@ -215,6 +215,7 @@ L["TUT_CALC_COPY_DESC"]                 = "Passe o mouse sobre a expressão ou o
 L["TUT_FEATURE_APPS"]                   = "Aplicativos"
 L["TUT_FEATURE_APPS_DESC"]              = "Ferramentas integradas à barra de busca: busca de ícones e calculadora. Mais em breve."
 L["TUT_SLIDE_ICONSEARCH"]               = "Navegue e filtre todos os ícones do jogo. Copie o ID, nome ou caminho de um ícone, ou crie um macro com ele direto da grade. Abra pelo menu de aplicativos, busque \"Busca de ícones\" ou digite @icons."
+L["TUT_SLIDE_SNIPPETS"]                 = "Os fragmentos guardam texto reutilizável. Insira um pelos resultados da busca, ou digite \\palavrachave no bate-papo e ele se expande enquanto você digita. Variáveis entre chaves se preenchem ao usar, e um fragmento cola limpo em um macro."
 L["TUT_THEME_HEADER"]                   = "Qual tema do EasyFind você prefere?"
 L["TUT_THEME_RESIZE_NOTE"]              = "Você pode mudar sua seleção a qualquer momento nas opções. O redimensionamento também está disponível lá."
 L["TUT_KEYBIND_HEADER"]                 = "Escolha seus atalhos (vale para todos os personagens)"

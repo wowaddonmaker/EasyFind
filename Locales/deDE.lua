@@ -217,6 +217,7 @@ L["TUT_CALC_COPY_DESC"]                 = "Fahre mit der Maus über den Ausdruck
 L["TUT_FEATURE_APPS"]                   = "Apps"
 L["TUT_FEATURE_APPS_DESC"]              = "In die Suchleiste eingebaute Werkzeuge: Symbolsuche und Taschenrechner. Weitere folgen bald."
 L["TUT_SLIDE_ICONSEARCH"]               = "Durchstöbere und filtere alle Spielsymbole. Kopiere ID, Namen oder Pfad eines Symbols oder erstelle direkt aus dem Raster ein Makro damit. Öffne sie über das Apps-Menü, suche nach \"Symbolsuche\" oder tippe @icons."
+L["TUT_SLIDE_SNIPPETS"]                 = "Textbausteine speichern wiederverwendbaren Text. Füge einen aus den Suchergebnissen ein oder tippe \\Schlüsselwort im Chat, und er wird beim Tippen erweitert. Variablen in geschweiften Klammern füllen sich beim Verwenden, und ein Baustein lässt sich sauber in ein Makro einfügen."
 L["TUT_THEME_HEADER"]                   = "Welches EasyFind-Design hättest du gern?"
 L["TUT_THEME_RESIZE_NOTE"]              = "Deine Auswahl kannst du jederzeit in den Optionen ändern. Auch die Größe lässt sich dort anpassen."
 L["TUT_KEYBIND_HEADER"]                 = "Wähle deine Tastenkürzel (gilt für jeden Charakter)"
