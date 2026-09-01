@@ -258,6 +258,8 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
 L["WHATSNEW_BODY"]                      =
+    "|cffFFD100\226\128\162|r |cffffffffTéléportations de donjon, par nom de donjon|r\n" ..
+    "    |cff999999-|r Tapez le nom ou le surnom d'un donjon (boralus, mots, doti) et votre téléportation débloquée apparaît, prête à lancer\n" ..
     "|cffFFD100\226\128\162|r |cffffffffRecherche d'icônes, une nouvelle application (d'autres arrivent !)|r\n" ..
     "    |cff999999-|r Parcourez et filtrez toutes les icônes du jeu dans une grille ; clic gauche ouvre une fenêtre pour copier l'ID de l'icône, clic droit crée une macro avec elle et plus\n" ..
     "    |cff999999-|r 3 façons d'y accéder :\n" ..

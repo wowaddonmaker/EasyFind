@@ -2,7 +2,7 @@
 ## Title: EasyFind
 ## Notes: Search and locate UI elements and map locations with ease
 ## Author: justawower
-## Version: 3.0.0
+## Version: 3.0.1
 ## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
 ## Group: EasyFind
 ## Category: UI

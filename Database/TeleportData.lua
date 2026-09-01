@@ -9,7 +9,7 @@ local _, ns = ...
 -- name as a fallback keyword, the community abbreviation, and the shared
 -- teleport terms. A wrong or removed spellID is harmless: the spellbook
 -- walk never enumerates it, so nothing attaches. Audit the table in-game
--- with the EasyFindDev teleport probe, which resolves both name columns
+-- with the external teleport probe, which resolves both name columns
 -- without needing to own any of the spells.
 --
 -- ej = journal instance ID (EJ_GetInstanceInfo); en = English dungeon
@@ -18,7 +18,7 @@ local _, ns = ...
 ns.DUNGEON_TELEPORT_SPELLS = {
     -- Every destination below is client-proven: the spell's own tooltip
     -- description names it ("Teleport to the entrance ..."), captured via
-    -- the EasyFindDev teleport scanner. ej values are audited in-game.
+    -- the external teleport scanner. ej values are audited in-game.
     -- Mists of Pandaria
     [131204] = { ej = 313,  en = "Temple of the Jade Serpent", kw = { "tjs", "jade" } },
     [131205] = { ej = 302,  en = "Stormstout Brewery", kw = { "brewery", "stormstout" } },

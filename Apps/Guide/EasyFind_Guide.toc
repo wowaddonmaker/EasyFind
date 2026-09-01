@@ -2,7 +2,7 @@
 ## Title: EasyFind [Guides]
 ## Notes: Step-by-step guidance companion for EasyFind, loaded on first guided action
 ## Author: justawower
-## Version: 3.0.0
+## Version: 3.0.1
 ## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
 ## Group: EasyFind
 ## Category: UI

@@ -4,6 +4,13 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [3.0.1] - 2026-08-31
+
+### Added
+- **Find dungeon teleports by dungeon name**: type a dungeon's name or its common nickname (`boralus`, `mots`, `doti`) and your unlocked "Path of ..." teleport surfaces near the top, ready to cast; searching the flavor name is no longer required. Covers every teleport spell in the game across all expansions, with dungeon names localized in every language
+
+---
+
 ## [3.0.0] - 2026-08-31
 
 ### Added

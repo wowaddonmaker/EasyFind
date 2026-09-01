@@ -260,6 +260,8 @@ L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
+    "|cffFFD100\226\128\162|r |cffffffffDungeon-Teleporte, findbar über den Dungeon|r\n" ..
+    "    |cff999999-|r Tippe den Namen oder Spitznamen eines Dungeons (boralus, mots, doti) und dein freigeschalteter Teleport erscheint, bereit zum Wirken\n" ..
     "|cffFFD100\226\128\162|r |cffffffffSymbolsuche, eine neue App (weitere spannende folgen!)|r\n" ..
     "    |cff999999-|r Durchstöbere und filtere alle Spielsymbole in einem Raster; Linksklick öffnet ein Fenster zum Kopieren der Symbol-ID, Rechtsklick erstellt ein Makro damit und mehr\n" ..
     "    |cff999999-|r 3 Wege hinein:\n" ..

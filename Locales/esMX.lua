@@ -258,6 +258,8 @@ L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver el registro de cambios completo"
 L["WHATSNEW_BODY"]                      =
+    "|cffFFD100\226\128\162|r |cffffffffTeletransportes de mazmorra, por nombre de mazmorra|r\n" ..
+    "    |cff999999-|r Escribe el nombre o apodo de una mazmorra (boralus, mots, doti) y tu teletransporte desbloqueado aparece, listo para lanzar\n" ..
     "|cffFFD100\226\128\162|r |cffffffffBúsqueda de iconos, una nueva aplicación (¡y vienen más!)|r\n" ..
     "    |cff999999-|r Explora y filtra todos los iconos del juego en una cuadrícula; clic izquierdo abre una ventana para copiar el ID del icono, clic derecho crea un macro con él y más\n" ..
     "    |cff999999-|r 3 formas de entrar:\n" ..

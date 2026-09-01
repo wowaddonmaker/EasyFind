@@ -258,6 +258,8 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
+    "|cffFFD100\226\128\162|r |cffffffff던전 이름으로 찾는 던전 순간이동|r\n" ..
+    "    |cff999999-|r 던전 이름이나 약칭(boralus, mots, doti)을 입력하면 잠금 해제한 순간이동 주문이 나타나 바로 시전할 수 있습니다\n" ..
     "|cffFFD100\226\128\162|r |cffffffff아이콘 검색, 새로운 앱 (더 멋진 앱들이 올 예정!)|r\n" ..
     "    |cff999999-|r 모든 게임 아이콘을 격자에서 살펴보고 필터링하세요. 좌클릭은 아이콘 ID를 복사할 수 있는 창을 열고, 우클릭은 그 아이콘으로 매크로 만들기 등을 제공합니다\n" ..
     "    |cff999999-|r 3가지 진입 방법:\n" ..

@@ -281,6 +281,8 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
+    "|cffFFD100\226\128\162|r |cffffffffDungeon teleports, findable by dungeon|r\n" ..
+    "    |cff999999-|r Type a dungeon's name or nickname (boralus, mots, doti) and your unlocked teleport appears, ready to cast\n" ..
     "|cffFFD100\226\128\162|r |cffffffffIcon Search, a new app (with more exciting ones to come!)|r\n" ..
     "    |cff999999-|r Browse and filter all game icons in a grid; left click opens a window to copy the icon's ID, right click creates a macro with it and more\n" ..
     "    |cff999999-|r 3 entry points:\n" ..

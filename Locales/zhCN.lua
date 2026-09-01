@@ -258,6 +258,8 @@ L["WHATSNEW_CHAT_HELLO"]                = "欢迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "这里"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日志"
 L["WHATSNEW_BODY"]                      =
+    "|cffFFD100\226\128\162|r |cffffffff按地下城名称查找地下城传送|r\n" ..
+    "    |cff999999-|r 输入地下城名称或昵称（boralus、mots、doti），已解锁的传送法术即会出现，可直接施放\n" ..
     "|cffFFD100\226\128\162|r |cffffffff图标搜索，全新应用（更多精彩应用即将到来！）|r\n" ..
     "    |cff999999-|r 在网格中浏览并筛选所有游戏图标；左键打开可复制图标 ID 的窗口，右键可用该图标创建宏等\n" ..
     "    |cff999999-|r 3 种打开方式：\n" ..

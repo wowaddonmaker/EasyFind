@@ -258,6 +258,8 @@ L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
 L["WHATSNEW_BODY"]                      =
+    "|cffFFD100\226\128\162|r |cffffffffTeletrasporti di spedizione, per nome della spedizione|r\n" ..
+    "    |cff999999-|r Digita il nome o il soprannome di una spedizione (boralus, mots, doti) e il tuo teletrasporto sbloccato appare, pronto da lanciare\n" ..
     "|cffFFD100\226\128\162|r |cffffffffRicerca icone, una nuova app (e altre in arrivo!)|r\n" ..
     "    |cff999999-|r Sfoglia e filtra tutte le icone di gioco in una griglia; clic sinistro apre una finestra per copiare l'ID dell'icona, clic destro crea una macro con essa e altro\n" ..
     "    |cff999999-|r 3 modi per entrare:\n" ..
