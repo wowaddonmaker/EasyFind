@@ -259,18 +259,7 @@ L["WHATSNEW_CHAT_HERE"]                 = "这里"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日志"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffff按地下城名称查找地下城传送|r\n" ..
-    "    |cff999999-|r 输入地下城名称或昵称（boralus、mots、doti），已解锁的传送法术即会出现，可直接施放\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff图标搜索，全新应用（更多精彩应用即将到来！）|r\n" ..
-    "    |cff999999-|r 在网格中浏览并筛选所有游戏图标；左键打开可复制图标 ID 的窗口，右键可用该图标创建宏等\n" ..
-    "    |cff999999-|r 3 种打开方式：\n" ..
-    "        |cff9999991.|r 从应用菜单打开 |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
-    "        |cff9999992.|r 直接搜索“图标搜索”\n" ..
-    "        |cff9999993.|r 在搜索栏输入 @icons 快速筛选\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff宏图标选择窗口内的搜索|r\n" ..
-    "    |cff999999-|r 创建宏时，游戏自带的图标选择窗口现在有了搜索栏\n" ..
-    "    |cff999999-|r 已经用其他插件实现？可在 选项 > 搜索 中关闭\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff更快更轻|r\n" ..
-    "    |cff999999-|r 大幅性能优化：输入更流畅、内存占用更低，数据仅在实际使用时才加载"
+    "    |cff999999-|r 输入地下城名称或昵称（boralus、mots、doti），已解锁的传送法术即会出现，可直接施放"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "添加别名"

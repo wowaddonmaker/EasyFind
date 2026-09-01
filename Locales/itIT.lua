@@ -259,18 +259,7 @@ L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffTeletrasporti di spedizione, per nome della spedizione|r\n" ..
-    "    |cff999999-|r Digita il nome o il soprannome di una spedizione (boralus, mots, doti) e il tuo teletrasporto sbloccato appare, pronto da lanciare\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffRicerca icone, una nuova app (e altre in arrivo!)|r\n" ..
-    "    |cff999999-|r Sfoglia e filtra tutte le icone di gioco in una griglia; clic sinistro apre una finestra per copiare l'ID dell'icona, clic destro crea una macro con essa e altro\n" ..
-    "    |cff999999-|r 3 modi per entrare:\n" ..
-    "        |cff9999991.|r Aprila dal menu delle app |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
-    "        |cff9999992.|r Cerca semplicemente \"Ricerca icone\"\n" ..
-    "        |cff9999993.|r Scrivi il filtro rapido @icons nella ricerca\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffRicerca nel selettore di icone delle macro|r\n" ..
-    "    |cff999999-|r Stai creando una macro? Il selettore di icone del gioco ora ha una barra di ricerca\n" ..
-    "    |cff999999-|r Usi un altro addon per quello? Disattivala in Opzioni > Ricerca\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffPiù veloce e leggero|r\n" ..
-    "    |cff999999-|r Grande lavoro sulle prestazioni: digitazione più fluida, meno memoria e dati caricati solo quando li usi davvero"
+    "    |cff999999-|r Digita il nome o il soprannome di una spedizione (boralus, mots, doti) e il tuo teletrasporto sbloccato appare, pronto da lanciare"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"

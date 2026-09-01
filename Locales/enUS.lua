@@ -282,18 +282,7 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffDungeon teleports, findable by dungeon|r\n" ..
-    "    |cff999999-|r Type a dungeon's name or nickname (boralus, mots, doti) and your unlocked teleport appears, ready to cast\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffIcon Search, a new app (with more exciting ones to come!)|r\n" ..
-    "    |cff999999-|r Browse and filter all game icons in a grid; left click opens a window to copy the icon's ID, right click creates a macro with it and more\n" ..
-    "    |cff999999-|r 3 entry points:\n" ..
-    "        |cff9999991.|r Open it from the apps menu |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
-    "        |cff9999992.|r Simply search \"Icon Search\"\n" ..
-    "        |cff9999993.|r Type the @icons quick filter in search\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSearch inside the macro icon picker|r\n" ..
-    "    |cff999999-|r Making a macro? The game's own icon picker now has a search bar\n" ..
-    "    |cff999999-|r Using another addon for that? Turn it off in Options > Search\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffFaster and lighter|r\n" ..
-    "    |cff999999-|r A big performance pass: smoother typing, less memory, and data that loads only when you actually use it"
+    "    |cff999999-|r Type a dungeon's name or nickname (boralus, mots, doti) and your unlocked teleport appears, ready to cast"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels
