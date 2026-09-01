@@ -80,10 +80,16 @@ local function ReinstallIfDisplaced(frame)
     end
 end
 
+local reapplying = false
+
 local function ApplyMacroSearch(frame, searchBox)
     local sel = frame.MacroSelector
     if not (sel and sel.UpdateSelections) then return end
     ReinstallIfDisplaced(frame)
+    -- The TRUE slot currently selected, resolved through the outgoing map,
+    -- so the selection (and the editor pane below) can follow the filter.
+    local prevPos = sel.GetSelectedIndex and sel:GetSelectedIndex()
+    local prevTrue = prevPos and (filterSlots and filterSlots[prevPos] or prevPos)
     local query = slower((searchBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", ""))
     if query == "" then
         filterSlots = nil
@@ -99,6 +105,25 @@ local function ApplyMacroSearch(frame, searchBox)
         end
     end
     pcall(sel.UpdateSelections, sel)
+    -- Sync the selection to the new view: keep the same macro when it
+    -- still matches, else take the first match -- otherwise the editor
+    -- pane keeps showing whatever was selected before the filter.
+    if frame.SelectMacro then
+        local target
+        if filterSlots then
+            for i = 1, #filterSlots do
+                if filterSlots[i] == prevTrue then target = i break end
+            end
+            if not target and #filterSlots > 0 then target = 1 end
+        else
+            target = prevTrue
+        end
+        if target then
+            reapplying = true
+            pcall(frame.SelectMacro, frame, target)
+            reapplying = false
+        end
+    end
 end
 
 local function AttachMacroListSearch(frame)
@@ -113,12 +138,12 @@ local function AttachMacroListSearch(frame)
     -- Vertically centered ON the close button by construction (corner
     -- anchoring kept landing the bar below the X's line); width spans from
     -- right of the portrait to left of the X.
-    searchBox:SetHeight(20)
-    searchBox:SetWidth(frame:GetWidth() - 70 - 40)
+    searchBox:SetHeight(16)
+    searchBox:SetWidth(frame:GetWidth() - 70 - 48)
     if frame.CloseButton then
-        searchBox:SetPoint("RIGHT", frame.CloseButton, "LEFT", -4, 0)
+        searchBox:SetPoint("RIGHT", frame.CloseButton, "LEFT", -12, 0)
     else
-        searchBox:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -32, -6)
+        searchBox:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -40, -8)
     end
     -- Above every header chrome frame: the NineSlice border band and the
     -- portrait/title containers are CHILD FRAMES whose levels sit above the
@@ -149,16 +174,23 @@ local function AttachMacroListSearch(frame)
     end)
     searchBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 
-    -- Tab switches and Blizzard updates re-push the stock provider over an
-    -- active filter: re-wrap and re-run the query so the filtered view wins.
+    -- Tab switches, Blizzard updates, AND the click path (SelectMacro can
+    -- re-push the stock provider, which un-filtered the grid mid-click)
+    -- re-assert the filtered view. reapplying guards our own SelectMacro
+    -- sync from recursing back in here.
     local function Reapply()
+        if reapplying then return end
         ReinstallIfDisplaced(frame)
         if (searchBox:GetText() or "") ~= "" then
+            reapplying = true
             ApplyMacroSearch(frame, searchBox)
+            reapplying = false
         end
     end
     if frame.SetAccountMacros then hooksecurefunc(frame, "SetAccountMacros", Reapply) end
     if frame.SetCharacterMacros then hooksecurefunc(frame, "SetCharacterMacros", Reapply) end
+    if frame.Update then hooksecurefunc(frame, "Update", Reapply) end
+    if frame.SelectMacro then hooksecurefunc(frame, "SelectMacro", Reapply) end
 
     frame:HookScript("OnShow", function()
         ReinstallIfDisplaced(frame)
