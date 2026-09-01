@@ -261,18 +261,7 @@ L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffDungeon-Teleporte, findbar über den Dungeon|r\n" ..
-    "    |cff999999-|r Tippe den Namen oder Spitznamen eines Dungeons (boralus, mots, doti) und dein freigeschalteter Teleport erscheint, bereit zum Wirken\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSymbolsuche, eine neue App (weitere spannende folgen!)|r\n" ..
-    "    |cff999999-|r Durchstöbere und filtere alle Spielsymbole in einem Raster; Linksklick öffnet ein Fenster zum Kopieren der Symbol-ID, Rechtsklick erstellt ein Makro damit und mehr\n" ..
-    "    |cff999999-|r 3 Wege hinein:\n" ..
-    "        |cff9999991.|r Über das Apps-Menü öffnen |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
-    "        |cff9999992.|r Einfach nach \"Symbolsuche\" suchen\n" ..
-    "        |cff9999993.|r Den Schnellfilter @icons in der Suche eingeben\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSuche in der Makro-Symbolauswahl|r\n" ..
-    "    |cff999999-|r Beim Makro-Erstellen hat die Symbolauswahl des Spiels jetzt eine Suchleiste\n" ..
-    "    |cff999999-|r Nutzt du dafür ein anderes Addon? Deaktiviere sie unter Optionen > Suche\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSchneller und leichter|r\n" ..
-    "    |cff999999-|r Ein großer Performance-Durchgang: flüssigeres Tippen, weniger Speicher, und Daten werden erst geladen, wenn du sie wirklich nutzt"
+    "    |cff999999-|r Tippe den Namen oder Spitznamen eines Dungeons (boralus, mots, doti) und dein freigeschalteter Teleport erscheint, bereit zum Wirken"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"

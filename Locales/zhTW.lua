@@ -259,18 +259,7 @@ L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日誌"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffff按地城名稱尋找地城傳送|r\n" ..
-    "    |cff999999-|r 輸入地城名稱或暱稱（boralus、mots、doti），已解鎖的傳送法術即會出現，可直接施放\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff圖示搜尋，全新應用程式（更多精彩應用即將到來！）|r\n" ..
-    "    |cff999999-|r 在網格中瀏覽並篩選所有遊戲圖示；左鍵開啟可複製圖示 ID 的視窗，右鍵可用該圖示建立巨集等\n" ..
-    "    |cff999999-|r 3 種開啟方式：\n" ..
-    "        |cff9999991.|r 從應用程式選單開啟 |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
-    "        |cff9999992.|r 直接搜尋「圖示搜尋」\n" ..
-    "        |cff9999993.|r 在搜尋列輸入 @icons 快速篩選\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff巨集圖示選擇視窗內的搜尋|r\n" ..
-    "    |cff999999-|r 建立巨集時，遊戲內建的圖示選擇視窗現在有了搜尋列\n" ..
-    "    |cff999999-|r 已經用其他插件實現？可在 選項 > 搜尋 中關閉\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff更快更輕|r\n" ..
-    "    |cff999999-|r 大幅效能最佳化：輸入更流暢、記憶體佔用更低，資料僅在實際使用時才載入"
+    "    |cff999999-|r 輸入地城名稱或暱稱（boralus、mots、doti），已解鎖的傳送法術即會出現，可直接施放"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "新增別名"

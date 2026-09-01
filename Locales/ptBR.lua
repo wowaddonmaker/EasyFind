@@ -259,18 +259,7 @@ L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffTeleportes de masmorra, pelo nome da masmorra|r\n" ..
-    "    |cff999999-|r Digite o nome ou apelido de uma masmorra (boralus, mots, doti) e seu teleporte desbloqueado aparece, pronto para lançar\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffBusca de ícones, um novo aplicativo (e vêm mais por aí!)|r\n" ..
-    "    |cff999999-|r Navegue e filtre todos os ícones do jogo em uma grade; clique esquerdo abre uma janela para copiar o ID do ícone, clique direito cria um macro com ele e mais\n" ..
-    "    |cff999999-|r 3 formas de entrar:\n" ..
-    "        |cff9999991.|r Abra pelo menu de aplicativos |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
-    "        |cff9999992.|r Simplesmente busque \"Busca de ícones\"\n" ..
-    "        |cff9999993.|r Digite o filtro rápido @icons na busca\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffBusca no seletor de ícones de macros|r\n" ..
-    "    |cff999999-|r Criando um macro? O seletor de ícones do jogo agora tem barra de busca\n" ..
-    "    |cff999999-|r Usa outro addon para isso? Desative-a em Opções > Busca\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffMais rápido e leve|r\n" ..
-    "    |cff999999-|r Grande melhoria de desempenho: digitação mais fluida, menos memória e dados que só carregam quando você realmente os usa"
+    "    |cff999999-|r Digite o nome ou apelido de uma masmorra (boralus, mots, doti) e seu teleporte desbloqueado aparece, pronto para lançar"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"

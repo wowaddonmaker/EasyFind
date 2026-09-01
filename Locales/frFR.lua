@@ -259,18 +259,7 @@ L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffTéléportations de donjon, par nom de donjon|r\n" ..
-    "    |cff999999-|r Tapez le nom ou le surnom d'un donjon (boralus, mots, doti) et votre téléportation débloquée apparaît, prête à lancer\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffRecherche d'icônes, une nouvelle application (d'autres arrivent !)|r\n" ..
-    "    |cff999999-|r Parcourez et filtrez toutes les icônes du jeu dans une grille ; clic gauche ouvre une fenêtre pour copier l'ID de l'icône, clic droit crée une macro avec elle et plus\n" ..
-    "    |cff999999-|r 3 façons d'y accéder :\n" ..
-    "        |cff9999991.|r Ouvrez-la depuis le menu des applications |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
-    "        |cff9999992.|r Cherchez simplement \"Recherche d'icônes\"\n" ..
-    "        |cff9999993.|r Tapez le filtre rapide @icons dans la recherche\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffRecherche dans le sélecteur d'icônes de macros|r\n" ..
-    "    |cff999999-|r Vous créez une macro ? Le sélecteur d'icônes du jeu a désormais une barre de recherche\n" ..
-    "    |cff999999-|r Un autre addon s'en charge déjà ? Désactivez-la dans Options > Recherche\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffPlus rapide et plus léger|r\n" ..
-    "    |cff999999-|r Grande passe d'optimisation : frappe plus fluide, moins de mémoire, et des données chargées uniquement quand vous les utilisez vraiment"
+    "    |cff999999-|r Tapez le nom ou le surnom d'un donjon (boralus, mots, doti) et votre téléportation débloquée apparaît, prête à lancer"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"
