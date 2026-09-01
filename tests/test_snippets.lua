@@ -80,16 +80,18 @@ function tests.buildSearchData_createRowPlusSnippets()
         { name = "Farewell", body = "bye" },
     })
     local rows = Snippets:BuildSearchData()
-    H.assertEq(#rows, 3, "create row + 2 snippets")
-    H.assertTrue(rows[1].snippetCreate == true, "first row is the create row")
-    H.assertEq(rows[2].name, "Greeting")
-    H.assertEq(rows[2].category, "Snippet")
-    H.assertTrue(hasValue(rows[2].keywordsLower, "hi"), "keyword searchable, lowered")
-    H.assertTrue(hasValue(rows[2].keywordsLower, "hello there"),
+    H.assertEq(#rows, 4, "app row + create row + 2 snippets")
+    H.assertTrue(rows[1].nativeRun ~= nil and not rows[1].snippetCreate,
+        "first row is the Snippets app launcher")
+    H.assertTrue(rows[2].snippetCreate == true, "second row is the create row")
+    H.assertEq(rows[3].name, "Greeting")
+    H.assertEq(rows[3].category, "Snippet")
+    H.assertTrue(hasValue(rows[3].keywordsLower, "hi"), "keyword searchable, lowered")
+    H.assertTrue(hasValue(rows[3].keywordsLower, "hello there"),
         "flattened body content searchable")
-    H.assertTrue(hasValue(rows[3].keywordsLower, "bye"), "body-only snippet content searchable")
-    H.assertEq(rows[2].snippetIndex, 1)
-    H.assertEq(rows[3].snippetIndex, 2)
+    H.assertTrue(hasValue(rows[4].keywordsLower, "bye"), "body-only snippet content searchable")
+    H.assertEq(rows[3].snippetIndex, 1)
+    H.assertEq(rows[4].snippetIndex, 2)
 end
 
 function tests.expansion_bareKeywordDoesNotExpand()

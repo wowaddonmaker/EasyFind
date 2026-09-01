@@ -415,7 +415,23 @@ end
 
 function Snippets:BuildSearchData()
     local entries = {}
+    -- The app row: plain "Snippets", opening the management tab -- the
+    -- same searchable front door Calculator and Icon Search have. The
+    -- options panel is a LoadOnDemand companion; request it first.
     entries[1] = {
+        name = L["FILTER_SNIPPETS"],
+        nameLower = slower(L["FILTER_SNIPPETS"]),
+        category = "Snippet",
+        keywords = SNIPPET_KEYWORDS,
+        nativeRun = function()
+            if ns.RequestOptionsPanel and ns.RequestOptionsPanel()
+               and ns.Options and ns.Options.OpenAtSnippets then
+                ns.Options:OpenAtSnippets()
+            end
+        end,
+        noPin = true,
+    }
+    entries[2] = {
         name = L["SNIPPET_CREATE"],
         nameLower = slower(L["SNIPPET_CREATE"]),
         category = "Snippet",
