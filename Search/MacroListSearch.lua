@@ -52,9 +52,11 @@ local function ApplyMacroSearch(frame, searchBox)
         filtered = searchBox.efResults or {}
         searchBox.efResults = filtered
         wipe(filtered)
-        local total = origNum(sel) or 0
+        -- The originals are plain closures taking (index) alone -- proven
+        -- by a live error where a passed self arrived as the index.
+        local total = origNum() or 0
         for slot = 1, total do
-            local value = origByIndex(sel, slot)
+            local value = origByIndex(slot)
             if value ~= nil and MacroMatches(frame, slot, value, query) then
                 filtered[#filtered + 1] = value
             end
@@ -123,14 +125,16 @@ local function AttachMacroListSearch(frame)
 
     local searchBox = CreateFrame("EditBox", "EasyFindMacroListSearchBox", frame, "SearchBoxTemplate")
     searchBox:SetAutoFocus(false)
-    searchBox:SetHeight(20)
     -- The title strip: right of the portrait, left of the close button.
     -- The stock title text gives way to the bar (its meaning is obvious
     -- from the window itself).
     local title = frame.GetTitleText and frame:GetTitleText()
     if title then title:Hide() end
-    searchBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 68, -30)
-    searchBox:SetPoint("RIGHT", frame.CloseButton or frame, frame.CloseButton and "LEFT" or "RIGHT", -6, 0)
+    -- Fully determined rect in the title strip (a TOPLEFT + a RIGHT-center
+    -- pair over-constrained the vertical and stretched the box down over
+    -- the tabs).
+    searchBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 70, -7)
+    searchBox:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -32, -27)
     searchBox:SetFrameLevel(frame:GetFrameLevel() + 10)
 
     searchBox:SetScript("OnTextChanged", function(self, userInput)
