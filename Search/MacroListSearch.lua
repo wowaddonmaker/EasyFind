@@ -103,7 +103,18 @@ local function AttachMacroListSearch(frame)
     if title then title:Hide() end
     searchBox:SetPoint("TOPLEFT", frame, "TOPLEFT", 70, -7)
     searchBox:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", -32, -27)
-    searchBox:SetFrameLevel(frame:GetFrameLevel() + 10)
+    -- Above every header chrome frame: the NineSlice border band and the
+    -- portrait/title containers are CHILD FRAMES whose levels sit above the
+    -- root's, so a root-relative +10 still rendered the box underneath the
+    -- title bar art.
+    local topLevel = frame:GetFrameLevel()
+    for _, chrome in next, { frame.NineSlice, frame.TitleContainer, frame.PortraitContainer } do
+        if chrome and chrome.GetFrameLevel then
+            local lvl = chrome:GetFrameLevel()
+            if lvl > topLevel then topLevel = lvl end
+        end
+    end
+    searchBox:SetFrameLevel(topLevel + 5)
 
     searchBox:SetScript("OnTextChanged", function(self, userInput)
         if _G.SearchBoxTemplate_OnTextChanged then
