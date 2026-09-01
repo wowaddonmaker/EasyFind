@@ -19,13 +19,10 @@ local slower, sfind = Utils.slower, Utils.sfind
 
 local CreateFrame = CreateFrame
 local GetMacroInfo = GetMacroInfo
-local C_Timer = C_Timer
 local pcall = pcall
 
-local DIM_ALPHA = 0.12
-
-local matchSet = nil  -- [slotNumber] = true while a query is active
-local ticker
+local filterActive = false
+local applying = false
 
 local function MacroMatches(frame, slot, query)
     local name, _, body = GetMacroInfo((frame.macroBase or 0) + slot)
@@ -34,62 +31,38 @@ local function MacroMatches(frame, slot, query)
     return body and sfind(slower(body), query, 1, true) or false
 end
 
-local function ApplyButtonAlphas(frame)
-    local sel = frame.MacroSelector
-    local scroll = sel and sel.ScrollBox
-    if not (scroll and scroll.EnumerateFrames) then return end
-    for _, btn in scroll:EnumerateFrames() do
-        local slot = btn.GetElementData and btn:GetElementData()
-        if type(slot) ~= "number" then slot = btn.selectionIndex end
-        if type(slot) == "number" then
-            local dim = matchSet and not matchSet[slot]
-            btn:SetAlpha(dim and DIM_ALPHA or 1)
-        end
-    end
-end
-
-local function StopTicker()
-    if ticker then
-        ticker:Cancel()
-        ticker = nil
-    end
-end
-
-local function StartTicker(frame)
-    if ticker then return end
-    ticker = C_Timer.NewTicker(0.1, function()
-        local ok = pcall(function()
-            if not frame:IsShown() or not matchSet then
-                StopTicker()
-                if not matchSet then ApplyButtonAlphas(frame) end
-                return
-            end
-            ApplyButtonAlphas(frame)
-        end)
-        if not ok then StopTicker() end
-    end)
-end
-
 local function ApplyMacroSearch(frame, searchBox)
+    local sel = frame.MacroSelector
+    if not (sel and sel.SetSelectionsArray) then return end
     local query = slower((searchBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", ""))
     if query == "" then
-        matchSet = nil
-        StopTicker()
-        ApplyButtonAlphas(frame)
+        if filterActive then
+            filterActive = false
+            -- Blizzard's own update re-pushes its data provider: the one
+            -- restore path that cannot drift from the stock window.
+            applying = true
+            if frame.Update then pcall(frame.Update, frame) end
+            applying = false
+        end
         return
     end
-    matchSet = searchBox.efMatchSet or {}
-    searchBox.efMatchSet = matchSet
-    wipe(matchSet)
-    local total = (frame.MacroSelector and frame.MacroSelector.numMacros)
-        or frame.macroMax or 0
+    local slots = searchBox.efSlots or {}
+    searchBox.efSlots = slots
+    wipe(slots)
+    local total = sel.numMacros or frame.macroMax or 0
     for slot = 1, total do
         if MacroMatches(frame, slot, query) then
-            matchSet[slot] = true
+            slots[#slots + 1] = slot
         end
     end
-    ApplyButtonAlphas(frame)
-    StartTicker(frame)
+    filterActive = true
+    applying = true
+    -- True filtering with identity intact: SetSelectionsArray drives the
+    -- provider and accessors together, and element identity IS the array
+    -- value -- each shown button carries its real slot number, so icons
+    -- and clicks resolve to the right macro by construction.
+    pcall(sel.SetSelectionsArray, sel, slots)
+    applying = false
 end
 
 local function AttachMacroListSearch(frame)
@@ -140,18 +113,20 @@ local function AttachMacroListSearch(frame)
     end)
     searchBox:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
 
-    -- Tab switches change macroBase: re-run the active query for the new tab.
+    -- Tab switches and Blizzard updates re-push the stock provider over an
+    -- active filter: re-run the query so the filtered view wins.
     local function Reapply()
+        if applying then return end
         if (searchBox:GetText() or "") ~= "" then
             ApplyMacroSearch(frame, searchBox)
         end
     end
     if frame.SetAccountMacros then hooksecurefunc(frame, "SetAccountMacros", Reapply) end
     if frame.SetCharacterMacros then hooksecurefunc(frame, "SetCharacterMacros", Reapply) end
+    if frame.Update then hooksecurefunc(frame, "Update", Reapply) end
 
     frame:HookScript("OnHide", function()
-        matchSet = nil
-        StopTicker()
+        filterActive = false
         searchBox:SetText("")
     end)
 
