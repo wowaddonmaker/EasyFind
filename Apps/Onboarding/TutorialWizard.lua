@@ -13,6 +13,7 @@ local Utils = ns.Utils
 local L = ns.L
 local SafeCallMethod = Utils.SafeCallMethod
 local SafeAfter = Utils.SafeAfter
+local sformat = Utils.sformat
 
 local CreateFrame   = CreateFrame
 local UIParent      = UIParent
@@ -207,18 +208,22 @@ local USE_TUTORIAL_SLIDES = {
 -- One deck for the whole app family: a slide (or two) per app, growing as
 -- apps land. Calculator keeps its pair; Icon Search adds one; future apps
 -- join here when they ship.
+-- Each slide names the app it showcases in the deck header ("Apps: X").
+local APPS_TITLE_CALC = sformat(L["TUT_APPS_SLIDE_HEADER"], L["UITREE_CALCULATOR"])
 local APPS_TUTORIAL_SLIDES = {
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-calculator-visual-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_FEATURE_CALCULATOR_DESC"],
+        title = APPS_TITLE_CALC,
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-calculator-copy-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_CALC_COPY_DESC"],
+        title = APPS_TITLE_CALC,
         -- Cursor sitting just right of "Ctrl+C to copy".
         overlay = {
             tex = GAUNTLET_CURSOR_TEX,
@@ -232,12 +237,14 @@ local APPS_TUTORIAL_SLIDES = {
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_SLIDE_ICONSEARCH"],
+        title = sformat(L["TUT_APPS_SLIDE_HEADER"], L["ICON_SEARCH_APP"]),
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-snippets-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_SLIDE_SNIPPETS"],
+        title = sformat(L["TUT_APPS_SLIDE_HEADER"], L["FILTER_SNIPPETS"]),
     },
 }
 local MAP_SEARCH_TUTORIAL_SLIDES = {
@@ -934,6 +941,9 @@ local function BuildPage2(parent)
             idx = newIdx
 
             local slide = slides[idx]
+            -- Per-slide title when the slide names one (the Apps deck
+            -- shows "Apps: <app>"); the deck header otherwise.
+            h:SetText(slide.title or headerText)
             overlayTex:Hide()
             hoverRingTex:Hide()
             if slideFlow then

@@ -14,7 +14,7 @@ if not ns then return end
 --
 -- Registering a spotlight:
 --   ns.FeatureSpotlight:Register{
---       id = "iconSearch30",             -- db.spotlightsDone key
+--       id = "snippets31",               -- db.spotlightsDone key
 --       steps = {                        -- LAST resolvable step wins
 --           function() return <frame or nil> end,
 --           ...
@@ -29,6 +29,7 @@ ns.FeatureSpotlight = Spotlight
 
 local Utils = ns.Utils
 local CreateFrame = CreateFrame
+local wipe = wipe
 
 local registered = {}
 local pulseFrames = {}
@@ -153,7 +154,14 @@ end
 -- Re-evaluate every spotlight: the LAST step whose target resolves to a
 -- visible frame carries the pulse (deeper step = further along the click
 -- path), so opening the menu moves the glow from the button to the row.
+-- Two pending spotlights can share an early step's target (the apps
+-- button); only the first claimant draws there, so glows and tags never
+-- stack on one frame. Their deeper steps are distinct rows, where each
+-- gets its own pulse.
+local claimedTargets = {}
+
 function Spotlight:Refresh()
+    wipe(claimedTargets)
     for id, def in pairs(registered) do
         if IsDone(id) then
             HidePulse(id)
@@ -166,7 +174,8 @@ function Spotlight:Refresh()
                     place = def.tagPlace and def.tagPlace[i] or nil
                 end
             end
-            if target then
+            if target and not claimedTargets[target] then
+                claimedTargets[target] = true
                 ShowPulseOn(id, target)
                 ShowTagOn(id, target, place)
             else
@@ -188,22 +197,28 @@ end
 function Spotlight:Initialize()
     -- Spotlights announce features to UPDATING users only. A fresh install
     -- meets the current feature set in the tutorial itself (the Apps deck
-    -- covers Icon Search), so a pending tutorial marks every current
+    -- covers Snippets), so a pending tutorial marks every current
     -- spotlight done up front instead of pulsing at a brand-new user.
     if EasyFind and EasyFind.db and not EasyFind.db.tutorialDone then
         EasyFind.db.spotlightsDone = EasyFind.db.spotlightsDone or {}
-        EasyFind.db.spotlightsDone.iconSearch30 = true
+        EasyFind.db.spotlightsDone.snippets31 = true
     end
-    -- 3.0.0: Icon Search. Step 1 pulses the apps button whenever the bar
-    -- is up; step 2 takes over on the Icon Search row while the apps menu
-    -- is open. Completed by reaching the grid through ANY entry point
-    -- (menu row, launcher row, typed @icons) -- see ShowIconGrid.
+    -- ONE spotlight per release: 3.1.0 retires the Icon Search pointer
+    -- (its registration is gone; the Complete call in ShowIconGrid no-ops
+    -- on the unregistered id) so the New tag always means the CURRENT
+    -- release's feature.
+
+    -- 3.1.0: Snippets. Two-step path: the apps button
+    -- pulses, then the Snippets row takes over while the menu is open.
+    -- Completed by reaching the snippets tab through any front door
+    -- (Options:OpenAtSnippets is the single funnel).
     self:Register{
-        id = "iconSearch30",
+        id = "snippets31",
         steps = {
             function()
-                -- Never point at a feature whose companion can't load.
-                if ns.IsCompanionLoadable and not ns.IsCompanionLoadable("EasyFind_Icons") then
+                -- The snippets tab lives in the options companion; never
+                -- point at a feature whose companion can't load.
+                if ns.IsCompanionLoadable and not ns.IsCompanionLoadable("EasyFind_Options") then
                     return nil
                 end
                 local sf = ns.Search and ns.Search.GetSearchFrame and ns.Search:GetSearchFrame()
@@ -215,21 +230,16 @@ function Spotlight:Initialize()
                 if not (dropdown and dropdown:IsShown() and dropdown.rows) then return nil end
                 for i = 1, #dropdown.rows do
                     local row = dropdown.rows[i]
-                    if row:IsShown() and row.app and row.app.iconSearchLauncher then
+                    if row:IsShown() and row.app and row.app.snippetsLauncher then
                         return row
                     end
                 end
             end,
         },
         tagPlace = {
-            -- Step 1, the apps button: the tag floats just above it so a
-            -- compact bar never clips it.
             function(tag, target)
                 tag:SetPoint("BOTTOM", target, "TOP", 0, -3)
             end,
-            -- Step 2, the Icon Search row: right after the label TEXT
-            -- (the label region stretches across the row, so anchor by
-            -- rendered string width, per the new-feature-label spec).
             function(tag, target)
                 local label = target.label
                 if label then

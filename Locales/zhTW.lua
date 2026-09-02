@@ -213,9 +213,10 @@ L["TUT_FEATURE_ACTIONS_DESC"]           = "直接在清單中施放、使用、�
 L["TUT_FEATURE_CALCULATOR_DESC"]        = "輸入算式、複製結果，或從計算機結果開啟完整計算機。金幣也能計算：4g / 5 得 80s。"
 L["TUT_CALC_COPY_DESC"]                 = "將滑鼠懸停在算式或結果上，按 Ctrl+C 複製，即可用 Ctrl+V 輕鬆貼到任何地方。"
 L["TUT_FEATURE_APPS"]                   = "應用程式"
-L["TUT_FEATURE_APPS_DESC"]              = "內建於搜尋列的工具：圖示搜尋和計算機。更多工具即將推出。"
+L["TUT_FEATURE_APPS_DESC"]              = "內建於搜尋列的工具：圖示搜尋、計算機和文字片段。更多工具即將推出。"
+L["TUT_APPS_SLIDE_HEADER"] = "應用程式：%s"
 L["TUT_SLIDE_ICONSEARCH"]               = "瀏覽並篩選遊戲中的所有圖示。可直接在網格中複製圖示的 ID、名稱或路徑，或用它建立巨集。從應用程式選單開啟、搜尋\"圖示搜尋\"或輸入 @icons。"
-L["TUT_SLIDE_SNIPPETS"]                 = "文字片段保存可重複使用的文字。從搜尋結果插入，或在聊天視窗輸入 \\關鍵字 即可邊打邊展開。大括號變數在使用時填入，片段還能乾淨地貼進巨集。"
+L["TUT_SLIDE_SNIPPETS"]                 = "文字片段保存可重複使用的文字。在聊天視窗輸入 \\關鍵字 即可邊打邊展開；在巨集編輯器中輸入同一關鍵字，片段會直接成為巨集內容並立即儲存。在結果中的片段行上按 Ctrl+C 可複製內容，再用 Ctrl+V 貼上。也可透過行的右鍵選單用傳送直接發到聊天。大括號變數在使用時填入。"
 L["TUT_THEME_HEADER"]                   = "你想要哪種 EasyFind 主題？"
 L["TUT_THEME_RESIZE_NOTE"]              = "你可以隨時在選項中更改你的選擇。也可以在那裡調整大小。"
 L["TUT_KEYBIND_HEADER"]                 = "選擇你的快捷鍵（套用至每個角色）"
@@ -259,8 +260,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "歡迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日誌"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff按地城名稱尋找地城傳送|r\n" ..
-    "    |cff999999-|r 輸入地城名稱或暱稱（boralus、mots、doti），已解鎖的傳送法術即會出現，可直接施放"
+    "|cffFFD100\226\128\162|r |cffffffff文字片段|r\n" ..
+    "    |cff999999-|r 保存一次可重複使用的文字，輸入 \\關鍵字 即可在聊天中邊打邊展開，或直接寫入巨集\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff巨集視窗搜尋|r\n" ..
+    "    |cff999999-|r 巨集視窗新增搜尋列，可按名稱或內容篩選你的巨集\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCtrl+C 複製結果|r\n" ..
+    "    |cff999999-|r 在結果行上按住 Ctrl 並按 C：片段的完整內容或連結名稱即會複製到剪貼簿"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "新增別名"

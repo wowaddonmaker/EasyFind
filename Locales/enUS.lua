@@ -234,9 +234,10 @@ L["TUT_FEATURE_ACTIONS_DESC"]           = "Cast, use, equip, summon, swap, or op
 L["TUT_FEATURE_CALCULATOR_DESC"]        = "Type expressions, copy the result, or open the full calculator from the Calculator result. Gold works too: 4g / 5 gives 80s."
 L["TUT_CALC_COPY_DESC"]                 = "Hover over either the expression or the result and hit Ctrl+C to copy it for easy pasting anywhere with Ctrl+V."
 L["TUT_FEATURE_APPS"]                   = "Apps"
-L["TUT_FEATURE_APPS_DESC"]              = "Tools built into the search bar: icon search and calculator. More coming soon."
+L["TUT_FEATURE_APPS_DESC"]              = "Tools built into the search bar: icon search, calculator, and snippets. More coming soon."
+L["TUT_APPS_SLIDE_HEADER"] = "Apps: %s"
 L["TUT_SLIDE_ICONSEARCH"]               = "Browse and filter every game icon. Copy an icon's ID, name, or path, or create a macro with it, right from the grid. Open it from the apps menu, search \"Icon Search\", or type @icons."
-L["TUT_SLIDE_SNIPPETS"]                 = "Snippets store reusable text. Insert one from search results, or type \\keyword in chat and it expands as you type. Curly-brace variables fill in when used, and a snippet pastes cleanly into a macro."
+L["TUT_SLIDE_SNIPPETS"]                 = "Snippets store reusable text. Type \\keyword in chat and it expands as you type; in the macro editor the same keyword becomes the macro's text, saved instantly. Ctrl+C over a snippet row in the results copies its text, ready to paste with Ctrl+V. A row's right-click menu can also Send it straight to chat. Curly-brace variables fill in when used."
 L["TUT_THEME_HEADER"]                   = "Which EasyFind theme would you like?"
 L["TUT_THEME_RESIZE_NOTE"]              = "You can change your selection at any time from the options menu. Resizing is also available there."
 L["TUT_KEYBIND_HEADER"]                 = "Pick your hotkeys (applies to every character)"
@@ -282,8 +283,12 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffDungeon teleports, findable by dungeon|r\n" ..
-    "    |cff999999-|r Type a dungeon's name or nickname (boralus, mots, doti) and your unlocked teleport appears, ready to cast"
+    "|cffFFD100\226\128\162|r |cffffffffSnippets|r\n" ..
+    "    |cff999999-|r Save reusable text once, then type \\keyword to expand it in chat as you type, or straight into a macro\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffMacro window search|r\n" ..
+    "    |cff999999-|r The macro window gains a search bar that filters your macros by name or text\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCopy results with Ctrl+C|r\n" ..
+    "    |cff999999-|r Hold Ctrl over a result row and press C: a snippet's whole message or a link's name lands on your clipboard"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels

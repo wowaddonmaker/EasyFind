@@ -213,9 +213,10 @@ L["TUT_FEATURE_ACTIONS_DESC"]           = "直接在列表中施放、使用、�
 L["TUT_FEATURE_CALCULATOR_DESC"]        = "输入算式、复制结果，或从计算器结果打开完整计算器。金币也能计算：4g / 5 得 80s。"
 L["TUT_CALC_COPY_DESC"]                 = "将鼠标悬停在算式或结果上，按 Ctrl+C 复制，即可用 Ctrl+V 轻松粘贴到任何地方。"
 L["TUT_FEATURE_APPS"]                   = "应用"
-L["TUT_FEATURE_APPS_DESC"]              = "内置于搜索栏的工具：图标搜索和计算器。更多工具即将推出。"
+L["TUT_FEATURE_APPS_DESC"]              = "内置于搜索栏的工具：图标搜索、计算器和文本片段。更多工具即将推出。"
+L["TUT_APPS_SLIDE_HEADER"] = "应用：%s"
 L["TUT_SLIDE_ICONSEARCH"]               = "浏览并筛选游戏中的所有图标。可直接在网格中复制图标的 ID、名称或路径，或用它创建宏。从应用菜单打开、搜索\"图标搜索\"或输入 @icons。"
-L["TUT_SLIDE_SNIPPETS"]                 = "文本片段保存可复用的文字。从搜索结果插入，或在聊天框输入 \\关键词 即可边打边展开。花括号变量在使用时填入，片段还能干净地粘贴进宏。"
+L["TUT_SLIDE_SNIPPETS"]                 = "文本片段保存可复用的文字。在聊天框输入 \\关键词 即可边打边展开；在宏编辑器中输入同一关键词，片段会直接成为宏内容并立即保存。在结果中的片段行上按 Ctrl+C 可复制内容，再用 Ctrl+V 粘贴。也可通过行的右键菜单用发送直接发到聊天。花括号变量在使用时填入。"
 L["TUT_THEME_HEADER"]                   = "你想要哪种 EasyFind 主题？"
 L["TUT_THEME_RESIZE_NOTE"]              = "你可以随时在选项中更改你的选择。也可以在那里调整大小。"
 L["TUT_KEYBIND_HEADER"]                 = "选择你的快捷键（对所有角色生效）"
@@ -259,8 +260,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "欢迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "这里"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日志"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff按地下城名称查找地下城传送|r\n" ..
-    "    |cff999999-|r 输入地下城名称或昵称（boralus、mots、doti），已解锁的传送法术即会出现，可直接施放"
+    "|cffFFD100\226\128\162|r |cffffffff文本片段|r\n" ..
+    "    |cff999999-|r 保存一次可复用的文字，输入 \\关键词 即可在聊天中边打边展开，或直接写入宏\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff宏窗口搜索|r\n" ..
+    "    |cff999999-|r 宏窗口新增搜索栏，可按名称或内容筛选你的宏\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCtrl+C 复制结果|r\n" ..
+    "    |cff999999-|r 在结果行上按住 Ctrl 并按 C：片段的完整内容或链接名称即会复制到剪贴板"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "添加别名"

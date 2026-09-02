@@ -213,9 +213,10 @@ L["TUT_FEATURE_ACTIONS_DESC"]           = "지원되는 결과를 목록에서 �
 L["TUT_FEATURE_CALCULATOR_DESC"]        = "수식을 입력해 결과를 복사하거나, 계산기 결과 항목에서 전체 계산기를 엽니다. 골드도 계산됩니다: 4g / 5는 80s가 됩니다."
 L["TUT_CALC_COPY_DESC"]                 = "수식이나 결과 위에 마우스를 올리고 Ctrl+C를 눌러 복사한 뒤 Ctrl+V로 어디에나 쉽게 붙여넣으세요."
 L["TUT_FEATURE_APPS"]                   = "앱"
-L["TUT_FEATURE_APPS_DESC"]              = "검색창에 내장된 도구: 아이콘 검색과 계산기. 곧 더 추가됩니다."
+L["TUT_FEATURE_APPS_DESC"]              = "검색창에 내장된 도구: 아이콘 검색, 계산기, 스니펫. 곧 더 추가됩니다."
+L["TUT_APPS_SLIDE_HEADER"] = "앱: %s"
 L["TUT_SLIDE_ICONSEARCH"]               = "게임의 모든 아이콘을 둘러보고 필터링하세요. 격자에서 바로 아이콘의 ID, 이름, 경로를 복사하거나 해당 아이콘으로 매크로를 만들 수 있습니다. 앱 메뉴에서 열거나 \"아이콘 검색\"을 검색하거나 @icons를 입력하세요."
-L["TUT_SLIDE_SNIPPETS"]                 = "스니펫은 재사용할 텍스트를 저장합니다. 검색 결과에서 삽입하거나, 대화창에 \\키워드를 입력하면 입력 중에 확장됩니다. 중괄호 변수는 사용할 때 채워지며, 스니펫은 매크로에 깔끔하게 붙여넣을 수 있습니다."
+L["TUT_SLIDE_SNIPPETS"]                 = "스니펫은 재사용할 텍스트를 저장합니다. 대화창에 \\키워드를 입력하면 입력 중에 확장되고, 매크로 편집기에서는 같은 키워드가 매크로 내용이 되어 즉시 저장됩니다. 검색 결과의 스니펫 줄 위에서 Ctrl+C를 누르면 내용이 복사되어 Ctrl+V로 붙여넣을 수 있습니다. 줄의 우클릭 메뉴에서 보내기로 바로 대화창에 보낼 수도 있습니다. 중괄호 변수는 사용할 때 채워집니다."
 L["TUT_THEME_HEADER"]                   = "어떤 EasyFind 테마를 원하시나요?"
 L["TUT_THEME_RESIZE_NOTE"]              = "선택은 언제든지 설정에서 변경할 수 있습니다. 크기 조절도 그곳에서 할 수 있습니다."
 L["TUT_KEYBIND_HEADER"]                 = "단축키를 선택하세요 (모든 캐릭터에 적용)"
@@ -259,8 +260,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff던전 이름으로 찾는 던전 순간이동|r\n" ..
-    "    |cff999999-|r 던전 이름이나 약칭(boralus, mots, doti)을 입력하면 잠금 해제한 순간이동 주문이 나타나 바로 시전할 수 있습니다"
+    "|cffFFD100\226\128\162|r |cffffffff스니펫|r\n" ..
+    "    |cff999999-|r 재사용할 텍스트를 한 번 저장하고 \\키워드를 입력하면 대화창에서 입력 중에 확장되거나 매크로에 바로 들어갑니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff매크로 창 검색|r\n" ..
+    "    |cff999999-|r 매크로 창에 이름이나 내용으로 매크로를 걸러 주는 검색창이 추가되었습니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCtrl+C로 결과 복사|r\n" ..
+    "    |cff999999-|r 결과 줄 위에서 Ctrl을 누른 채 C를 누르면 스니펫 전체 내용이나 링크 이름이 클립보드에 복사됩니다"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"

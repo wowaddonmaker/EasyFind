@@ -215,9 +215,10 @@ L["TUT_FEATURE_ACTIONS_DESC"]           = "Wirke, benutze, rüste an, beschwöre
 L["TUT_FEATURE_CALCULATOR_DESC"]        = "Tippe Ausdrücke, kopiere das Ergebnis oder öffne den vollständigen Rechner über das Rechner-Ergebnis. Auch Gold funktioniert: 4g / 5 ergibt 80s."
 L["TUT_CALC_COPY_DESC"]                 = "Fahre mit der Maus über den Ausdruck oder das Ergebnis und drücke Strg+C, um es mit Strg+V überall einzufügen."
 L["TUT_FEATURE_APPS"]                   = "Apps"
-L["TUT_FEATURE_APPS_DESC"]              = "In die Suchleiste eingebaute Werkzeuge: Symbolsuche und Taschenrechner. Weitere folgen bald."
+L["TUT_FEATURE_APPS_DESC"]              = "In die Suchleiste eingebaute Werkzeuge: Symbolsuche, Taschenrechner und Textbausteine. Weitere folgen bald."
+L["TUT_APPS_SLIDE_HEADER"] = "Apps: %s"
 L["TUT_SLIDE_ICONSEARCH"]               = "Durchstöbere und filtere alle Spielsymbole. Kopiere ID, Namen oder Pfad eines Symbols oder erstelle direkt aus dem Raster ein Makro damit. Öffne sie über das Apps-Menü, suche nach \"Symbolsuche\" oder tippe @icons."
-L["TUT_SLIDE_SNIPPETS"]                 = "Textbausteine speichern wiederverwendbaren Text. Füge einen aus den Suchergebnissen ein oder tippe \\Schlüsselwort im Chat, und er wird beim Tippen erweitert. Variablen in geschweiften Klammern füllen sich beim Verwenden, und ein Baustein lässt sich sauber in ein Makro einfügen."
+L["TUT_SLIDE_SNIPPETS"]                 = "Textbausteine speichern wiederverwendbaren Text. Tippe \\Schlüsselwort im Chat, und er wird beim Tippen erweitert; im Makro-Editor wird dasselbe Schlüsselwort zum Makrotext und sofort gespeichert. Strg+C über einer Baustein-Zeile in den Ergebnissen kopiert den Text, bereit zum Einfügen mit Strg+V. Über das Rechtsklick-Menü einer Zeile lässt er sich per Senden direkt in den Chat schicken. Variablen in geschweiften Klammern füllen sich beim Verwenden."
 L["TUT_THEME_HEADER"]                   = "Welches EasyFind-Design hättest du gern?"
 L["TUT_THEME_RESIZE_NOTE"]              = "Deine Auswahl kannst du jederzeit in den Optionen ändern. Auch die Größe lässt sich dort anpassen."
 L["TUT_KEYBIND_HEADER"]                 = "Wähle deine Tastenkürzel (gilt für jeden Charakter)"
@@ -261,8 +262,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffDungeon-Teleporte, findbar über den Dungeon|r\n" ..
-    "    |cff999999-|r Tippe den Namen oder Spitznamen eines Dungeons (boralus, mots, doti) und dein freigeschalteter Teleport erscheint, bereit zum Wirken"
+    "|cffFFD100\226\128\162|r |cffffffffTextbausteine|r\n" ..
+    "    |cff999999-|r Speichere wiederverwendbaren Text einmal und tippe \\Schlüsselwort, um ihn im Chat beim Tippen zu erweitern, oder direkt in ein Makro\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffSuche im Makrofenster|r\n" ..
+    "    |cff999999-|r Das Makrofenster erhält eine Suchleiste, die deine Makros nach Name oder Text filtert\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffErgebnisse mit Strg+C kopieren|r\n" ..
+    "    |cff999999-|r Halte Strg über einer Ergebniszeile und drücke C: die ganze Baustein-Nachricht oder der Name eines Links landet in der Zwischenablage"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"

@@ -4310,6 +4310,7 @@ function Options:OpenAtSnippets()
     if optionsFrame and optionsFrame.SwitchToTab and self._snippetsTabIndex then
         optionsFrame.SwitchToTab(self._snippetsTabIndex)
     end
+    if ns.FeatureSpotlight then ns.FeatureSpotlight:Complete("snippets31") end
 end
 
 function Options:Show()

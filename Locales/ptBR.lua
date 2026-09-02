@@ -213,9 +213,10 @@ L["TUT_FEATURE_ACTIONS_DESC"]           = "Conjure, use, equipe, invoque, troque
 L["TUT_FEATURE_CALCULATOR_DESC"]        = "Digite expressões, copie o resultado ou abra a calculadora completa pelo resultado Calculadora. Ouro também funciona: 4g / 5 dá 80s."
 L["TUT_CALC_COPY_DESC"]                 = "Passe o mouse sobre a expressão ou o resultado e pressione Ctrl+C para copiá-lo e colá-lo facilmente em qualquer lugar com Ctrl+V."
 L["TUT_FEATURE_APPS"]                   = "Aplicativos"
-L["TUT_FEATURE_APPS_DESC"]              = "Ferramentas integradas à barra de busca: busca de ícones e calculadora. Mais em breve."
+L["TUT_FEATURE_APPS_DESC"]              = "Ferramentas integradas à barra de busca: busca de ícones, calculadora e fragmentos. Mais em breve."
+L["TUT_APPS_SLIDE_HEADER"] = "Aplicativos: %s"
 L["TUT_SLIDE_ICONSEARCH"]               = "Navegue e filtre todos os ícones do jogo. Copie o ID, nome ou caminho de um ícone, ou crie um macro com ele direto da grade. Abra pelo menu de aplicativos, busque \"Busca de ícones\" ou digite @icons."
-L["TUT_SLIDE_SNIPPETS"]                 = "Os fragmentos guardam texto reutilizável. Insira um pelos resultados da busca, ou digite \\palavrachave no bate-papo e ele se expande enquanto você digita. Variáveis entre chaves se preenchem ao usar, e um fragmento cola limpo em um macro."
+L["TUT_SLIDE_SNIPPETS"]                 = "Os fragmentos guardam texto reutilizável. Digite \\palavrachave no bate-papo e ele se expande enquanto você digita; no editor de macros, a mesma palavrachave vira o texto do macro, salvo na hora. Ctrl+C sobre uma linha de fragmento nos resultados copia o texto, pronto para colar com Ctrl+V. O menu de clique direito de uma linha também permite Enviar direto para o bate-papo. Variáveis entre chaves se preenchem ao usar."
 L["TUT_THEME_HEADER"]                   = "Qual tema do EasyFind você prefere?"
 L["TUT_THEME_RESIZE_NOTE"]              = "Você pode mudar sua seleção a qualquer momento nas opções. O redimensionamento também está disponível lá."
 L["TUT_KEYBIND_HEADER"]                 = "Escolha seus atalhos (vale para todos os personagens)"
@@ -259,8 +260,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffTeleportes de masmorra, pelo nome da masmorra|r\n" ..
-    "    |cff999999-|r Digite o nome ou apelido de uma masmorra (boralus, mots, doti) e seu teleporte desbloqueado aparece, pronto para lançar"
+    "|cffFFD100\226\128\162|r |cffffffffFragmentos|r\n" ..
+    "    |cff999999-|r Salve um texto reutilizável uma vez e digite \\palavrachave para expandi-lo no bate-papo enquanto digita, ou direto em um macro\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffBusca na janela de macros|r\n" ..
+    "    |cff999999-|r A janela de macros ganha uma barra de busca que filtra seus macros por nome ou texto\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCopie resultados com Ctrl+C|r\n" ..
+    "    |cff999999-|r Segure Ctrl sobre uma linha de resultado e pressione C: a mensagem inteira de um fragmento ou o nome de um link vai para a área de transferência"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"

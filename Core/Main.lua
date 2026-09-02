@@ -563,7 +563,7 @@ local SUGGESTED_KEYBINDS = {
 -- The version whose features the What's New popup currently describes. Bump
 -- ONLY when the popup content is rewritten; patch releases that keep the same
 -- content must not re-announce it to users who already saw it.
-local WHATSNEW_CONTENT_VERSION = "3.0.1"
+local WHATSNEW_CONTENT_VERSION = "3.1.0"
 
 local WHATSNEW_LINK_PREFIX = "easyfind:whatsnew:"
 local whatsNewHookInstalled = false
@@ -957,11 +957,11 @@ local function OnPlayerLogin()
     -- login only while something it owns is still pending (fresh-install
     -- tutorial, or a live feature spotlight). Steady-state sessions skip
     -- the parse entirely; /ef setup and /ef whatsnew load it explicitly.
-    -- The spotlight id mirrors FeatureSpotlight:Initialize -- update both
+    -- The spotlight ids mirror FeatureSpotlight:Initialize -- update both
     -- when a release adds a spotlight.
     local spotlightsDone = EasyFind.db.spotlightsDone
     if not EasyFind.db.tutorialDone
-       or not (spotlightsDone and spotlightsDone.iconSearch30) then
+       or not (spotlightsDone and spotlightsDone.snippets31) then
         ns.RequestOnboarding()
     end
 

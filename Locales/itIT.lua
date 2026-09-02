@@ -213,9 +213,10 @@ L["TUT_FEATURE_ACTIONS_DESC"]           = "Lancia, usa, equipaggia, evoca, cambi
 L["TUT_FEATURE_CALCULATOR_DESC"]        = "Digita espressioni, copia il risultato o apri la calcolatrice completa dal risultato Calcolatrice. Funziona anche l'oro: 4g / 5 dà 80s."
 L["TUT_CALC_COPY_DESC"]                 = "Passa il mouse sull'espressione o sul risultato e premi Ctrl+C per copiarlo e incollarlo facilmente ovunque con Ctrl+V."
 L["TUT_FEATURE_APPS"]                   = "App"
-L["TUT_FEATURE_APPS_DESC"]              = "Strumenti integrati nella barra di ricerca: ricerca icone e calcolatrice. Altri in arrivo presto."
+L["TUT_FEATURE_APPS_DESC"]              = "Strumenti integrati nella barra di ricerca: ricerca icone, calcolatrice e frammenti. Altri in arrivo presto."
+L["TUT_APPS_SLIDE_HEADER"] = "App: %s"
 L["TUT_SLIDE_ICONSEARCH"]               = "Sfoglia e filtra tutte le icone del gioco. Copia ID, nome o percorso di un'icona, o creaci una macro direttamente dalla griglia. Aprila dal menu delle app, cerca \"Ricerca icone\" o digita @icons."
-L["TUT_SLIDE_SNIPPETS"]                 = "I frammenti conservano testo riutilizzabile. Inseriscine uno dai risultati di ricerca, oppure digita \\parolachiave in chat e si espande mentre scrivi. Le variabili tra parentesi graffe si compilano all'uso, e un frammento si incolla pulito in una macro."
+L["TUT_SLIDE_SNIPPETS"]                 = "I frammenti conservano testo riutilizzabile. Digita \\parolachiave in chat e si espande mentre scrivi; nell'editor delle macro la stessa parolachiave diventa il testo della macro, salvato all'istante. Ctrl+C su una riga di frammento nei risultati copia il testo, pronto da incollare con Ctrl+V. Dal menu del tasto destro di una riga si può anche usare Invia per mandarlo in chat. Le variabili tra parentesi graffe si compilano all'uso."
 L["TUT_THEME_HEADER"]                   = "Quale tema di EasyFind preferisci?"
 L["TUT_THEME_RESIZE_NOTE"]              = "Puoi cambiare la tua selezione in qualsiasi momento dalle opzioni. Lì è disponibile anche il ridimensionamento."
 L["TUT_KEYBIND_HEADER"]                 = "Scegli le tue scorciatoie (valide per ogni personaggio)"
@@ -259,8 +260,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffTeletrasporti di spedizione, per nome della spedizione|r\n" ..
-    "    |cff999999-|r Digita il nome o il soprannome di una spedizione (boralus, mots, doti) e il tuo teletrasporto sbloccato appare, pronto da lanciare"
+    "|cffFFD100\226\128\162|r |cffffffffFrammenti|r\n" ..
+    "    |cff999999-|r Salva una volta il testo riutilizzabile e digita \\parolachiave per espanderlo in chat mentre scrivi, o direttamente in una macro\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffRicerca nella finestra delle macro|r\n" ..
+    "    |cff999999-|r La finestra delle macro guadagna una barra di ricerca che filtra le tue macro per nome o testo\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCopia i risultati con Ctrl+C|r\n" ..
+    "    |cff999999-|r Tieni Ctrl su una riga dei risultati e premi C: l'intero messaggio di un frammento o il nome di un collegamento finisce negli appunti"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"

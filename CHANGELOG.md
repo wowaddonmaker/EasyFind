@@ -4,6 +4,31 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [3.1.0] - 2026-09-02
+
+### Added
+- **Snippets, a new app**: save reusable text once and use it anywhere. Insert a snippet from its search result, or type `\keyword` in chat and it expands in place as you type. Placeholders (`{date}`, `{time}`, `{player}`, `{target}`, `{zone}`) fill in at use, and call-form keywords like `\greet(name)` take arguments. Typing a keyword in the macro editor expands and saves the macro in the same keystroke. Manage snippets from their Options tab, reached via the apps menu, searching "Snippets", or the `@snip` quick filter; a snippet shortkey fires the snippet directly
+- **Choose the snippet trigger**: the activation character (`\` by default) can be changed to `!`, `#`, `~`, `&`, `+`, or `=` from the cog on the Create snippet button or in the editor's corner; one trigger applies to every snippet
+- **Snippet call help**: typing `\keyword(` ghost-suggests the snippet's argument names the way the search bar's autocomplete does (typing narrows to the closest one, used args drop out), and typing `\keyword?` pops a tooltip with the call signature and the snippet text
+- **Search inside the macro window**: the game's macro window gains a search bar that filters the macro grid on the current tab by name or body as you type. Clicking a filtered macro selects that macro, tab switches and edits keep the filter live, and clearing it restores the full grid
+- **Ctrl+C copies a hovered result**: hold Ctrl over a result row and press C to copy its text to the real clipboard -- a snippet's whole message, or a link's name -- with a "Copied" flash confirming. The Send menu's Clipboard option likewise now copies a snippet's full text instead of showing the link dialog
+- The tutorial's Apps deck gains a Snippets slide, each Apps slide is titled with the app it shows, and updating players get a one-time pointer to the new app on the apps button
+- **Quiet update notice**: when a guild or party member is running a newer EasyFind, a one-line notice appears along the bottom of the results window, and the options Home tab shows it under the addon title. Nothing is ever printed to chat, and it can be turned off with "Show update reminders" in Options > General & binds
+
+### Changed
+- The options window and the tutorial are one settings row taller, and the aliases, blacklist, and snippets list cards align flush with the sidebar's bottom edge
+- The row context menu's "Send link" entry is now just "Send"
+- Searching "snippets" ranks the Snippets menu first and Create snippet second, ahead of whichever snippet was picked last
+
+### Fixed
+- Clicking an achievement result teaches the search again: learned picks (and aliases) on achievements were recorded but could never resurface, since achievement rows are built per query rather than stored
+- Clicking an unpinnable row (Create snippet, the snippets menu) now teaches the search too; unpinnable had been treated as unlearnable
+- Achievement results scroll the achievement window to the target again after a game update removed the function that did it; the guide and direct-open now scroll the list themselves when it is missing
+- Snippet results appear on the first search after a reload instead of two seconds later: the snippets provider now loads the moment a query names it
+- Ctrl+V pastes a copied item or spell link as its readable name; the game had been mangling the link's control characters on paste
+
+---
+
 ## [3.0.1] - 2026-08-31
 
 ### Added

@@ -213,9 +213,10 @@ L["TUT_FEATURE_ACTIONS_DESC"]           = "Lancez, utilisez, équipez, invoquez,
 L["TUT_FEATURE_CALCULATOR_DESC"]        = "Tapez des expressions, copiez le résultat ou ouvrez la calculatrice complète depuis le résultat Calculatrice. L'or fonctionne aussi : 4g / 5 donne 80s."
 L["TUT_CALC_COPY_DESC"]                 = "Survolez l'expression ou le résultat et appuyez sur Ctrl+C pour le copier et le coller facilement n'importe où avec Ctrl+V."
 L["TUT_FEATURE_APPS"]                   = "Applications"
-L["TUT_FEATURE_APPS_DESC"]              = "Des outils intégrés à la barre de recherche : recherche d'icônes et calculatrice. D'autres arrivent bientôt."
+L["TUT_FEATURE_APPS_DESC"]              = "Des outils intégrés à la barre de recherche : recherche d'icônes, calculatrice et fragments. D'autres arrivent bientôt."
+L["TUT_APPS_SLIDE_HEADER"] = "Applications : %s"
 L["TUT_SLIDE_ICONSEARCH"]               = "Parcourez et filtrez toutes les icônes du jeu. Copiez l'ID, le nom ou le chemin d'une icône, ou créez une macro avec, directement depuis la grille. Ouvrez-la depuis le menu des applications, cherchez \"Recherche d'icônes\" ou tapez @icons."
-L["TUT_SLIDE_SNIPPETS"]                 = "Les fragments stockent du texte réutilisable. Insérez-en un depuis les résultats de recherche, ou tapez \\motclé dans le chat et il se déploie pendant la frappe. Les variables entre accolades se remplissent à l'usage, et un fragment se colle proprement dans une macro."
+L["TUT_SLIDE_SNIPPETS"]                 = "Les fragments stockent du texte réutilisable. Tapez \\motclé dans le chat et il se déploie pendant la frappe ; dans l'éditeur de macros, le même motclé devient le texte de la macro, enregistré aussitôt. Ctrl+C sur une ligne de fragment dans les résultats copie son texte, prêt à coller avec Ctrl+V. Le menu clic droit d'une ligne permet aussi de l'Envoyer directement dans le chat. Les variables entre accolades se remplissent à l'usage."
 L["TUT_THEME_HEADER"]                   = "Quel thème EasyFind souhaitez-vous ?"
 L["TUT_THEME_RESIZE_NOTE"]              = "Vous pouvez modifier votre sélection à tout moment depuis les options. Le redimensionnement y est aussi disponible."
 L["TUT_KEYBIND_HEADER"]                 = "Choisissez vos raccourcis (s'applique à chaque personnage)"
@@ -259,8 +260,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffTéléportations de donjon, par nom de donjon|r\n" ..
-    "    |cff999999-|r Tapez le nom ou le surnom d'un donjon (boralus, mots, doti) et votre téléportation débloquée apparaît, prête à lancer"
+    "|cffFFD100\226\128\162|r |cffffffffFragments|r\n" ..
+    "    |cff999999-|r Enregistrez un texte réutilisable une fois, puis tapez \\motclé pour le déployer dans le chat pendant la frappe, ou directement dans une macro\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffRecherche dans la fenêtre des macros|r\n" ..
+    "    |cff999999-|r La fenêtre des macros gagne une barre de recherche qui filtre vos macros par nom ou par texte\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCopier les résultats avec Ctrl+C|r\n" ..
+    "    |cff999999-|r Maintenez Ctrl sur une ligne de résultat et appuyez sur C : le message complet d'un fragment ou le nom d'un lien arrive dans le presse-papiers"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"
