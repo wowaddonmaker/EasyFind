@@ -2578,10 +2578,11 @@ local function BuildAliasesTab(ctx)
     end
     local CHECK_TEX = "Interface\\Buttons\\UI-CheckBox-Check"
     local cogBtn
-    local exportMenu
     local ShowExportScopeMenu
-    ShowExportScopeMenu = function()
-        exportMenu = Utils.ShowCursorMenu("EasyFindExportScopeMenu", {
+    -- The cog click toggles the menu; a scope box click re-shows it in
+    -- place to repaint the check marks. Same rows and placement for both.
+    local function ExportScopeMenuArgs()
+        return "EasyFindExportScopeMenu", {
             { text = L["SHORTKEY_SCOPE_ALIASES"], icon = exportInclAlias and CHECK_TEX or nil,
               onClick = function() exportInclAlias = not exportInclAlias; ShowExportScopeMenu() end },
             { text = L["SHORTKEY_SCOPE_SHORTKEYS"], icon = exportInclShortkey and CHECK_TEX or nil,
@@ -2593,7 +2594,10 @@ local function BuildAliasesTab(ctx)
             anchorFrame = cogBtn,
             toggleOwner = cogBtn,
             point = "TOPRIGHT", relativePoint = "BOTTOMRIGHT", offsetY = -2,
-        })
+        }
+    end
+    ShowExportScopeMenu = function()
+        Utils.ShowCursorMenu(ExportScopeMenuArgs())
     end
 
     local sharePopup
@@ -2795,20 +2799,10 @@ local function BuildAliasesTab(ctx)
         ShowShareString(true, str)
     end)
 
-    cogBtn = CreateFrame("Button", nil, exportBtn)
-    cogBtn:SetSize(18, 18)
+    cogBtn = ns.CreateCogButton(exportBtn)
     cogBtn:SetPoint("RIGHT", exportBtn, "RIGHT", -4, 0)
-    local cogTex = cogBtn:CreateTexture(nil, "ARTWORK")
-    cogTex:SetPoint("CENTER")
-    cogTex:SetSize(15, 15)
-    cogTex:SetAtlas("QuestLog-icon-setting")
-    cogBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
     cogBtn:SetScript("OnClick", function()
-        if exportMenu and exportMenu:IsShown() then
-            exportMenu:Hide()
-        else
-            ShowExportScopeMenu()
-        end
+        Utils.ToggleCursorMenu(ExportScopeMenuArgs())
     end)
 
     local importBtn = CreateModernButton(shareTools, L["SHORTKEY_IMPORT"], SHARE_BTN_W, 22)
@@ -3467,17 +3461,11 @@ local function BuildSnippetsTab(ctx)
     -- owned by Snippets (the editor's corner cog opens the same one).
     createSnippetBtn._label:ClearAllPoints()
     createSnippetBtn._label:SetPoint("CENTER", createSnippetBtn, "CENTER", -9, 0)
-    local snTrigCog = CreateFrame("Button", nil, createSnippetBtn)
-    snTrigCog:SetSize(18, 18)
+    local snTrigCog = ns.CreateCogButton(createSnippetBtn)
     snTrigCog:SetPoint("RIGHT", createSnippetBtn, "RIGHT", -4, 0)
-    local snTrigTex = snTrigCog:CreateTexture(nil, "ARTWORK")
-    snTrigTex:SetPoint("CENTER")
-    snTrigTex:SetSize(15, 15)
-    snTrigTex:SetAtlas("QuestLog-icon-setting")
-    snTrigCog:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
     snTrigCog:SetScript("OnClick", function(self)
-        if ns.Snippets and ns.Snippets.ShowTriggerMenu then
-            ns.Snippets.ShowTriggerMenu(self)
+        if ns.Snippets and ns.Snippets.ToggleTriggerMenu then
+            ns.Snippets.ToggleTriggerMenu(self)
         end
     end)
     Utils.AttachDelayedTooltip(snTrigCog, "ANCHOR_TOP", function()

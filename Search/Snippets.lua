@@ -95,9 +95,10 @@ function Snippets.RefreshTriggerTexts()
 end
 
 -- One owner for the trigger-character picker; both cogs (the options
--- tab's create button and the editor's corner) open this. Single-select
--- rows close on click, per the menu conventions.
-function Snippets.ShowTriggerMenu(anchorBtn, onChanged)
+-- tab's create button and the editor's corner) are its click handler, so
+-- a second click closes it. Single-select rows close on click, per the
+-- menu conventions.
+function Snippets.ToggleTriggerMenu(cogBtn)
     local keywordWord = slower(L["SNIPPET_KEYWORD"] or "keyword")
     local rows = {}
     for i = 1, #TRIGGER_CHOICES do
@@ -111,13 +112,12 @@ function Snippets.ShowTriggerMenu(anchorBtn, onChanged)
                 end
                 Snippets.RefreshTrigger()
                 Snippets.RefreshTriggerTexts()
-                if onChanged then onChanged() end
             end,
         }
     end
-    return Utils.ShowCursorMenu("EasyFindSnippetTriggerMenu", rows, {
-        anchorFrame = anchorBtn,
-        toggleOwner = anchorBtn,
+    return Utils.ToggleCursorMenu("EasyFindSnippetTriggerMenu", rows, {
+        anchorFrame = cogBtn,
+        toggleOwner = cogBtn,
         point = "TOPRIGHT", relativePoint = "BOTTOMRIGHT", offsetY = -2,
     })
 end
@@ -1023,17 +1023,9 @@ local function EnsureEditor()
 
     -- Trigger-character cog, top right: the same picker as the options
     -- tab's cog. The choice is GLOBAL; the tooltip says so.
-    local trigBtn = CreateFrame("Button", nil, f)
-    trigBtn:SetSize(18, 18)
+    local trigBtn = ns.CreateCogButton(f)
     trigBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -DIALOG_PAD + 4, -9)
-    local trigTex = trigBtn:CreateTexture(nil, "ARTWORK")
-    trigTex:SetPoint("CENTER")
-    trigTex:SetSize(15, 15)
-    trigTex:SetAtlas("QuestLog-icon-setting")
-    trigBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-    trigBtn:SetScript("OnClick", function(self)
-        Snippets.ShowTriggerMenu(self)
-    end)
+    trigBtn:SetScript("OnClick", Snippets.ToggleTriggerMenu)
     Utils.AttachDelayedTooltip(trigBtn, "ANCHOR_RIGHT", function()
         return sformat(L["SNIPPET_TRIGGER"], Snippets.TriggerChar()), L["SNIPPET_TRIGGER_NOTE"]
     end)

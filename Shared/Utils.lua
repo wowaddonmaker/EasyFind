@@ -2352,6 +2352,19 @@ function ns.SetRoundedRectFill(frame, r, g, b, a, snapOff)
     end
 end
 
+-- The small settings cogwheel tucked into a button or a dialog corner
+-- (export scope, snippet trigger). The caller anchors it and sets OnClick.
+function ns.CreateCogButton(parent)
+    local cog = CreateFrame("Button", nil, parent)
+    cog:SetSize(18, 18)
+    local tex = cog:CreateTexture(nil, "ARTWORK")
+    tex:SetPoint("CENTER")
+    tex:SetSize(15, 15)
+    tex:SetAtlas("QuestLog-icon-setting")
+    cog:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    return cog
+end
+
 -- Panel text retint for light themes: fontstrings sitting DIRECTLY on
 -- a wizard-glossed panel (titles, labels, hints) go dark; fontstrings
 -- inside rounded-fill controls (button pills, table cards) keep their
@@ -5730,6 +5743,17 @@ function Utils.HideCursorMenus(globalName)
         end
     end
     return closedAny
+end
+
+-- The click handler of a button that owns a menu: closes the named menu
+-- when it is open, otherwise shows it. Same arguments as ShowCursorMenu;
+-- the caller passes itself as opts.toggleOwner so the menu's outside-click
+-- closer leaves the owner's mouse-down alone (that down-edge would
+-- otherwise close the menu and this call would reopen it on the up-edge).
+-- Returns the menu, or nil when the click closed one.
+function Utils.ToggleCursorMenu(globalName, rows, opts)
+    if Utils.HideCursorMenus(globalName) then return nil end
+    return Utils.ShowCursorMenu(globalName, rows, opts)
 end
 
 -- Ground truth for "is the cursor on this menu": the focus stack that actually
