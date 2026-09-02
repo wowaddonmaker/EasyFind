@@ -43,6 +43,7 @@ function Rows.InstallTooltips(resultRow)
         Results._hoverRow = self
         self._efHlHover = true
         Results:UpdateRowWash(self)
+        if ns.RowCopy then ns.RowCopy:OnRowHover(self) end
         -- Mid-scroll, rows slide under a STATIONARY cursor and fire this
         -- for every row that passes -- the single largest cost of a scroll
         -- spam (Perfy flamegraph). The wash above still tracks; tooltips
@@ -540,7 +541,10 @@ function Rows.InstallTooltips(resultRow)
 
     resultRow:SetScript("OnLeave", function(self)
         self._efHlHover = nil
-        if Results._hoverRow == self then Results._hoverRow = nil end
+        if Results._hoverRow == self then
+            Results._hoverRow = nil
+            if ns.RowCopy then ns.RowCopy:OnRowHover(nil) end
+        end
         Results:UpdateRowWash(self)
         if GetUnearnedTooltip() then
             GetUnearnedTooltip():Hide()

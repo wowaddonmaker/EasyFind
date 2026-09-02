@@ -3723,12 +3723,24 @@ end
 -- go, a link keeps its bracketed display text. Covers both the legacy
 -- |cffRRGGBB color form and the modern |cnColorName: form; without this a
 -- byte-length truncation can cut inside an escape and render as nothing.
-function Utils.StripMarkup(s)
+-- Text bound for the OS clipboard: the client escapes every "|" on paste
+-- (anti-injection), so live escapes -- item links above all -- can never
+-- survive a Ctrl+C/Ctrl+V round trip; they paste as literal |H garbage.
+-- Flatten links to their display text and drop the paint, KEEPING line
+-- structure (StripMarkup below is the one-line normalizer built on this;
+-- the markup grammar lives here once).
+function Utils.ClipboardSafeText(s)
     if not s then return s end
     s = s:gsub("|A:[^|]*|a", "")
     s = s:gsub("|T[^|]*|t", "")
     s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|cn[^:|]*:", ""):gsub("|r", "")
     s = s:gsub("|H[^|]+|h(.-)|h", "%1")
+    return s
+end
+
+function Utils.StripMarkup(s)
+    s = Utils.ClipboardSafeText(s)
+    if not s then return s end
     s = s:gsub("%s+", " ")
     s = s:match("^%s*(.-)%s*$") or s
     return s
@@ -6860,14 +6872,19 @@ function ns.BuildSendLinkRows(link, name)
     rows[#rows + 1] = {
         text = L["CTX_SEND_LINK_CLIPBOARD"],
         onClick = function()
-            if link:find("|H", 1, true) then
-                -- Real hyperlink: the OS clipboard can't carry it (the
-                -- client strips |H escapes from pasted chat by design), so
-                -- show the rendered link to shift-click into a chat message.
+            local safe = Utils.ClipboardSafeText(link)
+            if safe ~= link and smatch(safe, "^%[[^%[%]]+%]$") then
+                -- The payload IS a single hyperlink: the OS clipboard can't
+                -- carry it (the client strips |H escapes from pasted chat
+                -- by design), so show the rendered link to shift-click
+                -- into a chat message.
                 ns.ShowChatLinkBox(link, L["CTX_SEND_LINK_SHIFTCLICK_HINT"]:format(name or ""))
             else
-                -- Plain-text payloads (statistics) keep the Ctrl-C box.
-                ns.ShowCopyBox(link, L["CTX_SEND_LINK_CLIPBOARD_HINT"]:format(name or ""))
+                -- Everything else -- plain text (statistics) or text with
+                -- links EMBEDDED in it (a snippet's whole message) -- is a
+                -- real clipboard payload: the full text, links flattened
+                -- to their display names, in the Ctrl+C box.
+                ns.ShowCopyBox(safe, L["CTX_SEND_LINK_CLIPBOARD_HINT"]:format(name or ""))
             end
         end,
     }

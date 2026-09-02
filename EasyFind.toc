@@ -115,6 +115,7 @@ Search/Results/Rows/InlineDropdown.lua
 Search/Results/Rows/CalculatorWidgets.lua
 Search/Results/Rows/SettingWidgets.lua
 Search/Results/Rows/Interactions.lua
+Search/Results/RowCopy.lua
 Search/Results/Rows/Tooltips.lua
 Search/Results/Rows/ResultButton.lua
 Search/Results/Navigation.lua
