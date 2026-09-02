@@ -20,7 +20,7 @@ local InCombatLockdown = InCombatLockdown
 local GetBindingKey = GetBindingKey
 
 local GOLD       = ns.GOLD_COLOR
-local WIZ_W, WIZ_H = 544, 408
+local WIZ_W, WIZ_H = ns.OPTIONS_WINDOW_W, ns.OPTIONS_WINDOW_H
 local TUTORIAL_IMAGE_MAX_W = 516
 local TUTORIAL_IMAGE_MAX_H = 240
 local TOGGLE_ACTION = "EASYFIND_TOGGLE_FOCUS"

@@ -2810,7 +2810,7 @@ local function BuildAliasesTab(ctx)
 
     local aliasList = CreateFrame("Frame", nil, aliasesTab)
     aliasList:SetPoint("TOPLEFT", shareTools, "BOTTOMLEFT", 0, -8)
-    aliasList:SetPoint("BOTTOMRIGHT", aliasesTab, "BOTTOMRIGHT", -8, 8)
+    ctx.AnchorListCardBottom(aliasList, aliasesTab)
     ns.CreateRoundedRectBorder(aliasList)
     ns.SetRoundedRectBarHeight(aliasList, 8)
     HideRoundedFrameBorder(aliasList)
@@ -3260,7 +3260,7 @@ local function BuildBlacklistTab(ctx)
 
     local blList = CreateFrame("Frame", nil, blacklistTab)
     blList:SetPoint("TOPLEFT", blShare, "BOTTOMLEFT", 0, -8)
-    blList:SetPoint("BOTTOMRIGHT", blacklistTab, "BOTTOMRIGHT", -8, 8)
+    ctx.AnchorListCardBottom(blList, blacklistTab)
     ns.CreateRoundedRectBorder(blList)
     ns.SetRoundedRectBarHeight(blList, 8)
     HideRoundedFrameBorder(blList)
@@ -3480,7 +3480,7 @@ local function BuildSnippetsTab(ctx)
 
     local snList = CreateFrame("Frame", nil, snippetsTab)
     snList:SetPoint("TOPLEFT", snTools, "BOTTOMLEFT", 0, -8)
-    snList:SetPoint("BOTTOMRIGHT", snippetsTab, "BOTTOMRIGHT", -8, 8)
+    ctx.AnchorListCardBottom(snList, snippetsTab)
     ns.CreateRoundedRectBorder(snList)
     ns.SetRoundedRectBarHeight(snList, 8)
     HideRoundedFrameBorder(snList)
@@ -3666,11 +3666,22 @@ end
 function Options:Initialize()
     if isInitialized then return end
 
-    local WINDOW_W   = 544
-    local WINDOW_H   = 408
+    local WINDOW_W   = ns.OPTIONS_WINDOW_W
+    local WINDOW_H   = ns.OPTIONS_WINDOW_H
     local SIDEBAR_W  = 132
     local FRAME_W    = WINDOW_W - SIDEBAR_W - 46
     local COL_LEFT   = 4
+    local SIDEBAR_BOTTOM_INSET = 10
+    local CONTENT_BOTTOM_INSET = 14
+    local LIST_CARD_SIDE_INSET = 8
+    -- ONE owner for the tab list-card bottom edge (aliases, blacklist,
+    -- snippets): the cards align with the SIDEBAR card's bottom, not the
+    -- content area. Tabs end CONTENT_BOTTOM_INSET above the window edge,
+    -- so the cards reach past their tab frame's bottom by the difference.
+    local function AnchorListCardBottom(card, tab)
+        card:SetPoint("BOTTOMRIGHT", tab, "BOTTOMRIGHT",
+            -LIST_CARD_SIDE_INSET, SIDEBAR_BOTTOM_INSET - CONTENT_BOTTOM_INSET)
+    end
 
     optionsFrame = CreateFrame("Frame", "EasyFindOptionsFrame", UIParent, "BackdropTemplate")
     ns.optionsFrame = optionsFrame
@@ -3756,7 +3767,7 @@ function Options:Initialize()
 
     local sidebar = CreateFrame("Frame", nil, optionsFrame)
     sidebar:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 10, -10)
-    sidebar:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 10, 10)
+    sidebar:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 10, SIDEBAR_BOTTOM_INSET)
     sidebar:SetWidth(SIDEBAR_W)
     optionsFrame.sidebar = sidebar
     sidebar._efNoAutoRetint = true
@@ -3841,7 +3852,7 @@ function Options:Initialize()
     -- Every tab's content fills this frame, so this TOP offset IS the shared
     -- starting y for all options rows (was -46; raised a touch per review).
     contentBorder:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", SIDEBAR_W + 32, -42)
-    contentBorder:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -14, 14)
+    contentBorder:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -14, CONTENT_BOTTOM_INSET)
     optionsFrame.contentBorder = contentBorder
 
     local tabFrames = {}
@@ -4125,6 +4136,7 @@ function Options:Initialize()
         SELECTOR_ROW_W = SELECTOR_ROW_W, SELECTOR_BTN_W = SELECTOR_BTN_W,
         CreateFlyoutPresetRow = CreateFlyoutPresetRow,
         RESET_BTN_W = RESET_BTN_W,
+        AnchorListCardBottom = AnchorListCardBottom,
     }
     BuildHomeTab(ctx)
     BuildGeneralBindsTab(ctx)

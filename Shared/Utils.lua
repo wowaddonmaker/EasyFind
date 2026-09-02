@@ -2079,6 +2079,17 @@ ns.RESULT_ROWS_MIN = 1
 ns.RESULT_ROWS_MAX = 8
 ns.SEARCHBAR_FILL = 0.55
 ns.SEARCHBAR_ICON_SCALE = 0.9
+-- How much smaller the corner update notice runs than the bar's own font,
+-- and how far its lower line clears the bar's bottom edge.
+ns.UPDATE_NOTICE_FONT_SCALE = 0.85
+ns.UPDATE_NOTICE_BOTTOM_PAD = 6
+-- Gap between the last result row and the notice; deliberately slim.
+ns.UPDATE_NOTICE_TOP_PAD = 1
+-- The options window and the tutorial wizard share one silhouette on
+-- purpose; both frames read this pair. Height grew by one 28px settings
+-- row (408 -> 436) when the tabs ran out of room.
+ns.OPTIONS_WINDOW_W = 544
+ns.OPTIONS_WINDOW_H = 436
 ns.DEFAULT_FONT_SIZE = 0.9
 ns.CLEAR_BTN_SIZE = 12
 -- Blizzard's standard round-crop mask, used wherever a square icon has to
