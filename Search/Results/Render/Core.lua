@@ -65,11 +65,11 @@ end
 function Render:LayoutUpdateFooter(resultsFrame)
     local footer = resultsFrame.updateFooter
     if not footer then return 0 end
-    local toggle = resultsFrame.updateFooterToggle
+    local hover = resultsFrame.updateFooterHover
     local newer = ns.VersionCheck and ns.VersionCheck:GetAvailableVersion()
     if not newer then
         footer:Hide()
-        if toggle then toggle:Hide() end
+        if hover then hover:Hide() end
         return 0
     end
     local theme = Results:GetActiveTheme()
@@ -87,38 +87,26 @@ function Render:LayoutUpdateFooter(resultsFrame)
     if theme.textFaint then
         footer:SetTextColor(theme.textFaint[1], theme.textFaint[2], theme.textFaint[3], 1)
     end
-    -- The switch scales to the text so it reads as part of the small footer
-    -- line; its width is then RESERVED out of the text region, so a long
-    -- translation truncates before the switch instead of running under it
-    -- or pushing it past the window edge.
-    local switchH = mfloor((footer:GetStringHeight() or 10) + 0.5)
-    if switchH < 8 then switchH = 8 end
-    local switchW = switchH * 2
-    if toggle and toggle._efSwitchH ~= switchH then
-        toggle._efSwitchH = switchH
-        toggle:SetSize(switchW + 2, switchH + 4)
-        toggle.switch:SetTrackSize(switchW, switchH)
-    end
     footer:ClearAllPoints()
-    -- Left inset clears the window's bottom-left corner curve; the text is
+    -- Both insets clear the window's bottom corner curves; the text is
     -- left-justified from there.
     footer:SetPoint("BOTTOMLEFT", resultsFrame, "BOTTOMLEFT", 14, ns.UPDATE_NOTICE_BOTTOM_PAD)
-    footer:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", -(8 + switchW + 6), ns.UPDATE_NOTICE_BOTTOM_PAD)
+    footer:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", -14, ns.UPDATE_NOTICE_BOTTOM_PAD)
     footer:Show()
-    -- A truncated translation keeps its full text reachable: the switch's
+    -- A truncated translation keeps its full text reachable: the hover
     -- tooltip leads with the whole message (see the OnEnter handler).
     local unbounded = footer.GetUnboundedStringWidth or footer.GetStringWidth
     footer.efTruncated = (unbounded(footer) or 0) > (footer:GetWidth() or 0) + 0.5
-    if toggle then
-        -- Just past the text's end; the reservation caps this at the
-        -- window's right edge minus the switch. The footer only renders
-        -- while reminders are enabled, so the switch always shows on.
-        toggle:ClearAllPoints()
-        toggle:SetPoint("LEFT", footer, "LEFT", mmin(footer:GetStringWidth() or 0, footer:GetWidth() or 0) + 6, 0)
-        toggle.switch:SetOn(true)
-        toggle:Show()
+    local band = (footer:GetStringHeight() or 10) + ns.UPDATE_NOTICE_BOTTOM_PAD + ns.UPDATE_NOTICE_TOP_PAD
+    if hover then
+        -- Covers the rendered text only, so empty footer space to the
+        -- right does not raise the tooltip.
+        hover:ClearAllPoints()
+        hover:SetPoint("BOTTOMLEFT", resultsFrame, "BOTTOMLEFT", 14, 0)
+        hover:SetSize(mmin(footer:GetStringWidth() or 0, footer:GetWidth() or 0), band)
+        hover:Show()
     end
-    return (footer:GetStringHeight() or 10) + ns.UPDATE_NOTICE_BOTTOM_PAD + ns.UPDATE_NOTICE_TOP_PAD
+    return band
 end
 
 -- Open the dropdown to fit `totalContentHeight` of content (viewport capped
