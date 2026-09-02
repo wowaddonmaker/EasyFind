@@ -534,7 +534,7 @@ local function UrlEncode(str)
 end
 
 local function ShowFeedbackURL(url)
-    ns.ShowCopyBox(url, L["URL_COPY_HINT"])
+    ns.CopyToClipboard(url)
 end
 
 local function OpenBugReport()

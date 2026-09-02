@@ -340,7 +340,6 @@ L["CTX_NEW_NOTE"]                       = "New Note"
 L["CTX_SEND_LINK_NAME"]                 = "By name..."
 L["CTX_SEND_LINK_NAME_PROMPT"]          = "Whisper the link to which player?"
 L["CTX_SEND_LINK_CLIPBOARD"]            = "Clipboard"
-L["CTX_SEND_LINK_CLIPBOARD_HINT"]       = "Press Ctrl+C to copy the link for\n\"%s\":"
 L["CTX_DESTROY_ITEM"]                   = "Destroy"
 L["CTX_TRACK"]                          = "Track"
 L["CTX_UNTRACK"]                        = "Untrack"
@@ -362,8 +361,6 @@ L["HEADER_PINNED"]                      = "Pinned"
 -- =============================================================================
 -- Core/Main.lua  --  slash help, login message, minimap tooltip
 -- =============================================================================
-L["URL_COPY_HINT"]                      = "Press Ctrl+C to copy, then paste in your browser:"
-L["WOWHEAD_COPY_HINT"]                  = "Press Ctrl+C to copy the Wowhead link for\n\"%s\":"
 L["COPIED"]                             = "Copied"
 L["FILTER_SNIPPETS"]                    = "Snippets"
 L["SNIPPET_CREATE"]                     = "Create snippet"
@@ -423,7 +420,6 @@ L["CTX_COPY_ICON_ID"] = "Copy icon ID"
 L["CTX_CREATE_MACRO_ICON"] = "Create macro with this icon"
 L["CTX_CREATE_MACRO_ICON_TT"] = "Create macro with icon + #showtooltip"
 L["ICON_SEARCH_APP"] = "Icon Search"
-L["ICON_COPY_HINT"] = "Press Ctrl+C to copy the FileDataID of\n\"%s\":"
 L["ICON_GRID_RCLICK_HINT"] = "Right click any icon for options"
 L["ICON_MODULE_DISABLED"] = "Icon Search is unavailable: enable the \"EasyFind [Icon Search]\" addon in your AddOns list."
 L["ITEMS_MODULE_DISABLED"] = "The item catalog is unavailable: enable the \"EasyFind [Item Catalog]\" addon in your AddOns list."
@@ -491,7 +487,7 @@ L["FILTER_QUALITY_FORMAT"]              = "Quality: %s"
 L["FILTER_ITEM_QUALITY"]                = "Item quality"
 L["TOOLTIP_RESULT_LOCKED"]              = "Unlocks at a higher level"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "That section isn't available to this character yet."
-L["CALC_COPY_HINT"]                     = "Ctrl+C to copy"
+L["COPY_HINT"]                          = "Ctrl+C to copy"
 
 -- =============================================================================
 -- Localization audit additions

@@ -377,7 +377,7 @@ local function FindByName(name)
 end
 
 -- Chat-first insertion: the active chat editbox when one is open, else open
--- one pre-filled; the copy box is the no-chat-API fallback.
+-- one pre-filled; the clipboard prompt is the no-chat-API fallback.
 function Snippets:RunByName(name)
     local snippet = FindByName(name)
     if not snippet then return end
@@ -388,10 +388,10 @@ function Snippets:RunByName(name)
         active:Insert(text)
     elseif ChatFrame_OpenChat then
         ChatFrame_OpenChat(text)
-    elseif ns.ShowCopyBox then
-        -- Copy-box fallback goes through the OS clipboard, where live
-        -- escapes cannot survive the paste.
-        ns.ShowCopyBox(Utils.ClipboardSafeText(text))
+    elseif ns.CopyToClipboard then
+        -- The clipboard carries the flattened text; the live text rides
+        -- along for the chat paste swap.
+        ns.CopyToClipboard(Utils.ClipboardSafeText(text), text)
     end
 end
 

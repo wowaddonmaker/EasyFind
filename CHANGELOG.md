@@ -19,6 +19,7 @@ All notable changes to EasyFind will be documented in this file.
 ### Changed
 - The options window and the tutorial are one settings row taller, and the aliases, blacklist, and snippets list cards align flush with the sidebar's bottom edge
 - The row context menu's "Send link" entry is now just "Send"
+- **The copy window is gone**: every "copy this" action (Send > Clipboard, Copy Wowhead link, icon ID/name/path, the changelog link, bug and feature links) now shows a small "Ctrl+C to copy" prompt at the cursor with the text already selected; pressing Ctrl+C copies it and the prompt flashes "Copied", and any click or keypress dismisses it
 - Searching "snippets" ranks the Snippets menu first and Create snippet second, ahead of whichever snippet was picked last
 
 ### Fixed

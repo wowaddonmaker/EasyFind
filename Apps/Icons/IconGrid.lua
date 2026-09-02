@@ -8,7 +8,7 @@ if not ns then return end
 -- icon cells, macro-picker style, filtered live by whatever follows @icons.
 -- The grid is a fixed cell matrix that RETEXTURES on scroll instead of
 -- moving frames, so 33k icons cost one pooled page of buttons. Left click
--- opens the copy box with the FileDataID; right click opens a cursor menu
+-- copies the FileDataID (clipboard prompt); right click opens a cursor menu
 -- with the copy actions and "create macro with this icon".
 
 local Search = ns.Search
@@ -56,8 +56,8 @@ local function IconTooltip(cellBtn)
     GameTooltip:Show()
 end
 
-local function ShowIconCopyBox(iconID, iconName)
-    ns.ShowCopyBox(tostring(iconID), L["ICON_COPY_HINT"]:format(iconName or ""))
+local function CopyIconID(iconID)
+    ns.CopyToClipboard(tostring(iconID))
 end
 
 local function CreateMacroWithIcon(iconID, withTooltip)
@@ -114,13 +114,13 @@ local function ShowCellMenu(cellBtn, keyboardMode)
     if not iconID then return end
     local rows = {
         { text = L["CTX_COPY_ICON_ID"], onClick = function()
-            ShowIconCopyBox(iconID, iconName)
+            CopyIconID(iconID)
         end },
         { text = L["CTX_COPY_ICON_NAME"], onClick = function()
-            ns.ShowCopyBox(iconName or "", L["ICON_COPY_HINT"]:format(iconName or ""))
+            ns.CopyToClipboard(iconName)
         end },
         { text = L["CTX_COPY_ICON_PATH"], onClick = function()
-            ns.ShowCopyBox("Interface\\Icons\\" .. (iconName or ""), L["ICON_COPY_HINT"]:format(iconName or ""))
+            ns.CopyToClipboard("Interface\\Icons\\" .. (iconName or ""))
         end },
         { text = L["CTX_CREATE_MACRO_ICON"], onClick = function()
             CreateMacroWithIcon(iconID)
@@ -232,7 +232,7 @@ local function OnCellClick(cellBtn, button)
     if button == "RightButton" then
         ShowCellMenu(cellBtn)
     else
-        ShowIconCopyBox(cellBtn.iconID, cellBtn.iconName)
+        CopyIconID(cellBtn.iconID)
     end
 end
 
@@ -516,8 +516,8 @@ function Results:ActivateIconGridFocus()
     if not self:IsIconGridNavActive() then return false end
     local fIdx = filtered[navIndex]
     if not fIdx then return false end
-    local name, id = IconSearch:GetIcon(fIdx)
-    if id then ShowIconCopyBox(id, name) end
+    local _, id = IconSearch:GetIcon(fIdx)
+    if id then CopyIconID(id) end
     return true
 end
 

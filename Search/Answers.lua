@@ -228,8 +228,8 @@ end
 local lastAnswerCopyValue
 
 local function CopyAnswer()
-    if lastAnswerCopyValue and ns.ShowCopyBox then
-        ns.ShowCopyBox(lastAnswerCopyValue)
+    if lastAnswerCopyValue and ns.CopyToClipboard then
+        ns.CopyToClipboard(lastAnswerCopyValue)
     end
 end
 

@@ -3518,15 +3518,10 @@ function ns.CreateCloseX(parent, size)
     return btn
 end
 
--- A small, addon-styled popup with a single read-only field whose text is
--- pre-selected so the user can immediately Ctrl-C it. Shared by the Wowhead
--- link option and the bug-report / feature-request feedback URLs. WoW addons
--- cannot write the clipboard, so a copy field is the correct approach.
-local copyBox
--- Read-only feel for copy-to-share editboxes (Wowhead links, export
--- codes): user keystrokes revert to the canonical text and reselect it,
--- so the Ctrl-C content can't be mangled by an accidental keypress.
--- Pass nil to make the box editable again (import flows reuse the box).
+-- Read-only feel for the export code box: user keystrokes revert to the
+-- canonical text and reselect it, so the Ctrl-C content can't be mangled
+-- by an accidental keypress. Pass nil to make the box editable again
+-- (the import flow reuses the box).
 function Utils.SetEditBoxReadOnlyText(editBox, text)
     if not editBox._efReadOnlyHooked then
         editBox._efReadOnlyHooked = true
@@ -3854,119 +3849,166 @@ function Utils.AttachEscClose(frame, close, shouldEat)
 end
 ns.AttachEscClose = function(frame, close, shouldEat) return Utils.AttachEscClose(frame, close, shouldEat) end
 
-local function EnsureCopyBox()
-    if not copyBox then
-        local f = CreateFrame("Frame", "EasyFindCopyBox", UIParent, "BackdropTemplate")
-        f:SetSize(470, 104)
-        f:SetPoint("CENTER", 0, 180)
-        f:SetFrameStrata("FULLSCREEN_DIALOG")
-        f:SetToplevel(true)
-        f:EnableMouse(true)
-        f:SetMovable(true)
-        f:SetClampedToScreen(true)
-        f:RegisterForDrag("LeftButton")
-        f:SetScript("OnDragStart", f.StartMoving)
-        f:SetScript("OnDragStop", f.StopMovingOrSizing)
-        ns.StyleMenuPanel(f)
+-- Hidden clipboard box. WoW has no set-clipboard API: a copy is a focused
+-- editbox with the payload selected receiving the user's HARDWARE Ctrl+C.
+-- One hidden box serves every copy site. Arm fills, selects, and focuses
+-- it; the chord that lands is the native copy, paired with its live link
+-- for the chat paste swap. The client decides how a copy is confirmed and
+-- whether a focus steal mid-arm is fought (a row hover holding Ctrl) or
+-- ends the arm (a one-shot prompt): { OnCopied = fn, HoldsFocus = fn ->
+-- bool, OnDisarm = fn }.
+do
+local box, client, clientLink, prevFocus
 
-        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        f.title._efOwnColor = true
-        f.title:SetPoint("TOP", f, "TOP", 0, -14)
-        -- Centered so the item name on its own line sits under the
-        -- middle of the hint. Wrap stays on for the explicit newline;
-        -- the width fit below always sizes the frame to the widest
-        -- line, so no automatic wrapping occurs.
-        f.title:SetJustifyH("CENTER")
-        f.title:SetWordWrap(true)
-        f.title:SetSpacing(2)
-
-        -- Hidden twin of the editbox font, used to size the frame to the
-        -- copied text (an editbox cannot report its rendered width).
-        f.measure = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        f.measure:Hide()
-
-        local field = CreateFrame("Frame", nil, f)
-        field:SetPoint("TOP", f.title, "BOTTOM", 0, -10)
-        field:SetPoint("LEFT", f, "LEFT", 14, 0)
-        field:SetPoint("RIGHT", f, "RIGHT", -14, 0)
-        field:SetHeight(26)
-        local bg = field:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        bg:SetColorTexture(0, 0, 0, 0.45)
-
-        local editBox = CreateFrame("EditBox", nil, field)
-        editBox:SetPoint("LEFT", 8, 0)
-        editBox:SetPoint("RIGHT", -8, 0)
-        editBox:SetHeight(20)
-        editBox:SetFontObject("GameFontHighlight")
-        editBox:SetAutoFocus(false)
-        editBox:SetJustifyH("LEFT")
-        editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus(); f:Hide() end)
-        editBox:SetScript("OnEnterPressed", function(self) self:HighlightText() end)
-        editBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
-        f.editBox = editBox
-
-        Utils.AttachCopiedFlash(editBox, f, field, -6)
-        editBox:HookScript("OnKeyDown", function(_, key)
-            if key == "C" and IsControlKeyDown() then
-                Utils.StashClipboardLink(f._text, f._link)
-            end
-        end)
-        f.field = field
-
-        local close = ns.CreateCloseX(f, 14)
-        close:SetPoint("TOPRIGHT", -8, -8)
-        close:SetScript("OnClick", function() f:Hide() end)
-
-        -- ESC closes the box even when the editbox lost focus, via the
-        -- taint-free override-bind path (never UISpecialFrames).
-        Utils.AttachEscClose(f)
-
-        f:Hide()
-        copyBox = f
+function Utils.DisarmClipboardBox(restoreFocus, who)
+    if not client or (who and client ~= who) then return end
+    local outgoing = client
+    client, clientLink = nil, nil
+    if box then box:ClearFocus() end
+    if restoreFocus and prevFocus and prevFocus.SetFocus and prevFocus:IsVisible() then
+        prevFocus:SetFocus()
     end
-    return copyBox
+    prevFocus = nil
+    if outgoing.OnDisarm then outgoing.OnDisarm() end
 end
+
+local function EnsureClipboardBox()
+    if box then return box end
+    box = CreateFrame("EditBox", "EasyFindClipboardBox", UIParent)
+    box:SetAutoFocus(false)
+    box:SetSize(1, 1)
+    box:SetPoint("TOP", UIParent, "TOP", 0, 30)
+    box:SetAlpha(0)
+    box:EnableMouse(false)
+    box:SetScript("OnKeyDown", function(self, key)
+        if (key == "C" or key == "c") and IsControlKeyDown() and client then
+            Utils.StashClipboardLink(self:GetText(), clientLink)
+            if client.OnCopied then client.OnCopied() end
+        end
+    end)
+    -- Stray typing means the user wanted their previous editbox: hand
+    -- focus straight back rather than eating input.
+    box:SetScript("OnChar", function() Utils.DisarmClipboardBox(true) end)
+    box:SetScript("OnEscapePressed", function() Utils.DisarmClipboardBox(true) end)
+    box:SetScript("OnEditFocusLost", function()
+        -- Deliberate teardowns cleared the client before moving focus.
+        -- Anything ELSE stealing focus loses to a client that holds
+        -- (re-asserted once, next frame) and ends any other arm.
+        local holder = client
+        if holder and holder.HoldsFocus and holder.HoldsFocus() then
+            Utils.SafeAfter(0, function()
+                if client == holder and holder.HoldsFocus() then
+                    box:SetFocus()
+                    box:HighlightText(0, -1)
+                end
+            end)
+        else
+            Utils.DisarmClipboardBox(false)
+        end
+    end)
+    return box
+end
+
+function Utils.ClipboardBoxClient()
+    return client
+end
+
+function Utils.ArmClipboardBox(text, link, newClient)
+    local eb = EnsureClipboardBox()
+    local outgoing = client
+    if not outgoing then
+        local current = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
+        prevFocus = (current and current ~= eb) and current or nil
+    end
+    client, clientLink = newClient, link
+    if outgoing and outgoing ~= newClient and outgoing.OnDisarm then outgoing.OnDisarm() end
+    eb:SetText(text)
+    eb:SetCursorPosition(0)
+    eb:HighlightText(0, -1)
+    eb:SetFocus()
+    -- Focus changes settle one frame late and can drop the selection.
+    Utils.SafeAfter(0, function()
+        if client ~= newClient or eb:GetText() ~= text then return end
+        eb:SetFocus()
+        eb:HighlightText(0, -1)
+    end)
+end
+
+-- One-shot copy: a small themed prompt at the cursor asks for the chord,
+-- turns into "Copied" when it lands, and goes away on Escape, a click
+-- anywhere, stray typing, or any other focus move. Replaces the old copy
+-- window for links, URLs, icon paths, and quick answers.
+local prompt, promptFade, promptCopied, promptClient
+
+local function SizePrompt(msg)
+    prompt.text:SetText(msg)
+    prompt:SetSize(mfloor(prompt.text:GetStringWidth() + 0.5) + 24,
+        mfloor(prompt.text:GetStringHeight() + 0.5) + 14)
+end
+
+local function EnsurePrompt()
+    if prompt then return prompt end
+    prompt = CreateFrame("Frame", "EasyFindCopyPrompt", UIParent, "BackdropTemplate")
+    prompt:SetFrameStrata("TOOLTIP")
+    prompt:SetClampedToScreen(true)
+    ns.StyleMenuPanel(prompt)
+    prompt.text = prompt:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    prompt.text:SetPoint("CENTER")
+    promptFade = prompt:CreateAnimationGroup()
+    local alpha = promptFade:CreateAnimation("Alpha")
+    alpha:SetFromAlpha(1)
+    alpha:SetToAlpha(0)
+    alpha:SetStartDelay(0.7)
+    alpha:SetDuration(0.6)
+    promptFade:SetScript("OnFinished", function() prompt:Hide() end)
+    -- Menu rows act on mouse-down, so the press that chose "Clipboard"
+    -- can still arrive here as GLOBAL_MOUSE_DOWN; the same grace the
+    -- cursor menus use keeps the opening click from dismissing the prompt.
+    prompt:SetScript("OnEvent", function(self)
+        if GetTime() - (self._showedAt or 0) < 0.05 then return end
+        Utils.DisarmClipboardBox(false, promptClient)
+    end)
+    prompt:SetScript("OnShow", function(self)
+        self._showedAt = GetTime()
+        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    end)
+    prompt:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
+    prompt:Hide()
+    return prompt
+end
+
+promptClient = {
+    OnCopied = function()
+        promptCopied = true
+        SizePrompt(L["COPIED"])
+        promptFade:Play()
+        -- The native copy completes on this same key event; the box lets
+        -- go one frame later so the chord is never cut short.
+        Utils.SafeAfter(0, function() Utils.DisarmClipboardBox(true, promptClient) end)
+    end,
+    OnDisarm = function()
+        if prompt and not promptCopied then prompt:Hide() end
+    end,
+}
 
 -- link: the live hyperlink the (flattened) text stands for, restored when
 -- the copied text is pasted into chat (StashClipboardLink).
-function ns.ShowCopyBox(text, labelText, link)
-    text = text or ""
-    EnsureCopyBox()
-    copyBox._text = text
-    copyBox._link = link
-    copyBox.title:SetText(labelText or "")
-    -- Gold heading is unreadable on the light palettes; there the title
-    -- wears the theme's main text color instead.
-    local copyTheme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
-    if copyTheme and copyTheme.lightTheme then
-        copyBox.title:SetTextColor(unpack(copyTheme.leafColor))
-    else
-        copyBox.title:SetTextColor(1.0, 0.82, 0)
-    end
-    -- Width tracks the widest of the title and the copied text (+ field
-    -- padding), so short links show whole; very long text still clips at
-    -- the cap (full text stays selected for Ctrl-C). Height follows the
-    -- title, which is two lines when the hint carries the item name.
-    copyBox.measure:SetText(text)
-    local textW = math.floor(copyBox.measure:GetStringWidth() + 0.5)
-    copyBox:SetWidth(math.max(200,
-        math.floor(copyBox.title:GetStringWidth() + 0.5) + 44,
-        math.min(textW + 52, 460)))
-    copyBox:SetHeight(88 + math.floor(copyBox.title:GetStringHeight() + 0.5))
-    copyBox:Show()
-    local eb = copyBox.editBox
-    Utils.SetEditBoxReadOnlyText(eb, text)
-    eb:SetCursorPosition(0)
-    eb:SetFocus()
-    eb:HighlightText()
-    -- Re-assert next frame; SetFocus during layout can drop the selection.
-    Utils.SafeAfter(0, function()
-        if copyBox:IsShown() then
-            eb:SetFocus()
-            eb:HighlightText()
-        end
-    end)
+function Utils.CopyToClipboard(text, link)
+    if not text or text == "" then return end
+    local p = EnsurePrompt()
+    promptFade:Stop()
+    promptCopied = false
+    p.text:SetTextColor(ns.TooltipTextColor())
+    SizePrompt(L["COPY_HINT"])
+    local scale = UIParent:GetEffectiveScale()
+    local x, y = GetCursorPosition()
+    p:ClearAllPoints()
+    p:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + 12, y / scale + 12)
+    p:SetAlpha(1)
+    p:Show()
+    Utils.ArmClipboardBox(text, link, promptClient)
+end
+ns.CopyToClipboard = Utils.CopyToClipboard
 end
 
 -- Themed replacement for Blizzard StaticPopup confirm/input dialogs, styled
@@ -4990,7 +5032,6 @@ local PREREGISTERED_GUARDS = {
     "EasyFindUIAppsButton",
     "EasyFindUIWizard",
     "EasyFindPinPopup",
-    "EasyFindCopyBox",
     "EasyFindThemedDialog",
     "EasyFindAsOptionsPopup",
     "EasyFindAsClassPopup",
@@ -6708,7 +6749,7 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     if extra and extra.sendLink then
         -- Hover-cascade flyout of chat channels, opened beside the row like
         -- every other flyout; the arrow glyph marks it as a submenu.
-        local sendRows = ns.BuildSendLinkRows(extra.sendLink.link, extra.sendLink.name)
+        local sendRows = ns.BuildSendLinkRows(extra.sendLink.link)
         if sendRows then
             -- No bespoke arrow: rows with a submenu get the shared chevron
             -- from the menu module; adding one here doubled the arrows.
@@ -6825,10 +6866,10 @@ local function SendLinkTargetName()
 end
 
 -- Build the "Send link" flyout rows for a result's chat link: public/group
--- channels, a whisper to the current target, a whisper by typed name, and a
--- copy box. WoW has no silent set-clipboard API, so the copy box is the
--- standard Ctrl+C path. Returned as a submenu spec for the context menu.
-function ns.BuildSendLinkRows(link, name)
+-- channels, a whisper to the current target, a whisper by typed name, and
+-- the clipboard prompt (WoW has no silent set-clipboard API, so a hardware
+-- Ctrl+C is the copy). Returned as a submenu spec for the context menu.
+function ns.BuildSendLinkRows(link)
     if not link then return nil end
     local rows = {}
     for i = 1, #SEND_LINK_CHANNELS do
@@ -6869,8 +6910,7 @@ function ns.BuildSendLinkRows(link, name)
         onClick = function()
             -- The clipboard carries the text with links flattened to their
             -- display names; the live link rides along for a chat paste.
-            ns.ShowCopyBox(Utils.ClipboardSafeText(link),
-                L["CTX_SEND_LINK_CLIPBOARD_HINT"]:format(name or ""), link)
+            Utils.CopyToClipboard(Utils.ClipboardSafeText(link), link)
         end,
     }
     return rows

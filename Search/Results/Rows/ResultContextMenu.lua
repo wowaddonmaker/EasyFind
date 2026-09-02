@@ -128,12 +128,12 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
     local wowheadUrl = ns.GetWowheadLink and ns.GetWowheadLink(pinData)
     if wowheadUrl then
         extra.onWowhead = function()
-            ns.ShowCopyBox(wowheadUrl, ns.L["WOWHEAD_COPY_HINT"]:format(pinData.name or ""))
+            ns.CopyToClipboard(wowheadUrl)
         end
     end
     local chatLink = ns.GetResultLink and ns.GetResultLink(pinData)
     if chatLink then
-        extra.sendLink = { link = chatLink, name = pinData.name }
+        extra.sendLink = { link = chatLink }
         local addNoteRows = ns.BuildAddNoteRows and ns.BuildAddNoteRows(chatLink, pinData.name)
         if addNoteRows then extra.addNoteRows = addNoteRows end
     end

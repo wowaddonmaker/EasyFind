@@ -130,8 +130,8 @@ function Results:CreateResultsFrame()
         -- the Send-link channel submenu) count as inside: those submenus are
         -- separate pooled frames, not children of the pin popup.
         if Utils.IsCursorMenuMouseOver() then return end
-        -- Every floating EasyFind window (copy box, pin popup, calculator,
-        -- StaticPopup slots, ...) lives in the shared click-guard registry.
+        -- Every floating EasyFind window (pin popup, calculator, StaticPopup
+        -- slots, ...) lives in the shared click-guard registry.
         if Utils.IsClickGuardMouseOver() then return end
         -- The filter dropdown and every popup it spawns; IsMouseInFilterChain
         -- owns that union via dropdown.guardFrames.

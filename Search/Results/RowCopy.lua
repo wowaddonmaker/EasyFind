@@ -2,9 +2,7 @@ local _, ns = ...
 
 -- True clipboard copy from a hovered result row: Ctrl+C over a row copies
 -- its text (a snippet's whole message, a link's display name) to the OS
--- clipboard. WoW has no set-clipboard API; the trick is the calculator's
--- shipped one -- a hidden focused editbox with the payload pre-selected
--- receives the user's HARDWARE Ctrl+C and the client copies natively.
+-- clipboard through the shared hidden clipboard box (Utils).
 --
 -- Arming: holding Ctrl while hovering a copyable row (or pressing Ctrl+C
 -- while the search box is focused and a row is hovered) fills, selects,
@@ -18,13 +16,12 @@ local L = ns.L
 
 local CreateFrame = CreateFrame
 local IsControlKeyDown = IsControlKeyDown
-local GetCurrentKeyBoardFocus = GetCurrentKeyBoardFocus
 
 local RowCopy = {}
 ns.RowCopy = RowCopy
 
-local copyBox, flashHolder, flashFade
-local armedRow, armedLink, prevFocus
+local flashHolder, flashFade
+local armedRow
 
 -- Calculator rows own their richer two-part copy flow; everything else
 -- copies its send payload as clipboard-safe text (the live link is kept
@@ -68,77 +65,28 @@ local function FlashCopied()
     flashFade:Play()
 end
 
+-- Anything ELSE stealing the hidden box's focus mid-hold loses to the
+-- armed copy (the box re-asserts once), so the next Ctrl+C still lands.
+local client = {
+    OnCopied = FlashCopied,
+    HoldsFocus = function() return armedRow ~= nil and IsControlKeyDown() end,
+    OnDisarm = function() armedRow = nil end,
+}
+
 function RowCopy:Disarm(restoreFocus)
     if not armedRow then return end
-    armedRow = nil
-    if copyBox then copyBox:ClearFocus() end
-    if restoreFocus and prevFocus and prevFocus.SetFocus and prevFocus:IsVisible() then
-        prevFocus:SetFocus()
-    end
-    prevFocus = nil
-end
-
-local function EnsureBox()
-    if copyBox then return copyBox end
-    copyBox = CreateFrame("EditBox", "EasyFindRowCopyBox", UIParent)
-    copyBox:SetAutoFocus(false)
-    copyBox:SetSize(1, 1)
-    copyBox:SetPoint("TOP", UIParent, "TOP", 0, 30)
-    copyBox:SetAlpha(0)
-    copyBox:EnableMouse(false)
-    copyBox:SetScript("OnKeyDown", function(self, key)
-        if (key == "C" or key == "c") and IsControlKeyDown() then
-            -- This hardware chord IS the native copy: confirm it and pair
-            -- the copied text with its live link for the chat paste swap.
-            Utils.StashClipboardLink(self:GetText(), armedLink)
-            FlashCopied()
-        end
-    end)
-    -- Stray typing means the user wanted their previous editbox: hand
-    -- focus straight back rather than eating input.
-    copyBox:SetScript("OnChar", function() RowCopy:Disarm(true) end)
-    copyBox:SetScript("OnEscapePressed", function() RowCopy:Disarm(true) end)
-    copyBox:SetScript("OnEditFocusLost", function()
-        -- Deliberate teardowns (Ctrl-up, Escape, stray typing) cleared
-        -- armedRow before moving focus. Anything ELSE stealing focus
-        -- mid-hold loses to the armed copy: re-assert once so the next
-        -- Ctrl+C still lands.
-        if armedRow and IsControlKeyDown() then
-            local row = armedRow
-            Utils.SafeAfter(0, function()
-                if armedRow == row and copyBox and IsControlKeyDown() then
-                    copyBox:SetFocus()
-                    copyBox:HighlightText(0, -1)
-                end
-            end)
-        else
-            armedRow = nil
-        end
-    end)
-    return copyBox
+    Utils.DisarmClipboardBox(restoreFocus, client)
 end
 
 function RowCopy:ArmFor(row)
     local payload, link = RowPayload(row)
     if not payload then return false end
-    local box = EnsureBox()
-    if not armedRow then
-        local current = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
-        if current and current ~= box then prevFocus = current end
-    end
-    armedRow, armedLink = row, link
-    box:SetText(payload)
-    box:SetCursorPosition(0)
-    box:HighlightText(0, -1)
-    box:SetFocus()
-    -- The deferred re-select mirrors the calculator: focus changes settle
-    -- one frame late and can drop the selection.
-    Utils.SafeAfter(0, function()
-        if armedRow ~= row or not copyBox then return end
-        if copyBox:GetText() ~= payload then return end
-        copyBox:SetFocus()
-        copyBox:HighlightText(0, -1)
-    end)
+    -- A one-shot copy prompt (Send > Clipboard, Wowhead) owns the box
+    -- until it is used or dismissed; a Ctrl-hover never hijacks it.
+    local owner = Utils.ClipboardBoxClient()
+    if owner and owner ~= client then return false end
+    armedRow = row
+    Utils.ArmClipboardBox(payload, link, client)
     return true
 end
 

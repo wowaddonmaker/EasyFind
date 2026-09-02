@@ -331,7 +331,7 @@ local function ShowPopup(isPinned, onPin, onGuide, onAddAlias, data)
     if wowheadUrl then
         extra = {
             onWowhead = function()
-                ns.ShowCopyBox(wowheadUrl, L["WOWHEAD_COPY_HINT"]:format(data.name or ""))
+                ns.CopyToClipboard(wowheadUrl)
             end,
         }
     end
@@ -341,7 +341,7 @@ local function ShowPopup(isPinned, onPin, onGuide, onAddAlias, data)
     local mapPinLink = data and ns.GetMapPinLink and ns.GetMapPinLink(data)
     if mapPinLink then
         extra = extra or {}
-        extra.sendLink = { link = mapPinLink, name = data.name }
+        extra.sendLink = { link = mapPinLink }
     end
     Utils.ShowPinMenu("EasyFindPinPopup", isPinned, onPin, onGuide, onAddAlias, {
         strata = "TOOLTIP",

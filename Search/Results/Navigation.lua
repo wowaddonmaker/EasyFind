@@ -637,7 +637,7 @@ function Results:ActivateResultRow(resultRow, source)
 end
 
 function Results:ActivateSelected(source)
-    -- Enter on the grid's focused cell = the left-click action (copy box).
+    -- Enter on the grid's focused cell = the left-click action (copy the ID).
     if self.IsIconGridNavActive and self:IsIconGridNavActive() then
         if self:ActivateIconGridFocus() then return end
     end

@@ -315,7 +315,6 @@ L["CTX_NEW_NOTE"]                       = "Новая заметка"
 L["CTX_SEND_LINK_NAME"]                 = "По имени..."
 L["CTX_SEND_LINK_NAME_PROMPT"]          = "Какому игроку шепнуть ссылку?"
 L["CTX_SEND_LINK_CLIPBOARD"]            = "Буфер обмена"
-L["CTX_SEND_LINK_CLIPBOARD_HINT"]       = "Нажмите Ctrl+C, чтобы скопировать ссылку для\n«%s»:"
 L["CTX_DESTROY_ITEM"]                   = "Уничтожить"
 L["CTX_TRACK"]                          = "Отслеживать"
 L["CTX_UNTRACK"]                        = "Не отслеживать"
@@ -333,8 +332,6 @@ L["PROMPT_RENAME_PET"]                  = "Новое имя для этого �
 L["HEADER_PINNED"]                      = "Закреплено"
 
 -- Core: slash help, login, minimap tooltip
-L["URL_COPY_HINT"]                      = "Нажмите Ctrl+C, чтобы скопировать, затем вставьте в браузер:"
-L["WOWHEAD_COPY_HINT"]                  = "Нажмите Ctrl+C, чтобы скопировать ссылку Wowhead для\n«%s»:"
 L["COPIED"]                             = "Скопировано"
 L["FILTER_SNIPPETS"]                    = "Заготовки"
 L["SNIPPET_CREATE"]                     = "Создать заготовку"
@@ -392,7 +389,6 @@ L["CTX_COPY_ICON_ID"] = "Скопировать ID значка"
 L["CTX_CREATE_MACRO_ICON"] = "Создать макрос с этим значком"
 L["CTX_CREATE_MACRO_ICON_TT"] = "Создать макрос со значком + #showtooltip"
 L["ICON_SEARCH_APP"] = "Поиск значков"
-L["ICON_COPY_HINT"] = "Нажмите Ctrl+C, чтобы скопировать FileDataID\n\"%s\":"
 L["ICON_GRID_RCLICK_HINT"] = "Щёлкните значок правой кнопкой для настроек"
 L["ICON_MODULE_DISABLED"] = "Поиск значков недоступен: включите аддон \"EasyFind [Icon Search]\" в списке аддонов."
 L["ITEMS_MODULE_DISABLED"] = "Каталог предметов недоступен: включите аддон \"EasyFind [Item Catalog]\" в списке аддонов."
@@ -450,7 +446,7 @@ L["FILTER_QUALITY_FORMAT"]              = "Качество: %s"
 L["FILTER_ITEM_QUALITY"]                = "Качество предмета"
 L["TOOLTIP_RESULT_LOCKED"]              = "Откроется на более высоком уровне"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "Этот раздел пока недоступен для этого персонажа."
-L["CALC_COPY_HINT"]                     = "Ctrl+C, чтобы скопировать"
+L["COPY_HINT"]                          = "Ctrl+C, чтобы скопировать"
 
 -- =============================================================================
 -- Localization audit additions

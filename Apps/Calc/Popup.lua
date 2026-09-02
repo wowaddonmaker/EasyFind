@@ -248,7 +248,7 @@ function Calculator:UpdateCalculatorPopupCopyVisual(data)
             copied and 0.62 or GOLD_COLOR[3],
             1)
         if frame.hintText then
-            frame.hintText:SetText(copied and L["CALC_PASTE_HINT"] or L["CALC_COPY_HINT"])
+            frame.hintText:SetText(copied and L["CALC_PASTE_HINT"] or L["COPY_HINT"])
             frame.hintText:SetTextColor(copied and 0.48 or 0.72, copied and 1.0 or 0.72, copied and 0.62 or 0.72, 1)
             frame.hintText:Show()
         end
@@ -884,7 +884,7 @@ function Calculator:SetCalculatorCopyHighlight(row, part)
         row.calcResultHighlight:SetShown(resultActive)
     end
     if row.calcExpressionHint then
-        row.calcExpressionHint:SetText(expressionCopied and L["CALC_PASTE_HINT"] or L["CALC_COPY_HINT"])
+        row.calcExpressionHint:SetText(expressionCopied and L["CALC_PASTE_HINT"] or L["COPY_HINT"])
         if expressionCopied then
             row.calcExpressionHint:SetTextColor(copiedR, copiedG, copiedB, 1.0)
         else
@@ -893,7 +893,7 @@ function Calculator:SetCalculatorCopyHighlight(row, part)
         row.calcExpressionHint:SetShown(expressionActive)
     end
     if row.calcResultHint then
-        row.calcResultHint:SetText(resultCopied and L["CALC_PASTE_HINT"] or L["CALC_COPY_HINT"])
+        row.calcResultHint:SetText(resultCopied and L["CALC_PASTE_HINT"] or L["COPY_HINT"])
         if resultCopied then
             row.calcResultHint:SetTextColor(copiedR, copiedG, copiedB, 1.0)
         else

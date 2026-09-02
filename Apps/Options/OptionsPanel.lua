@@ -2643,8 +2643,8 @@ local function BuildAliasesTab(ctx)
         f.editBox = eb
         Utils.CreateMinimalScrollBar(scroll, boxFrame)
 
-        -- Ctrl-C confirmation, matching the Wowhead copy box. No bottom
-        -- Close button; the top-right X covers dismissal.
+        -- Ctrl-C confirmation flash. No bottom Close button; the top-right
+        -- X covers dismissal.
         Utils.AttachCopiedFlash(eb, f, boxFrame, -4)
 
         f.importBtn = ns.CreateModernButton(f, L["SHORTKEY_IMPORT"], 90, 22)

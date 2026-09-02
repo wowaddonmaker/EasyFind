@@ -99,7 +99,7 @@ function Onboarding:ShowWhatsNew(version)
         changelogLink:SetScript("OnEnter", function() changelogText:SetTextColor(1, 1, 1) end)
         changelogLink:SetScript("OnLeave", function() changelogText:SetTextColor(Utils.RGB(GOLD, 1)) end)
         changelogLink:SetScript("OnClick", function()
-            ns.ShowCopyBox(ns.GITHUB_CHANGELOG_URL, L["WHATSNEW_CHANGELOG_LINK"])
+            ns.CopyToClipboard(ns.GITHUB_CHANGELOG_URL)
         end)
         f._changelogLink = changelogLink
 

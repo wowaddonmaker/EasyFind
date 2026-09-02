@@ -678,7 +678,7 @@ function Search:CreateSearchFrame()
             -- parent frame hides and the child button never receives its OnClick.
             Utils.SafeAfter(0, function()
                 -- The focus-stealing click landed on a guarded surface (a grid
-                -- cell, the copy box, a popup): rows/cells handle their own
+                -- cell, a popup): rows/cells handle their own
                 -- dismissal, and hiding here would kill the results before an
                 -- up-click cell handler ever fires (the deferred hide lands a
                 -- frame after mouse-down, well before a human mouse-up).
@@ -2016,8 +2016,8 @@ function Search:CreateSearchFrame()
         -- The filter dropdown and every popup it spawns; IsMouseInFilterChain
         -- owns that union via dropdown.guardFrames.
         if Filters.IsMouseInFilterChain() then return end
-        -- Every floating EasyFind window (apps menu, pin popup, copy box,
-        -- wizard, ...) lives in the shared click-guard registry.
+        -- Every floating EasyFind window (apps menu, pin popup, wizard,
+        -- ...) lives in the shared click-guard registry.
         if Utils.IsClickGuardMouseOver() then return end
         Search:Hide()
     end)
