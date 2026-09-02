@@ -3732,6 +3732,52 @@ function Utils.StripMarkup(s)
     return s
 end
 
+-- The link the flattened clipboard text stands for rides alongside in
+-- memory: every Ctrl+C site that copies ClipboardSafeText(link) stashes the
+-- pair, and a chat editbox that receives EXACTLY that text as one inserted
+-- chunk (a paste, never typing) swaps the real link back in place. Chat
+-- gets a live link, anything outside the game keeps the readable name.
+do
+local sbyte = string.byte
+local pastePlain, pasteLink
+
+function Utils.StashClipboardLink(plain, link)
+    if not link or plain == link then
+        pastePlain, pasteLink = nil, nil
+        return
+    end
+    pastePlain, pasteLink = plain, link
+end
+
+-- Tracks every text state (addon SetText included) so "previous text" is
+-- always the box's real prior content; only user changes can be a paste.
+local function SwapPastedLink(editBox, userInput)
+    local prev = editBox._efPrevText
+    local text = editBox:GetText()
+    editBox._efPrevText = text
+    if not userInput or not pastePlain or not prev then return end
+    local caret = editBox:GetCursorPosition() or 0
+    local plainLen = #pastePlain
+    if caret < plainLen or sbyte(text, caret) ~= sbyte(pastePlain, plainLen) then return end
+    if ssub(text, caret - plainLen + 1, caret) ~= pastePlain then return end
+    local prefix, suffix = ssub(text, 1, caret - plainLen), ssub(text, caret + 1)
+    if prev ~= prefix .. suffix then return end
+    local newText = prefix .. pasteLink .. suffix
+    local maxLetters = editBox:GetMaxLetters()
+    if maxLetters and maxLetters > 0 and #newText > maxLetters then return end
+    editBox._efPrevText = newText
+    editBox:SetText(newText)
+    editBox:SetCursorPosition(#prefix + #pasteLink)
+end
+
+function Utils.AttachPasteLinkSwap(editBox)
+    if not editBox or editBox._efPasteSwap then return end
+    editBox._efPasteSwap = true
+    editBox._efPrevText = editBox:GetText()
+    editBox:HookScript("OnTextChanged", SwapPastedLink)
+end
+end
+
 -- One owner for "hook Blizzard's insert-link routing" (shift-clicked items,
 -- achievements, spells). 12.1 routes these through ChatFrameUtil.InsertLink;
 -- the legacy ChatEdit_InsertLink global still exists but no longer sees the
@@ -3861,31 +3907,11 @@ local function EnsureCopyBox()
         f.editBox = editBox
 
         Utils.AttachCopiedFlash(editBox, f, field, -6)
-
-        -- Rendered-link mode: shows the real hyperlink (colored, hoverable)
-        -- instead of a Ctrl-C field; clicking it inserts the link into the
-        -- active chat editbox, like shift-clicking an item in a bag.
-        local linkHolder = CreateFrame("Frame", nil, f)
-        linkHolder:SetPoint("TOP", f.title, "BOTTOM", 0, -10)
-        linkHolder:SetPoint("LEFT", f, "LEFT", 14, 0)
-        linkHolder:SetPoint("RIGHT", f, "RIGHT", -14, 0)
-        linkHolder:SetHeight(26)
-        linkHolder:SetHyperlinksEnabled(true)
-        local linkFS = linkHolder:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        linkFS:SetPoint("CENTER")
-        linkHolder:SetScript("OnHyperlinkClick", function()
-            if f._link then ChatEdit_InsertLink(f._link) end
-        end)
-        linkHolder:SetScript("OnHyperlinkEnter", function(self, linkData)
-            GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            if not pcall(GameTooltip.SetHyperlink, GameTooltip, linkData) then
-                GameTooltip:Hide()
+        editBox:HookScript("OnKeyDown", function(_, key)
+            if key == "C" and IsControlKeyDown() then
+                Utils.StashClipboardLink(f._text, f._link)
             end
         end)
-        linkHolder:SetScript("OnHyperlinkLeave", function() GameTooltip:Hide() end)
-        linkHolder:Hide()
-        f.linkHolder = linkHolder
-        f.linkFS = linkFS
         f.field = field
 
         local close = ns.CreateCloseX(f, 14)
@@ -3902,13 +3928,13 @@ local function EnsureCopyBox()
     return copyBox
 end
 
-function ns.ShowCopyBox(text, labelText)
+-- link: the live hyperlink the (flattened) text stands for, restored when
+-- the copied text is pasted into chat (StashClipboardLink).
+function ns.ShowCopyBox(text, labelText, link)
     text = text or ""
     EnsureCopyBox()
     copyBox._text = text
-    copyBox._link = nil
-    copyBox.linkHolder:Hide()
-    copyBox.field:Show()
+    copyBox._link = link
     copyBox.title:SetText(labelText or "")
     -- Gold heading is unreadable on the light palettes; there the title
     -- wears the theme's main text color instead.
@@ -3941,34 +3967,6 @@ function ns.ShowCopyBox(text, labelText)
             eb:HighlightText()
         end
     end)
-end
-
--- Rendered-link variant of the copy box: no Ctrl-C field, the popup shows
--- the real hyperlink (colored, tooltip on hover) and clicking it inserts
--- the link into the active chat editbox.
-function ns.ShowChatLinkBox(link, labelText)
-    if not link or link == "" then return end
-    EnsureCopyBox()
-    copyBox._text = nil
-    copyBox._link = link
-    copyBox.field:Hide()
-    copyBox.linkHolder:Show()
-    copyBox.linkFS:SetText(link)
-    copyBox.title:SetText(labelText or "")
-    -- Gold heading is unreadable on the light palettes; there the title
-    -- wears the theme's main text color instead.
-    local copyTheme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
-    if copyTheme and copyTheme.lightTheme then
-        copyBox.title:SetTextColor(unpack(copyTheme.leafColor))
-    else
-        copyBox.title:SetTextColor(1.0, 0.82, 0)
-    end
-    local w = math.max(
-        math.floor(copyBox.title:GetStringWidth() + 0.5),
-        math.floor(copyBox.linkFS:GetStringWidth() + 0.5))
-    copyBox:SetWidth(math.max(200, w + 44))
-    copyBox:SetHeight(88 + math.floor(copyBox.title:GetStringHeight() + 0.5))
-    copyBox:Show()
 end
 
 -- Themed replacement for Blizzard StaticPopup confirm/input dialogs, styled
@@ -6869,20 +6867,10 @@ function ns.BuildSendLinkRows(link, name)
     rows[#rows + 1] = {
         text = L["CTX_SEND_LINK_CLIPBOARD"],
         onClick = function()
-            local safe = Utils.ClipboardSafeText(link)
-            if safe ~= link and smatch(safe, "^%[[^%[%]]+%]$") then
-                -- The payload IS a single hyperlink: the OS clipboard can't
-                -- carry it (the client strips |H escapes from pasted chat
-                -- by design), so show the rendered link to shift-click
-                -- into a chat message.
-                ns.ShowChatLinkBox(link, L["CTX_SEND_LINK_SHIFTCLICK_HINT"]:format(name or ""))
-            else
-                -- Everything else -- plain text (statistics) or text with
-                -- links EMBEDDED in it (a snippet's whole message) -- is a
-                -- real clipboard payload: the full text, links flattened
-                -- to their display names, in the Ctrl+C box.
-                ns.ShowCopyBox(safe, L["CTX_SEND_LINK_CLIPBOARD_HINT"]:format(name or ""))
-            end
+            -- The clipboard carries the text with links flattened to their
+            -- display names; the live link rides along for a chat paste.
+            ns.ShowCopyBox(Utils.ClipboardSafeText(link),
+                L["CTX_SEND_LINK_CLIPBOARD_HINT"]:format(name or ""), link)
         end,
     }
     return rows

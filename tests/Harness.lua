@@ -258,6 +258,9 @@ local function buildUtilsStub(clock)
         s = s:match("^%s*(.-)%s*$") or s
         return s
     end
+    -- The chat paste swap is exercised by test_paste_link_swap against the
+    -- real Utils; here it only needs to exist for the attach funnel.
+    Utils.AttachPasteLinkSwap = function() end
 
     Utils.tinsert = table.insert Utils.tsort = table.sort
     Utils.tconcat = table.concat Utils.tremove = table.remove

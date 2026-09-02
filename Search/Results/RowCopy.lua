@@ -24,16 +24,17 @@ local RowCopy = {}
 ns.RowCopy = RowCopy
 
 local copyBox, flashHolder, flashFade
-local armedRow, prevFocus
+local armedRow, armedLink, prevFocus
 
 -- Calculator rows own their richer two-part copy flow; everything else
--- copies its send payload as clipboard-safe text.
+-- copies its send payload as clipboard-safe text (the live link is kept
+-- for the chat paste swap).
 local function RowPayload(row)
     local data = row and row.data
     if not data or data.calculatorResult or data.calculatorExpression then return nil end
     local link = ns.GetResultLink and ns.GetResultLink(data)
     if not link or link == "" then return nil end
-    return Utils.ClipboardSafeText(link)
+    return Utils.ClipboardSafeText(link), link
 end
 
 local function EnsureFlash()
@@ -85,9 +86,11 @@ local function EnsureBox()
     copyBox:SetPoint("TOP", UIParent, "TOP", 0, 30)
     copyBox:SetAlpha(0)
     copyBox:EnableMouse(false)
-    copyBox:SetScript("OnKeyDown", function(_, key)
+    copyBox:SetScript("OnKeyDown", function(self, key)
         if (key == "C" or key == "c") and IsControlKeyDown() then
-            -- This hardware chord IS the native copy; just confirm it.
+            -- This hardware chord IS the native copy: confirm it and pair
+            -- the copied text with its live link for the chat paste swap.
+            Utils.StashClipboardLink(self:GetText(), armedLink)
             FlashCopied()
         end
     end)
@@ -116,14 +119,14 @@ local function EnsureBox()
 end
 
 function RowCopy:ArmFor(row)
-    local payload = RowPayload(row)
+    local payload, link = RowPayload(row)
     if not payload then return false end
     local box = EnsureBox()
     if not armedRow then
         local current = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
         if current and current ~= box then prevFocus = current end
     end
-    armedRow = row
+    armedRow, armedLink = row, link
     box:SetText(payload)
     box:SetCursorPosition(0)
     box:HighlightText(0, -1)

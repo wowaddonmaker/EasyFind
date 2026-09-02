@@ -555,12 +555,17 @@ local function OnChatTextChanged(editBox, userInput)
     editBox:SetCursorPosition(wordStart + #expanded + 1)
 end
 
--- Public: companions (EasyChat) attach their own message editboxes.
+-- Public: companions (EasyChat) attach their own message editboxes. This is
+-- the one chat-editbox funnel, so the copied-link paste swap rides it too
+-- (never on macro boxes: an addon-written body taints the macro save).
 function Snippets.AttachExpansion(editBox)
     if not editBox or editBox._efSnippetHooked then return end
     editBox._efSnippetHooked = true
     editBox:HookScript("OnTextChanged", OnChatTextChanged)
     editBox:HookScript("OnEditFocusLost", HideSnippetHelp)
+    if not editBox._efSnippetMacroBox then
+        Utils.AttachPasteLinkSwap(editBox)
+    end
     -- Arg-name ghost inside "\kw(": the same engine as the search bar's
     -- autocomplete, end-of-text only (rendering rebuilds the box text).
     -- Never on macro-owned boxes: the ghost renders via SetText, which
