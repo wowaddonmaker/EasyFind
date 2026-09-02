@@ -22,6 +22,8 @@ local sbyte = string.byte
 local sgsub = string.gsub
 local sgmatch = string.gmatch
 local smatch = Utils.smatch
+local sfind = Utils.sfind
+local tconcat = Utils.tconcat
 local tremove = Utils.tremove
 local type = Utils.type
 local wipe = wipe
@@ -30,6 +32,10 @@ local date = date
 local UnitName = UnitName
 local CreateFrame = CreateFrame
 local C_Map = C_Map
+local GameTooltip = GameTooltip
+local EditMacro = EditMacro
+local GetMacroInfo = GetMacroInfo
+local InCombatLockdown = InCombatLockdown
 
 local function SnippetList()
     if type(EasyFindDB) ~= "table" then return nil end
@@ -41,6 +47,80 @@ end
 -- chat keystroke; the expansion hook only does a table lookup.
 local keywordLookup = {}
 Snippets._keywordLookup = keywordLookup
+
+-- Declared early: RefreshTriggerTexts below repaints its hint on trigger
+-- change; the frame itself is built lazily much further down.
+local editorFrame
+
+-- The activation character ("\" by default, user-selectable). Everything
+-- that recognizes a trigger reads these module fields; the patterns are
+-- rebuilt ONCE per change, never per keystroke. The curated set avoids
+-- collisions the user cannot foresee: "/" (commands), "%" (chat
+-- substitutions), "|" (escapes), and anything a word can start with.
+local TRIGGER_CHOICES = { "\\", "!", "#", "~", "&", "+", "=" }
+Snippets.TRIGGER_CHOICES = TRIGGER_CHOICES
+local triggerChar, triggerByte = "\\", 92
+local expandCallPattern, callContextPattern, helpPattern
+
+function Snippets.TriggerChar()
+    return triggerChar
+end
+
+function Snippets.RefreshTrigger()
+    local c = EasyFind and EasyFind.db and EasyFind.db.snippetTriggerChar
+    local valid = false
+    for i = 1, #TRIGGER_CHOICES do
+        if TRIGGER_CHOICES[i] == c then valid = true break end
+    end
+    if not valid then c = "\\" end
+    triggerChar = c
+    triggerByte = sbyte(c)
+    local esc = "%" .. c
+    expandCallPattern = "(" .. esc .. "[^%s" .. esc .. "%(]+)(%b())%s$"
+    callContextPattern = esc .. "([^%s" .. esc .. "%(%)%?]+)(%([^%)]*)$"
+    helpPattern = esc .. "([^%s" .. esc .. "%(%)%?]+)%?$"
+end
+Snippets.RefreshTrigger()
+
+local function FormattedKeywordHint()
+    return sformat(L["SNIPPET_KEYWORD_HINT"], triggerChar)
+end
+Snippets.FormattedKeywordHint = FormattedKeywordHint
+
+-- Live text that carries the trigger character, re-painted on change.
+function Snippets.RefreshTriggerTexts()
+    if editorFrame and editorFrame.hint then
+        editorFrame.hint:SetText(FormattedKeywordHint())
+    end
+end
+
+-- One owner for the trigger-character picker; both cogs (the options
+-- tab's create button and the editor's corner) open this. Single-select
+-- rows close on click, per the menu conventions.
+function Snippets.ShowTriggerMenu(anchorBtn, onChanged)
+    local keywordWord = slower(L["SNIPPET_KEYWORD"] or "keyword")
+    local rows = {}
+    for i = 1, #TRIGGER_CHOICES do
+        local choice = TRIGGER_CHOICES[i]
+        rows[#rows + 1] = {
+            text = choice .. keywordWord,
+            icon = (choice == triggerChar) and "Interface\\Buttons\\UI-CheckBox-Check" or nil,
+            onClick = function()
+                if EasyFind and EasyFind.db then
+                    EasyFind.db.snippetTriggerChar = choice
+                end
+                Snippets.RefreshTrigger()
+                Snippets.RefreshTriggerTexts()
+                if onChanged then onChanged() end
+            end,
+        }
+    end
+    return Utils.ShowCursorMenu("EasyFindSnippetTriggerMenu", rows, {
+        anchorFrame = anchorBtn,
+        toggleOwner = anchorBtn,
+        point = "TOPRIGHT", relativePoint = "BOTTOMRIGHT", offsetY = -2,
+    })
+end
 
 function Snippets.RebuildKeywordLookup()
     wipe(keywordLookup)
@@ -171,6 +251,117 @@ local function ChatText(snippet, args, keepLines)
     return Snippets.ResolvePlaceholders(PlainText(snippet, keepLines), args)
 end
 
+-- Open-call context at the caret: "...\kw(argsSoFar" with the paren still
+-- unclosed. Returns the keyword and the arg text typed so far, or nil.
+function Snippets.CallContext(slice)
+    local keyword, open = smatch(slice, callContextPattern)
+    if not keyword then return nil end
+    return keyword, ssub(open, 2)
+end
+
+-- The ghost remainder for the arg NAME being typed inside a call: params
+-- already consumed (named or positional, mirroring ParseCallArgs) are out;
+-- the current fragment prefix-matches the rest, empty fragment suggests
+-- the first unused. Returns the remainder to append (with the "=" that
+-- makes it a named arg), or nil (also nil while a VALUE is being typed).
+function Snippets.SuggestArgRemainder(params, argBefore)
+    if #params == 0 then return nil end
+    local done, fragment = smatch(argBefore or "", "^(.*),([^,]*)$")
+    if not done then
+        done, fragment = "", argBefore or ""
+    end
+    if sfind(fragment, "=", 1, true) then return nil end
+    local used, pos = {}, 0
+    for part in sgmatch(done, "[^,]+") do
+        part = strtrim(part)
+        if part ~= "" then
+            local name = smatch(part, "^([^=%s]+)%s*=")
+            if name then
+                used[slower(name)] = true
+            else
+                pos = pos + 1
+                if params[pos] then used[params[pos]] = true end
+            end
+        end
+    end
+    fragment = smatch(fragment, "^%s*(.-)%s*$") or fragment
+    local fragLower = slower(fragment)
+    local fragLen = #fragLower
+    for i = 1, #params do
+        local param = params[i]
+        if not used[param] then
+            if fragLen == 0 then
+                return param .. "="
+            elseif #param > fragLen and ssub(param, 1, fragLen) == fragLower then
+                return ssub(param, fragLen + 1) .. "="
+            elseif param == fragLower then
+                return "="
+            end
+        end
+    end
+    return nil
+end
+
+-- findCandidate for the shared autocomplete engine: full-text candidate
+-- (typed .. remainder) when the caret sits inside an open snippet call.
+local function SnippetArgCandidate(typed)
+    if EasyFind and EasyFind.db and EasyFind.db.snippetChatExpansion == false then return nil end
+    local from = #typed > 80 and #typed - 80 or 1
+    if not sfind(typed, triggerChar, from, true) then return nil end
+    local keyword, argBefore = Snippets.CallContext(typed)
+    if not keyword then return nil end
+    local snippet = keywordLookup[slower(keyword)]
+    if not snippet then return nil end
+    local remainder = Snippets.SuggestArgRemainder(
+        Snippets.BodyParams(PlainText(snippet)), argBefore)
+    if not remainder or remainder == "" then return nil end
+    return typed .. remainder
+end
+
+-- "\kw?" help: a tooltip with the call signature and the snippet text, so
+-- the args never have to be remembered. Shown while the "?" sits at the
+-- caret; any other keystroke context hides it.
+local function TrimToCharBoundary(s, maxBytes)
+    if #s <= maxBytes then return s end
+    local cut = maxBytes
+    while cut > 1 and sbyte(s, cut + 1) and sbyte(s, cut + 1) >= 128 and sbyte(s, cut + 1) < 192 do
+        cut = cut - 1
+    end
+    return ssub(s, 1, cut) .. "..."
+end
+
+local function HideSnippetHelp(editBox)
+    if not editBox._efSnipHelp then return end
+    editBox._efSnipHelp = nil
+    if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(editBox) then
+        GameTooltip:Hide()
+    end
+end
+
+local function UpdateSnippetHelp(editBox, text, caret)
+    if not GameTooltip then return end
+    local slice = ssub(text, 1, caret)
+    local keyword = smatch(slice, helpPattern)
+    local snippet = keyword and keywordLookup[slower(keyword)]
+    if not snippet then
+        HideSnippetHelp(editBox)
+        return
+    end
+    local params = Snippets.BodyParams(PlainText(snippet))
+    local signature = triggerChar .. slower(keyword)
+    if #params > 0 then
+        signature = signature .. "(" .. tconcat(params, ", ") .. ")"
+    end
+    GameTooltip:SetOwner(editBox, "ANCHOR_TOP")
+    GameTooltip:AddLine(signature, ns.GOLD_COLOR[1], ns.GOLD_COLOR[2], ns.GOLD_COLOR[3])
+    -- Line structure survives: ClipboardSafeText strips markup WITHOUT
+    -- collapsing newlines (StripMarkup is the one-line normalizer).
+    GameTooltip:AddLine(TrimToCharBoundary(Utils.ClipboardSafeText(PlainText(snippet, true)) or "", 220),
+        1, 1, 1, true)
+    GameTooltip:Show()
+    editBox._efSnipHelp = true
+end
+
 local function FindByName(name)
     local list = SnippetList()
     if not (list and name) then return nil end
@@ -198,7 +389,9 @@ function Snippets:RunByName(name)
     elseif ChatFrame_OpenChat then
         ChatFrame_OpenChat(text)
     elseif ns.ShowCopyBox then
-        ns.ShowCopyBox(text)
+        -- Copy-box fallback goes through the OS clipboard, where live
+        -- escapes cannot survive the paste.
+        ns.ShowCopyBox(Utils.ClipboardSafeText(text))
     end
 end
 
@@ -259,12 +452,22 @@ local function OnChatTextChanged(editBox, userInput)
     -- in a multiline box (macro editor) or when editing mid-line, the typed
     -- space is never the last byte of the whole text.
     local caret = editBox:GetCursorPosition() or textLen
-    if caret < 2 or caret > textLen or sbyte(text, caret) ~= 32 then return end
+    if caret < 2 or caret > textLen then
+        HideSnippetHelp(editBox)
+        return
+    end
+    if sbyte(text, caret) ~= 32 then
+        -- Non-expanding keystroke: maintain the "\kw?" help tooltip (the
+        -- arg-name ghost rides the shared autocomplete hook instead).
+        UpdateSnippetHelp(editBox, text, caret)
+        return
+    end
+    HideSnippetHelp(editBox)
     local slice = ssub(text, 1, caret)
     -- Call form first: "\kw(Regrowth, harm=Rip) ". %b() tolerates the
     -- spaces inside the parens that the bare-word matcher below cannot.
     local token, argText
-    local callWord, parens = smatch(slice, "(\\[^%s\\%(]+)(%b())%s$")
+    local callWord, parens = smatch(slice, expandCallPattern)
     if callWord then
         token = callWord .. parens
         argText = ssub(parens, 2, -2)
@@ -272,11 +475,12 @@ local function OnChatTextChanged(editBox, userInput)
         token = smatch(slice, "(%S+)%s$")
     end
     if not token then return end
-    -- ONLY the explicit "\keyword " form expands. A bare keyword is too
-    -- often a real word, and a silent mid-sentence replacement is a worse
-    -- experience than requiring the escape. Backslash, not slash, so it
-    -- can never collide with slash commands.
-    if sbyte(token, 1) ~= 92 then return end
+    -- ONLY the explicit "\keyword " form expands (with "\" being the
+    -- user-selectable trigger character). A bare keyword is too often a
+    -- real word, and a silent mid-sentence replacement is a worse
+    -- experience than requiring the escape. The curated choices exclude
+    -- "/" so the trigger can never collide with slash commands.
+    if sbyte(token, 1) ~= triggerByte then return end
     local keyword = callWord and ssub(callWord, 2) or ssub(token, 2)
     local snippet = keywordLookup[slower(keyword)]
     if not snippet then return end
@@ -289,19 +493,65 @@ local function OnChatTextChanged(editBox, userInput)
     local keepLines = editBox.IsMultiLine and editBox:IsMultiLine() or false
     local expanded = ChatText(snippet, args, keepLines)
     if expanded == "" then return end
-    -- Opt-in clean path for the macro editor: hold Shift on the expanding
-    -- space and the template opens in a copy dialog instead of being
-    -- written into the box. Text an addon writes is tainted for the whole
-    -- session, and a macro saved from it makes Blizzard's combat-time
-    -- auto-commit error with EasyFind blamed; a hardware Ctrl+V is a
-    -- secure write, so Shift-expanded macros stay silent. The default
-    -- inline write keeps working for everyone who does not care.
-    if editBox._efSnippetMacroBox and IsShiftKeyDown and IsShiftKeyDown() then
-        Snippets.ShowMacroHandoff(expanded, snippet.name)
+    local wordStart = caret - #token - 1
+    local newText = ssub(text, 1, wordStart) .. expanded .. " " .. ssub(text, caret + 1)
+    -- Macro BODY editor: an addon-written pending value is session-tainted,
+    -- and Blizzard's dirty-gated SaveMacro (tab change, OnShow's
+    -- ChangeTab(1), the combat auto-commit) would later feed it to the
+    -- protected EditMacro and blame EasyFind. So the expansion COMMITS
+    -- ITSELF through EditMacro in this same hardware keystroke (macro
+    -- writes are hardware-event-gated, and this runs inside one), then
+    -- clears the dirty flag: Blizzard never has our pending text to save.
+    -- Self-verifying: the macro is read back, and if the commit did not
+    -- land (combat lockdown, or a rules change under a future patch), the
+    -- box is left untouched and the copy dialog takes over.
+    if editBox._efSnippetMacroBox then
+        local macroFrame = _G["MacroFrame"]
+        local body = editBox == _G["MacroFrameText"]
+            and macroFrame and macroFrame.GetSelectedIndex and macroFrame.GetMacroDataIndex
+        if not body then
+            -- Not the body box (the create-popup's name field): inline is
+            -- safe, nothing feeds these values to a protected API's
+            -- pending-save path.
+            editBox:SetText(newText)
+            editBox:SetCursorPosition(wordStart + #expanded + 1)
+            return
+        end
+        if InCombatLockdown and InCombatLockdown() then
+            Snippets.ShowMacroHandoff(expanded, snippet.name)
+            return
+        end
+        local selectedIndex = macroFrame:GetSelectedIndex()
+        local actualIndex = selectedIndex and macroFrame:GetMacroDataIndex(selectedIndex)
+        if actualIndex and EditMacro then
+            -- Committed text == box text EXACTLY, so saved and shown never
+            -- differ (the trailing expansion space is harmless in a body).
+            pcall(EditMacro, actualIndex, nil, nil, newText)
+        end
+        local savedBody
+        if actualIndex and GetMacroInfo then
+            local _, _, saved = GetMacroInfo(actualIndex)
+            savedBody = saved
+        end
+        if savedBody ~= newText then
+            Snippets.ShowMacroHandoff(expanded, snippet.name)
+            return
+        end
+        editBox:SetText(newText)
+        editBox:SetCursorPosition(wordStart + #expanded + 1)
+        macroFrame.textChanged = nil
+        -- OnTextChanged lands one frame late and re-dirties the frame; as
+        -- long as the box still holds exactly what was committed, the
+        -- pending state stays cleared (a same-frame user keystroke keeps
+        -- its dirty flag, correctly).
+        Utils.SafeAfter(0, function()
+            if editBox:GetText() == newText then
+                macroFrame.textChanged = nil
+            end
+        end)
         return
     end
-    local wordStart = caret - #token - 1
-    editBox:SetText(ssub(text, 1, wordStart) .. expanded .. " " .. ssub(text, caret + 1))
+    editBox:SetText(newText)
     editBox:SetCursorPosition(wordStart + #expanded + 1)
 end
 
@@ -310,6 +560,18 @@ function Snippets.AttachExpansion(editBox)
     if not editBox or editBox._efSnippetHooked then return end
     editBox._efSnippetHooked = true
     editBox:HookScript("OnTextChanged", OnChatTextChanged)
+    editBox:HookScript("OnEditFocusLost", HideSnippetHelp)
+    -- Arg-name ghost inside "\kw(": the same engine as the search bar's
+    -- autocomplete, end-of-text only (rendering rebuilds the box text).
+    -- Never on macro-owned boxes: the ghost renders via SetText, which
+    -- would taint the macro text the same way inline expansion did.
+    if Utils.AttachAutocomplete and not editBox._efSnippetMacroBox then
+        Utils.AttachAutocomplete(editBox, {
+            endOfTextOnly = true,
+            applyOnType = true,
+            findCandidate = SnippetArgCandidate,
+        })
+    end
 end
 
 -- The modern macro window keys its editbox off the frame tree, not the old
@@ -318,8 +580,8 @@ end
 local function AttachEditBoxesIn(frame, depth)
     if not frame or depth > 6 then return end
     if frame.GetObjectType and frame:GetObjectType() == "EditBox" then
-        -- Macro-owned boxes are marked so Shift-expansion can offer the
-        -- taint-free copy handoff (see OnChatTextChanged).
+        -- Macro-owned boxes are marked: expansion routes to the taint-free
+        -- copy handoff and the arg ghost stays off (see OnChatTextChanged).
         frame._efSnippetMacroBox = true
         Snippets.AttachExpansion(frame)
         return
@@ -380,6 +642,8 @@ loginFrame:SetScript("OnEvent", function(self, event, addonName)
         return
     end
     self:UnregisterEvent("PLAYER_LOGIN")
+    -- The saved trigger character is only readable once the db exists.
+    Snippets.RefreshTrigger()
     Snippets.RebuildKeywordLookup()
     InstallChatExpansion()
     if C_AddOns and C_AddOns.IsAddOnLoaded and C_AddOns.IsAddOnLoaded("Blizzard_MacroUI") then
@@ -430,6 +694,7 @@ function Snippets:BuildSearchData()
             end
         end,
         noPin = true,
+        snippetsLauncher = true,
     }
     entries[2] = {
         name = L["SNIPPET_CREATE"],
@@ -500,8 +765,6 @@ local BODY_H = 120
 -- Bodies cap at the chat message limit so an expansion can never overflow
 -- what a single chat line carries.
 local CHAT_MAX = ns.CHAT_MESSAGE_MAX_CHARS or 255
-
-local editorFrame
 
 local function UpdateCharCounter(f)
     f.charCounter:SetText(f.bodyBox:GetNumLetters() .. "/" .. CHAT_MAX)
@@ -709,7 +972,10 @@ function Snippets.ShowMacroHandoff(text, name)
     local r, g, b = ns.TooltipTextColor()
     f.title:SetTextColor(r, g, b)
     f.hint:SetTextColor(r, g, b)
-    f.copyBox:SetText(text or "")
+    -- The box exists to be Ctrl+C'd: live escapes cannot survive the
+    -- clipboard (the client escapes pipes on paste), so links flatten to
+    -- their [Name] text here rather than pasting as |H garbage.
+    f.copyBox:SetText(Utils.ClipboardSafeText(text) or "")
     f:Show()
     f.copyBox:SetFocus()
     f.copyBox:HighlightText()
@@ -752,8 +1018,26 @@ local function EnsureEditor()
     f.hint:SetWidth(DIALOG_W - DIALOG_PAD * 2)
     f.hint:SetJustifyH("LEFT")
     f.hint:SetWordWrap(true)
-    f.hint:SetText(L["SNIPPET_KEYWORD_HINT"])
+    f.hint:SetText(FormattedKeywordHint())
     y = y - 6 - AnnotationHeight(f.hint) - 10
+
+    -- Trigger-character cog, top right: the same picker as the options
+    -- tab's cog. The choice is GLOBAL; the tooltip says so.
+    local trigBtn = CreateFrame("Button", nil, f)
+    trigBtn:SetSize(18, 18)
+    trigBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -DIALOG_PAD + 4, -9)
+    local trigTex = trigBtn:CreateTexture(nil, "ARTWORK")
+    trigTex:SetPoint("CENTER")
+    trigTex:SetSize(15, 15)
+    trigTex:SetAtlas("QuestLog-icon-setting")
+    trigBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    trigBtn:SetScript("OnClick", function(self)
+        Snippets.ShowTriggerMenu(self)
+    end)
+    Utils.AttachDelayedTooltip(trigBtn, "ANCHOR_RIGHT", function()
+        return sformat(L["SNIPPET_TRIGGER"], Snippets.TriggerChar()), L["SNIPPET_TRIGGER_NOTE"]
+    end)
+    f.trigBtn = trigBtn
 
     -- Body: the notes companion's own editor when installed -- the exact
     -- notes experience (WYSIWYG bold/italic, underline/strike/color

@@ -450,6 +450,28 @@ function Search:OnSearchTextChangedNow(text, force)
         end
     end
 
+    -- Feature-owned query: typing toward "Snippets" ITSELF (the query is
+    -- a prefix of the feature's name) orders the feature rows first --
+    -- the Snippets menu, then Create snippet -- above any learned
+    -- individual snippet, which otherwise sits oddly on top of its own
+    -- feature's front door. A snippet searched by its OWN name or keyword
+    -- takes no part in this: the override only ever touches the two
+    -- feature rows, and only for feature-name queries.
+    do
+        local q = slower(text)
+        local featureName = slower(ns.L and ns.L["FILTER_SNIPPETS"] or "snippets")
+        if #q >= 3 and (featureName:sub(1, #q) == q or ("snippets"):sub(1, #q) == q) then
+            for ri = 1, #results do
+                local d = results[ri].data
+                if d and d.snippetsLauncher then
+                    results[ri].score = LEARNED_SCORE + 2
+                elseif d and d.snippetCreate then
+                    results[ri].score = LEARNED_SCORE + 1
+                end
+            end
+        end
+    end
+
     -- Blacklist gate: the ONE suppression point for main-search results.
     -- Runs after alias injection on purpose (blacklist beats an alias
     -- pointing at the same row) and copies into scratch like the other

@@ -52,6 +52,7 @@ local PROVIDERS = {
     { key = "abilities", words = { "ability", "abilities", "spell", "spells" }, teleportTriggers = true, loadOnLowResults = true },
     { key = "talents", words = { "talent", "talents", "spec", "specialization" }, loadOnLowResults = true },
     { key = "macros", words = { "macro", "macros" }, loadOnLowResults = true },
+    { key = "snippets", words = { "snippet", "snippets", "snip" }, loadOnLowResults = true },
     { key = "currencies", words = { "currency", "currencies", "cur" }, loadOnLowResults = true },
     { key = "reputations", words = { "rep", "reps", "reputation", "reputations", "faction" }, loadOnLowResults = true },
     { key = "achievements", words = { "ach", "achievement", "achievements" }, loadOnLowResults = true },

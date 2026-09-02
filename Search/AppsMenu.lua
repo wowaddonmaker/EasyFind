@@ -16,8 +16,7 @@ local ROW_H = 24
 local PAD = 6
 local ICON = 16
 
--- The launcher list. Today only the calculator ships inside EasyFind; app
--- entries join this list as they release.
+-- The launcher list. App entries join this list as they release.
 function ns.BuildApplicationEntries()
     local apps = {}
     local calculator = ns.Calculator and ns.Calculator._calculator
@@ -51,6 +50,7 @@ function ns.BuildApplicationEntries()
     apps[#apps + 1] = {
         name = L["FILTER_SNIPPETS"],
         category = "Snippet",
+        snippetsLauncher = true,
         noPin = true,
         nativeRun = function()
             if ns.RequestOptionsPanel and ns.RequestOptionsPanel()

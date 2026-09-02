@@ -7,6 +7,7 @@ local L = ns.L
 
 local ipairs = Utils.ipairs
 local tremove = Utils.tremove
+local sformat = Utils.sformat
 
 local ACHIEVEMENT_FILTER_LABELS = {
     all = _G["ALL"] or "All",
@@ -215,7 +216,15 @@ local UI_FILTER_OPTIONS = {
       iconCoords = ns.SNIPPET_ICON_COORDS,
       flyoutRadio = {
           checkboxes = {
-              { dbKey = "snippetChatExpansion", label = L["SNIPPET_EXPAND_IN_CHAT"] },
+              { dbKey = "snippetChatExpansion",
+                label = function()
+                    return sformat(L["SNIPPET_EXPAND_IN_CHAT"],
+                        ns.Snippets and ns.Snippets.TriggerChar() or "\\")
+                end,
+                tooltip = function()
+                    return sformat(L["SNIPPET_KEYWORD_HINT"],
+                        ns.Snippets and ns.Snippets.TriggerChar() or "\\")
+                end },
           },
       } },
     -- Title icon from PaperDollSidebarTab2 (Titles tab) spritesheet 514608.

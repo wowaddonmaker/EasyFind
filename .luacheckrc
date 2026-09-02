@@ -147,7 +147,7 @@ read_globals = {
     "GetFlyoutInfo", "GetFlyoutSlotInfo",
     "GetContainerNumSlots", "GetContainerItemInfo", "PickupContainerItem",
     "NUM_BAG_SLOTS", "NUM_TOTAL_EQUIPPED_BAG_SLOTS",
-    "GetNumMacros", "GetMacroInfo", "GetMacroIndexByName", "MAX_ACCOUNT_MACROS",
+    "GetNumMacros", "GetMacroInfo", "GetMacroIndexByName", "EditMacro", "MAX_ACCOUNT_MACROS",
     "ShowMacroFrame", "MacroFrame", "MacroFrame_SelectMacro", "MacroFrame_Update",
     "MacroFrame_OnTabChanged", "PanelTemplates_SetTab", "C_AddOns", "LoadAddOn",
     "CreateMacro",

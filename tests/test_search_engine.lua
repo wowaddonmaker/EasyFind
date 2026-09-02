@@ -106,5 +106,28 @@ function tests.quickFilterOverridesDisabledFilterMenu()
         "an explicit quick filter must override the filter menu state")
 end
 
+function tests.typedSnippetsWordDemandLoadsSnippetsProvider()
+    -- Regression: the snippets port shipped without a PROVIDERS row, so
+    -- typing "snippets" after a reload could not demand-load the provider
+    -- and waited ~2s for the eager chain to reach it (second-to-last).
+    local requested = withProviderCapture()
+    local ctx = Engine:BuildContext("snippets", nil, { snippets = true })
+
+    Engine:RequestProviders(ctx, function() end, 10)
+
+    H.assertEq(requested[1], "snippets",
+        "typing snippets must demand-load the provider, not wait for the eager chain")
+end
+
+function tests.snipQuickFilterLoadsSnippetsProvider()
+    local requested = withProviderCapture()
+    local ctx = Engine:BuildContext("", { key = "snippets" }, nil)
+
+    Engine:RequestProviders(ctx, function() end, 0)
+
+    H.assertEq(requested[1], "snippets",
+        "the @snip pill must load the snippets provider on an empty query")
+end
+
 local pass, fail, failures = H.runSuite("SearchEngine", tests)
 return { pass = pass, fail = fail, failures = failures }

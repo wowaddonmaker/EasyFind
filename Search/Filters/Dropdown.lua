@@ -1072,7 +1072,11 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
                 local lbl = cRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
                 lbl:SetPoint("LEFT", box, "RIGHT", 6, 0)
-                lbl:SetText(cbDef.label)
+                -- Function-typed labels resolve at build so text that
+                -- carries live state (the snippet trigger char) stays true.
+                local labelText = cbDef.label
+                if type(labelText) == "function" then labelText = labelText() end
+                lbl:SetText(labelText)
 
                 InstallMenuRowHighlight(cRow)
 
@@ -1093,6 +1097,26 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     Filters:RerunActiveSearch()
                     KeepSearchEditBoxUnfocused()
                 end)
+                if cbDef.tooltip then
+                    -- Delayed hover tooltip for toggles whose short label
+                    -- can't carry the explanation (the map-scope pattern).
+                    cRow:HookScript("OnEnter", function(self)
+                        local token = (self._tipToken or 0) + 1
+                        self._tipToken = token
+                        Utils.SafeAfter(ns.TOOLTIP_HOVER_DELAY, function()
+                            if self._tipToken ~= token or not self:IsMouseOver() then return end
+                            local tip = cbDef.tooltip
+                            if type(tip) == "function" then tip = tip() end
+                            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                            GameTooltip:SetText(tip, 1, 1, 1, 1, true)
+                            GameTooltip:Show()
+                        end)
+                    end)
+                    cRow:HookScript("OnLeave", function(self)
+                        self._tipToken = (self._tipToken or 0) + 1
+                        GameTooltip:Hide()
+                    end)
+                end
                 checkboxRows[ci] = cRow
             end
 

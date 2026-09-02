@@ -1283,6 +1283,16 @@ local function AutocompleteApply(state)
         AutocompleteStrip(state)
         return
     end
+    -- Rendering rebuilds the WHOLE box text from the candidate, which
+    -- drops anything after the cursor. On shared surfaces (chat boxes)
+    -- ghosting is therefore end-of-text only; mid-text edits never ghost.
+    if state.endOfTextOnly then
+        local liveText = editBox:GetText() or ""
+        if (editBox:GetCursorPosition() or #liveText) < #liveText then
+            AutocompleteStrip(state)
+            return
+        end
+    end
     if state.smoothExtendDone then
         state.smoothExtendDone = false
         return
@@ -1394,6 +1404,13 @@ local function AutocompleteOnTextChanged(state, box, userInput)
         box:HighlightText(0, 0)
     end
     if state.onTypedChanged then state.onTypedChanged(box, state.typedText, prevText, grew) end
+    -- Self-driving surfaces (chat boxes): nothing external calls
+    -- UpdateAutocomplete for them, so apply here on growth. Synchronous
+    -- post-keystroke, the same safety window the smooth-extend above
+    -- relies on; grew-only so deletions never fight the ghost.
+    if state.applyOnType and userInput and grew and not extended then
+        AutocompleteApply(state)
+    end
 end
 
 local function AutocompleteAccept(state, box, source, cursorPos)
@@ -1533,6 +1550,8 @@ function Utils.AttachAutocomplete(editBox, opts)
         smoothExtendDone = false,
         restoreBackspaceNotify = false,
         backspaceStripActive = false,
+        endOfTextOnly = opts.endOfTextOnly or nil,
+        applyOnType = opts.applyOnType or nil,
     }
 
     editBox:HookScript("OnTextChanged", function(self, userInput)

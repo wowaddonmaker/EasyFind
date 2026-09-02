@@ -3462,6 +3462,29 @@ local function BuildSnippetsTab(ctx)
         if ns.Snippets then ns.Snippets:OpenEditor(nil) end
     end)
 
+    -- Trigger-character cog tucked into the create button, the same
+    -- treatment as the aliases export button's scope cog. The picker is
+    -- owned by Snippets (the editor's corner cog opens the same one).
+    createSnippetBtn._label:ClearAllPoints()
+    createSnippetBtn._label:SetPoint("CENTER", createSnippetBtn, "CENTER", -9, 0)
+    local snTrigCog = CreateFrame("Button", nil, createSnippetBtn)
+    snTrigCog:SetSize(18, 18)
+    snTrigCog:SetPoint("RIGHT", createSnippetBtn, "RIGHT", -4, 0)
+    local snTrigTex = snTrigCog:CreateTexture(nil, "ARTWORK")
+    snTrigTex:SetPoint("CENTER")
+    snTrigTex:SetSize(15, 15)
+    snTrigTex:SetAtlas("QuestLog-icon-setting")
+    snTrigCog:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    snTrigCog:SetScript("OnClick", function(self)
+        if ns.Snippets and ns.Snippets.ShowTriggerMenu then
+            ns.Snippets.ShowTriggerMenu(self)
+        end
+    end)
+    Utils.AttachDelayedTooltip(snTrigCog, "ANCHOR_TOP", function()
+        if not (ns.Snippets and ns.Snippets.TriggerChar) then return end
+        return sformat(L["SNIPPET_TRIGGER"], ns.Snippets.TriggerChar()), L["SNIPPET_TRIGGER_NOTE"]
+    end)
+
     local snSearchShell = CreateFrame("Frame", nil, snTools)
     snSearchShell:SetPoint("LEFT", snTools, "LEFT", 0, 0)
     snSearchShell:SetPoint("RIGHT", createSnippetBtn, "LEFT", -8, 0)

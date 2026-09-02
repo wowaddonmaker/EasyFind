@@ -9,6 +9,17 @@ env.date = os.date
 env.EasyFindDB = { snippets = {} }
 env.EasyFind = { db = { snippetChatExpansion = true } }
 
+-- Macro-commit stubs, bound at module load: EditMacro writes this store and
+-- GetMacroInfo reads it back, mirroring the client's persistence for the
+-- self-verifying commit path.
+local macroStore = {}
+env.EditMacro = function(index, _, _, body) macroStore[index] = body end
+env.GetMacroInfo = function(index) return "name", "icon", macroStore[index] end
+env.InCombatLockdown = function() return false end
+-- The module reads MacroFrame/MacroFrameText via runtime _G lookups; point
+-- _G at the env so per-test stubs are visible to them.
+env._G = env
+
 local Snippets = H.loadModule("Search/Snippets.lua", env, ns)
 H.assertNotNil(Snippets, "Search/Snippets.lua must return the module")
 H.assertEq(Snippets, ns.Snippets)
@@ -182,36 +193,53 @@ function tests.params_nonAsciiBlankNamesWork()
     H.assertEq(out, "/cast Y")
 end
 
-function tests.expansion_shiftInMacroBoxHandsOff()
+function tests.expansion_macroBodyCommitsThroughEditMacro()
+    -- The macro BODY box expands inline, but the expansion commits itself
+    -- through EditMacro in the same keystroke and clears the dirty flag,
+    -- so Blizzard's dirty-gated SaveMacro never holds addon-tainted
+    -- pending text to feed the protected API (the ADDON_ACTION_BLOCKED
+    -- class). Self-verifying: a failed commit routes to the handoff.
     setSnippets({ { name = "Macro", keyword = "mac",
         body = "#showtooltip\n/cast {ability1}" } })
     local eb = fakeChatBox()
     eb.IsMultiLine = function() return true end
     eb._efSnippetMacroBox = true
-    env.IsShiftKeyDown = function() return true end
-    local handedText, handedName
-    local orig = Snippets.ShowMacroHandoff
-    Snippets.ShowMacroHandoff = function(text, name)
-        handedText, handedName = text, name
-    end
+    local macroFrame = { textChanged = true }
+    macroFrame.GetSelectedIndex = function() return 3 end
+    macroFrame.GetMacroDataIndex = function(_, i) return 120 + i end
+    env.MacroFrame = macroFrame
+    env.MacroFrameText = eb
     typeText(eb, "\\mac(Regrowth) ")
-    Snippets.ShowMacroHandoff = orig
-    env.IsShiftKeyDown = nil
-    H.assertEq((eb._peek()), "\\mac(Regrowth) ",
-        "Shift-expansion never writes the macro box")
-    H.assertEq(handedText, "#showtooltip\n/cast Regrowth")
-    H.assertEq(handedName, "Macro")
+    env.MacroFrame, env.MacroFrameText = nil, nil
+    H.assertEq((eb._peek()), "#showtooltip\n/cast Regrowth ",
+        "the body box expands inline")
+    H.assertEq(macroStore[123], "#showtooltip\n/cast Regrowth ",
+        "the expansion commits the macro through EditMacro")
+    H.assertEq(macroFrame.textChanged, nil,
+        "the pending-save dirty flag is cleared after the commit")
 end
 
-function tests.expansion_plainInMacroBoxStaysInline()
-    setSnippets({ { name = "Macro", keyword = "mac",
-        body = "#showtooltip\n/cast {ability1}" } })
+function tests.expansion_macroBodyFallsBackWhenCommitFails()
+    setSnippets({ { name = "Macro", keyword = "mac", body = "/wave" } })
+    local Snippets = ns.Snippets
+    local prevHandoff = Snippets.ShowMacroHandoff
+    local handoffText
+    Snippets.ShowMacroHandoff = function(text) handoffText = text end
     local eb = fakeChatBox()
     eb.IsMultiLine = function() return true end
     eb._efSnippetMacroBox = true
-    typeText(eb, "\\mac(Regrowth) ")
-    H.assertEq((eb._peek()), "#showtooltip\n/cast Regrowth ",
-        "without Shift the macro box expands inline as before")
+    -- No selected macro: EditMacro cannot run, the read-back mismatches,
+    -- and the handoff takes over with the box untouched.
+    local macroFrame = { textChanged = true }
+    macroFrame.GetSelectedIndex = function() return nil end
+    macroFrame.GetMacroDataIndex = function(_, i) return i end
+    env.MacroFrame = macroFrame
+    env.MacroFrameText = eb
+    typeText(eb, "\\mac ")
+    env.MacroFrame, env.MacroFrameText = nil, nil
+    Snippets.ShowMacroHandoff = prevHandoff
+    H.assertEq((eb._peek()), "\\mac ", "box untouched when the commit cannot land")
+    H.assertEq(handoffText, "/wave", "handoff carries the expansion instead")
 end
 
 function tests.expansion_multilineTargetKeepsNewlines()
@@ -311,6 +339,75 @@ function tests.expansion_resolvesPlaceholdersAndFlattens()
     local eb = fakeChatBox()
     typeText(eb, "\\loc ")
     H.assertEq((eb._peek()), "at {unknowntoken} now ")
+end
+
+function tests.callContext_detectsOpenCall()
+    local Snippets = ns.Snippets
+    local kw, args = Snippets.CallContext("/w Bob \\heal(")
+    H.assertEq(kw, "heal"); H.assertEq(args, "")
+    kw, args = Snippets.CallContext("\\heal(Regrowth, ta")
+    H.assertEq(kw, "heal"); H.assertEq(args, "Regrowth, ta")
+    H.assertEq(Snippets.CallContext("\\heal(done) after"), nil, "closed call is no context")
+    H.assertEq(Snippets.CallContext("plain text"), nil)
+    H.assertEq(Snippets.CallContext("\\heal"), nil, "no paren yet")
+end
+
+function tests.suggestArg_prefixNarrowsAndSkipsUsed()
+    local Snippets = ns.Snippets
+    local params = { "helpspell", "harm", "target" }
+    -- Empty fragment: first unused param, full name plus the "=".
+    H.assertEq(Snippets.SuggestArgRemainder(params, ""), "helpspell=")
+    -- Prefix narrows to the closer arg.
+    H.assertEq(Snippets.SuggestArgRemainder(params, "ha"), "rm=")
+    H.assertEq(Snippets.SuggestArgRemainder(params, "t"), "arget=")
+    -- A used name (named form) is skipped for the next suggestion.
+    H.assertEq(Snippets.SuggestArgRemainder(params, "helpspell=Regrowth, "), "harm=")
+    -- A positional value consumes the param in body order.
+    H.assertEq(Snippets.SuggestArgRemainder(params, "Regrowth, "), "harm=")
+    -- Typing a VALUE never gets a name ghost.
+    H.assertEq(Snippets.SuggestArgRemainder(params, "harm=Ri"), nil)
+    -- Exact name typed: just the "=".
+    H.assertEq(Snippets.SuggestArgRemainder(params, "harm"), "=")
+    -- Nothing left to suggest.
+    H.assertEq(Snippets.SuggestArgRemainder(params, "Regrowth, Rip, Bob, "), nil)
+    H.assertEq(Snippets.SuggestArgRemainder({}, ""), nil, "no params, no ghost")
+end
+
+function tests.triggerChar_switchRetargetsExpansionGhostAndHelp()
+    local Snippets = ns.Snippets
+    env.EasyFind.db.snippetTriggerChar = "!"
+    Snippets.RefreshTrigger()
+    H.assertEq(Snippets.TriggerChar(), "!")
+    -- Expansion fires on the new char, not the old.
+    setSnippets({ { name = "Hi", keyword = "hh", body = "hello there" } })
+    local eb = fakeChatBox()
+    typeText(eb, "!hh ")
+    H.assertEq((eb._peek()), "hello there ")
+    local eb2 = fakeChatBox()
+    typeText(eb2, "\\hh ")
+    H.assertEq((eb2._peek()), "\\hh ", "old trigger stays literal after switch")
+    -- Call context follows too.
+    local kw = Snippets.CallContext("!hh(Reg")
+    H.assertEq(kw, "hh")
+    H.assertEq(Snippets.CallContext("\\hh(Reg"), nil)
+    -- An invalid saved value falls back to the backslash default.
+    env.EasyFind.db.snippetTriggerChar = "a"
+    Snippets.RefreshTrigger()
+    H.assertEq(Snippets.TriggerChar(), "\\")
+    env.EasyFind.db.snippetTriggerChar = nil
+    Snippets.RefreshTrigger()
+end
+
+function tests.clipboardSafe_flattensLinksKeepsLines()
+    -- The client escapes every pipe on OS-clipboard paste, so live escapes
+    -- become literal |H garbage in a pasted macro. Clipboard-bound text
+    -- must carry the link's display text only, and multi-line macro
+    -- structure must survive (StripMarkup collapses newlines; this must not).
+    local Utils = ns.Utils
+    local linked = "/say check |cffa335ee|Hitem:19019::::::::70:::::|h[Thunderfury]|h|r out\n/wave"
+    H.assertEq(Utils.ClipboardSafeText(linked), "/say check [Thunderfury] out\n/wave")
+    H.assertEq(Utils.StripMarkup(linked), "/say check [Thunderfury] out /wave")
+    H.assertEq(Utils.ClipboardSafeText(nil), nil)
 end
 
 local pass, fail, failures = H.runSuite("Snippets", tests)
