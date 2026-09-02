@@ -223,25 +223,16 @@ for i = 1, #ANSWERS do
     end
 end
 
--- What a copy should produce, which is not always what the row shows: an
--- answer whose display carries textures supplies a plain-text form instead.
-local lastAnswerCopyValue
-
-local function CopyAnswer()
-    if lastAnswerCopyValue and ns.CopyToClipboard then
-        ns.CopyToClipboard(lastAnswerCopyValue)
-    end
-end
-
 -- Statistics, not commands: these are facts about the character. The
 -- category also supplies the proper left icon through the normal renderer.
+-- copyText makes the row a copy row: Ctrl+C over it (or on it, selected)
+-- copies the value; click and Enter arm that chord and keep the results.
 local answerEntry = {
     category = "Statistic",
     noPin = true,
     -- Per-query computed fact on a REUSED table: learning it would bind
     -- the query to whatever this table holds later.
     noLearn = true,
-    nativeRun = CopyAnswer,
 }
 
 -- The whole (trimmed, lowered) query must equal a trigger word: answers are
@@ -254,7 +245,9 @@ function Answers:GetAnswerEntry(text)
     if not def then return nil end
     local value = def.value()
     if not value then return nil end
-    lastAnswerCopyValue = def.copyValue and def.copyValue() or value
+    -- What a copy should produce, which is not always what the row shows:
+    -- an answer whose display carries textures supplies a plain-text form.
+    answerEntry.copyText = def.copyValue and def.copyValue() or value
     answerEntry.name = def.labelKey and L[def.labelKey] or def.label
     answerEntry.nameLower = query
     answerEntry.searchCommandDesc = value

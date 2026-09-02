@@ -1513,6 +1513,20 @@ function Search:CreateSearchFrame()
         local ctrl = IsControlKeyDown()
         local shift = IsShiftKeyDown()
 
+        -- Ctrl+C on the keyboard-selected row arms the clipboard box for
+        -- it (the box then holds the chord's target); the next chord is
+        -- the native copy. Never pre-armed on Ctrl-down here: Ctrl+Up/Down
+        -- are jump keys and a focused box would take them first.
+        if ctrl and key == "C" then
+            if selectedIndex > 0 and ns.RowCopy then
+                ns.RowCopy:ArmFor(resultButtons[selectedIndex])
+                return
+            end
+            if Results.ArmIconGridFocusCopy and Results:ArmIconGridFocusCopy() then
+                return
+            end
+        end
+
         -- Alt+H/J/K/L: vim-style nav aliases. J/K = down/up;
         -- add Shift to jump sections like Shift+Up/Down.
         -- H/L = focus cycle (Shift+Tab / Tab).
@@ -1789,6 +1803,10 @@ function Search:CreateSearchFrame()
             -- handler); it must not also turn the character.
             consume = true
         elseif Calculator:IsCalculatorCopyKey(key) then
+            consume = true
+        elseif key == "C" and IsControlKeyDown() and ns.RowCopy
+            and ((selectedIndex > 0 and ns.RowCopy:CanCopy(resultButtons[selectedIndex]))
+                or (Results.IsIconGridNavActive and Results:IsIconGridNavActive())) then
             consume = true
         elseif IsAltKeyDown() and (key == "J" or key == "K" or key == "L" or key == "H") then
             consume = true

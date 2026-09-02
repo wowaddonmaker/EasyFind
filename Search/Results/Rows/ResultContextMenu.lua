@@ -125,12 +125,7 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
             end
         end
     end
-    local wowheadUrl = ns.GetWowheadLink and ns.GetWowheadLink(pinData)
-    if wowheadUrl then
-        extra.onWowhead = function()
-            ns.CopyToClipboard(wowheadUrl)
-        end
-    end
+    extra.wowheadUrl = ns.GetWowheadLink and ns.GetWowheadLink(pinData)
     local chatLink = ns.GetResultLink and ns.GetResultLink(pinData)
     if chatLink then
         extra.sendLink = { link = chatLink }

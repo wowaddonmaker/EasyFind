@@ -284,6 +284,14 @@ function Handlers:SelectResult(data, forceGuide)
         return
     end
 
+    -- Copy rows (quick answers): the click cannot copy, so it arms the
+    -- Ctrl+C chord for this row and keeps the results open, like the
+    -- calculator card.
+    if data.copyText then
+        if ns.RowCopy then ns.RowCopy:ArmForData(data) end
+        return
+    end
+
     -- Snippet rows resolve by name (stable across pins and list edits;
     -- the create row carries nativeRun and never reaches this branch).
     -- Selecting opens the editor; inserting into chat goes through the

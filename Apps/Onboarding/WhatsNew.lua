@@ -87,8 +87,10 @@ function Onboarding:ShowWhatsNew(version)
         body:SetText(BodyText())
         f._body = body
 
-        -- Permanent footer: clickable "See full changelog" opens the copy
-        -- box with the GitHub changelog URL (addons cannot open browsers).
+        -- Permanent footer: "See full changelog" is a copy target for the
+        -- GitHub changelog URL (addons cannot open browsers, and only a
+        -- hardware Ctrl+C reaches the clipboard): hovering shows the chord
+        -- hint, Ctrl over it arms the shared row copy, a click arms it too.
         local changelogLink = CreateFrame("Button", nil, f)
         local changelogText = changelogLink:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         changelogText:SetPoint("CENTER")
@@ -96,10 +98,28 @@ function Onboarding:ShowWhatsNew(version)
         changelogText:SetTextColor(Utils.RGB(GOLD, 1))
         changelogLink:SetSize(changelogText:GetStringWidth() + 8, 16)
         changelogLink:SetPoint("TOP", body, "BOTTOM", 0, -10)
-        changelogLink:SetScript("OnEnter", function() changelogText:SetTextColor(1, 1, 1) end)
-        changelogLink:SetScript("OnLeave", function() changelogText:SetTextColor(Utils.RGB(GOLD, 1)) end)
-        changelogLink:SetScript("OnClick", function()
-            ns.CopyToClipboard(ns.GITHUB_CHANGELOG_URL)
+        local copyHint = changelogLink:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        copyHint:SetPoint("LEFT", changelogText, "RIGHT", 6, 0)
+        copyHint:Hide()
+        changelogLink._efCopyText = ns.GITHUB_CHANGELOG_URL
+        changelogLink._efCopyHint = copyHint
+        changelogLink:SetScript("OnEnter", function(self)
+            changelogText:SetTextColor(1, 1, 1)
+            copyHint:SetText("Ctrl+C")
+            copyHint:SetTextColor(Utils.RGB(TEXT_DIM, 1))
+            copyHint:Show()
+            if ns.RowCopy then ns.RowCopy:OnRowHover(self) end
+        end)
+        changelogLink:SetScript("OnLeave", function()
+            changelogText:SetTextColor(Utils.RGB(GOLD, 1))
+            copyHint:Hide()
+            if ns.RowCopy then ns.RowCopy:OnRowHover(nil) end
+        end)
+        changelogLink:SetScript("OnClick", function(self)
+            if ns.RowCopy then ns.RowCopy:ArmFor(self) end
+        end)
+        f:HookScript("OnHide", function()
+            if ns.RowCopy then ns.RowCopy:OnRowHover(nil) end
         end)
         f._changelogLink = changelogLink
 

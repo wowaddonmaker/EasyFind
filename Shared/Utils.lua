@@ -2018,6 +2018,9 @@ ns.SEARCH_WINDOW_FILL_COLOR = {0.052, 0.052, 0.060}
 ns.TEXT_PRIMARY = {1.00, 0.97, 0.86}
 ns.TEXT_BODY = {0.78, 0.78, 0.80}
 ns.TEXT_DIM = {0.55, 0.55, 0.58}
+-- "Copied" confirmation green, shared by the calculator card and the
+-- copy-row hints.
+ns.COPIED_COLOR = {0.48, 1.0, 0.62}
 -- Snippet category glyph: shipped white line-art in the app-icon style
 -- (chat/notes), tintable, immune to Blizzard sprite-sheet reshuffles.
 -- Filter row and result rows share it.
@@ -3856,7 +3859,8 @@ ns.AttachEscClose = function(frame, close, shouldEat) return Utils.AttachEscClos
 -- for the chat paste swap. The client decides how a copy is confirmed and
 -- whether a focus steal mid-arm is fought (a row hover holding Ctrl) or
 -- ends the arm (a one-shot prompt): { OnCopied = fn, HoldsFocus = fn ->
--- bool, OnDisarm = fn }.
+-- bool, OnDisarm = fn, OnKey = fn(key) }. OnKey receives every other
+-- non-modifier key the focused box would otherwise swallow.
 do
 local box, client, clientLink, prevFocus
 
@@ -3881,15 +3885,29 @@ local function EnsureClipboardBox()
     box:SetAlpha(0)
     box:EnableMouse(false)
     box:SetScript("OnKeyDown", function(self, key)
-        if (key == "C" or key == "c") and IsControlKeyDown() and client then
+        if not client then return end
+        if (key == "C" or key == "c") and IsControlKeyDown() then
             Utils.StashClipboardLink(self:GetText(), clientLink)
             if client.OnCopied then client.OnCopied() end
+        elseif client.OnKey and not Utils.IsModifierKey(key) then
+            -- The focused box takes every key ahead of the client's own
+            -- keyboard (a menu, the nav frame); hand navigation keys back
+            -- and restore the selection the caret move just dropped.
+            local holder = client
+            holder.OnKey(key)
+            Utils.SafeAfter(0, function()
+                if client == holder then self:HighlightText(0, -1) end
+            end)
         end
     end)
     -- Stray typing means the user wanted their previous editbox: hand
     -- focus straight back rather than eating input.
     box:SetScript("OnChar", function() Utils.DisarmClipboardBox(true) end)
-    box:SetScript("OnEscapePressed", function() Utils.DisarmClipboardBox(true) end)
+    box:SetScript("OnEscapePressed", function()
+        local holder = client
+        if holder and holder.OnKey then holder.OnKey("ESCAPE") end
+        Utils.DisarmClipboardBox(true)
+    end)
     box:SetScript("OnEditFocusLost", function()
         -- Deliberate teardowns cleared the client before moving focus.
         -- Anything ELSE stealing focus loses to a client that holds
@@ -5921,6 +5939,112 @@ local function CursorMenuRowEntered(menu, row)
     if child and child.Raise then child:Raise() end
 end
 
+-- Copy rows (def.copy): a menu row whose action is the OS clipboard.
+-- Addons cannot write the clipboard, so the gesture IS Ctrl+C: the row
+-- wears a dim "Ctrl+C" hint that lights while the row is engaged (hovered
+-- or keyboard-selected), Ctrl held over it fills the hidden clipboard box
+-- with the row's text, and the C of the chord is the native copy. A click
+-- or Enter on the row arms the box too and leaves the menu open, so the
+-- chord that follows lands; nothing ever dead-ends in a second prompt.
+-- Engagement is read off the same per-frame highlight drive the pills
+-- use, so it survives everything the pills survive.
+local MenuCopy = { row = nil, menu = nil, armedRow = nil }
+
+function MenuCopy.PaintHint(row, lit)
+    if not row.hint then return end
+    if row._efCopyDone then
+        row.hint:SetText(L["COPIED"])
+        row.hint:SetTextColor(Utils.RGB(ns.COPIED_COLOR, 1))
+    else
+        row.hint:SetText("Ctrl+C")
+        row.hint:SetTextColor(Utils.RGB(lit and row._efLabelColor or ns.TEXT_DIM, 1))
+    end
+end
+
+function MenuCopy.Disarm(restoreFocus)
+    if not MenuCopy.armedRow then return end
+    Utils.DisarmClipboardBox(restoreFocus, MenuCopy.client)
+end
+
+function MenuCopy.Arm(row)
+    if not (row and row._copyText) then return false end
+    MenuCopy.armedRow = row
+    Utils.ArmClipboardBox(row._copyText, row._copyLink, MenuCopy.client)
+    return true
+end
+
+function MenuCopy.OnModifier(_, _, key, state)
+    if key ~= "LCTRL" and key ~= "RCTRL" then return end
+    if state == 1 then
+        MenuCopy.Arm(MenuCopy.row)
+    else
+        MenuCopy.Disarm(true)
+        -- The watcher outlives a Ctrl-held leave only for this release.
+        if not MenuCopy.row then
+            MenuCopy.watcher:UnregisterEvent("MODIFIER_STATE_CHANGED")
+        end
+    end
+end
+
+-- Called every frame by the root's OnUpdate with the engaged copy row (or
+-- nil) and on hide by the menu that owned it. The arm follows engagement:
+-- Ctrl held over a newly engaged row re-arms for it, leaving without Ctrl
+-- releases. Leaving WITH Ctrl held keeps the arm, exactly like result
+-- rows: the payload is already in the box and focus returns on Ctrl-up.
+function MenuCopy.Sync(row, menu)
+    if row == MenuCopy.row then return end
+    local prev = MenuCopy.row
+    MenuCopy.row, MenuCopy.menu = row, menu
+    if prev then MenuCopy.PaintHint(prev, false) end
+    if not row then
+        if not IsControlKeyDown() then
+            MenuCopy.Disarm(true)
+            MenuCopy.watcher:UnregisterEvent("MODIFIER_STATE_CHANGED")
+        end
+        return
+    end
+    MenuCopy.PaintHint(row, true)
+    if not MenuCopy.watcher then
+        MenuCopy.watcher = CreateFrame("Frame")
+        MenuCopy.watcher:SetScript("OnEvent", MenuCopy.OnModifier)
+    end
+    MenuCopy.watcher:RegisterEvent("MODIFIER_STATE_CHANGED")
+    if IsControlKeyDown() then
+        MenuCopy.Arm(row)
+    elseif MenuCopy.armedRow and MenuCopy.armedRow ~= row then
+        MenuCopy.Disarm(true)
+    end
+end
+
+function MenuCopy.Release(menu)
+    if MenuCopy.armedRow and MenuCopy.armedRow:GetParent() == menu then
+        MenuCopy.Disarm(true)
+    end
+    if MenuCopy.menu == menu then MenuCopy.Sync(nil) end
+end
+
+MenuCopy.client = {
+    OnCopied = function()
+        local row = MenuCopy.armedRow
+        if not row then return end
+        row._efCopyDone = true
+        MenuCopy.PaintHint(row, true)
+        -- The native copy completes on this same key event; the box lets
+        -- go one frame later so the chord is never cut short.
+        Utils.SafeAfter(0, function() MenuCopy.Disarm(true) end)
+        local menu = row:GetParent()
+        Utils.SafeAfter(0.5, function()
+            if row._efCopyDone and menu:IsShown() then
+                while menu._parentMenu do menu = menu._parentMenu end
+                menu:Hide()
+            end
+        end)
+    end,
+    HoldsFocus = function() return MenuCopy.armedRow ~= nil and IsControlKeyDown() end,
+    OnDisarm = function() MenuCopy.armedRow = nil end,
+    -- OnKey is attached below CursorMenuOnKeyDown.
+}
+
 local function CursorMenuIsSelectableRow(row)
     return row and row:IsShown() and not row.isSeparator and not row.disabled
 end
@@ -6023,6 +6147,9 @@ local function CursorMenuActivateKeyboardIndex(self)
         end
         return true
     end
+    -- Enter on a copy row arms the clipboard box and keeps the menu open
+    -- for the chord; closing here would leave nothing to copy from.
+    if row._copyText then return MenuCopy.Arm(row) end
     local onClick = row.onClick
     local root = self
     while root._parentMenu do root = root._parentMenu end
@@ -6073,6 +6200,7 @@ local function CursorMenuOnHide(self)
     self._mouseYields = nil
     self._lastCursorX, self._lastCursorY = nil, nil
     CursorMenuSetKeyboardIndex(self, nil)
+    MenuCopy.Release(self)
     Utils.SafeCallMethod(self, "EnableKeyboard", false)
     self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
     self:UnregisterEvent("GLOBAL_MOUSE_UP")
@@ -6111,7 +6239,8 @@ end
 -- enter/leave bookkeeping.
 local function CursorMenuDriveRowHighlights(menu, mouseYields)
     local rows = menu.rows
-    if not rows then return end
+    if not rows then return nil end
+    local copyRow
     for i = 1, #rows do
         local row = rows[i]
         if row and row:IsShown() and row._efMenuRowHighlightInstalled and not row.isSeparator then
@@ -6124,6 +6253,7 @@ local function CursorMenuDriveRowHighlights(menu, mouseYields)
             -- keyboard selection is the single highlight.
             local engaged = row._efWashFocused or (not mouseYields and row:IsMouseOver())
                 or menu._openSubmenuRow == row
+            if engaged and row._copyText and not copyRow then copyRow = row end
             if row._efWashActive then
                 Utils.UpdateRoundedRowWash(row, engaged)
             else
@@ -6139,6 +6269,7 @@ local function CursorMenuDriveRowHighlights(menu, mouseYields)
             end
         end
     end
+    return copyRow
 end
 
 local function CursorMenuOnUpdate(self)
@@ -6151,9 +6282,18 @@ local function CursorMenuOnUpdate(self)
     end
     self._lastCursorX, self._lastCursorY = cx, cy
     local node = self
+    local copyRow, copyMenu
     while node do
-        if node:IsShown() then CursorMenuDriveRowHighlights(node, self._mouseYields) end
+        if node:IsShown() then
+            local engagedCopy = CursorMenuDriveRowHighlights(node, self._mouseYields)
+            if engagedCopy and not copyRow then copyRow, copyMenu = engagedCopy, node end
+        end
         node = node._openSubmenu
+    end
+    if copyRow then
+        MenuCopy.Sync(copyRow, copyMenu)
+    elseif MenuCopy.menu and CursorMenuRoot(MenuCopy.menu) == self then
+        MenuCopy.Sync(nil)
     end
     -- stayOpen menus close only on click-outside (handled in OnEvent), never on
     -- mouse-leave, matching the search bar's filter menu.
@@ -6249,6 +6389,14 @@ local function CursorMenuOnKeyDown(self, key)
     else
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
     end
+end
+
+-- While the clipboard box holds focus for an armed copy row, the menu's
+-- own keyboard is behind it; the box hands navigation keys back here.
+function MenuCopy.client.OnKey(key)
+    local row = MenuCopy.armedRow
+    local menu = row and row:GetParent()
+    if menu and menu:IsShown() then CursorMenuOnKeyDown(menu, key) end
 end
 
 local function CreateCursorMenu(globalName)
@@ -6506,6 +6654,29 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                     if def.icon then labelRight = def.submenu and -44 or -26 end
                     row.label:SetPoint("RIGHT", row, "RIGHT", labelRight, 0)
                 end
+                -- Copy rows carry their gesture in the icon lane: a dim
+                -- "Ctrl+C" the drive lights while the row is engaged and
+                -- that turns into "Copied" when the chord lands. The label
+                -- hangs off the hint so a wider confirmation never overlaps.
+                row._copyText, row._copyLink = def.copy, def.copyLink
+                row._efLabelColor = labelColor
+                row._efCopyDone = nil
+                if def.copy then
+                    if not row.hint then
+                        row.hint = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                        row.hint._efOwnColor = true
+                        row.hint:SetShadowColor(0, 0, 0, 0)
+                    end
+                    local ff, fs, ffl = row.label:GetFont()
+                    if ff then row.hint:SetFont(ff, fs, ffl or "") end
+                    row.hint:ClearAllPoints()
+                    row.hint:SetPoint("RIGHT", row, "RIGHT", def.icon and -26 or -8, 0)
+                    row.hint:Show()
+                    MenuCopy.PaintHint(row, false)
+                    row.label:SetPoint("RIGHT", row.hint, "LEFT", -8, 0)
+                elseif row.hint then
+                    row.hint:Hide()
+                end
                 row.label:SetJustifyH("LEFT")
                 row.label:SetWordWrap(false)
                 if def.icon then
@@ -6577,6 +6748,17 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                         if button ~= "LeftButton" then return end
                         CursorMenuRowEntered(menu, self)
                     end)
+                elseif def.copy then
+                    -- A click cannot copy (no clipboard API); it arms the
+                    -- chord and keeps the menu open, hint already lit.
+                    row:EnableMouse(true)
+                    local hl = row:GetHighlightTexture()
+                    if hl then hl:SetAlpha(1) end
+                    row.onClick = nil
+                    row:SetScript("OnMouseDown", function(self, button)
+                        if button ~= "LeftButton" then return end
+                        MenuCopy.Arm(self)
+                    end)
                 else
                     row:EnableMouse(true)
                     local hl = row:GetHighlightTexture()
@@ -6636,6 +6818,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             row.disabled = nil
             row.onClick = nil
             row._submenuRows = nil
+            row._copyText, row._copyLink = nil, nil
             row:SetScript("OnClick", nil)
             row:SetScript("OnMouseDown", nil)
         end
@@ -6672,6 +6855,15 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                     rightPad = (row.icon:IsShown() and not leftIcons) and 44 or 22
                 elseif row.icon:IsShown() and not leftIcons then
                     rightPad = 26
+                end
+                if row._copyText and row.hint then
+                    -- Reserve the wider of the hint and its "Copied" swap,
+                    -- so the label never ellipsizes when the chord lands.
+                    local hintW = row.hint:GetStringWidth()
+                    row.hint:SetText(L["COPIED"])
+                    hintW = mmax(hintW, row.hint:GetStringWidth())
+                    MenuCopy.PaintHint(row, false)
+                    rightPad = rightPad + mfloor(hintW + 0.5) + 8
                 end
                 -- Rows are inset MENU_ROW_INSET on BOTH sides of the menu, so
                 -- a width measured in row space is that much short in menu
@@ -6741,10 +6933,11 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     if onGuide then
         rows[#rows + 1] = { text = L["CTX_GUIDE"], icon = ns.EYE_ICON_TEX, chromeIcon = true, onClick = onGuide }
     end
-    if extra and extra.onWowhead then
+    if extra and extra.wowheadUrl then
         -- Our own chain-link glyph (textures/link.tga), the same custom
-        -- treatment as Guide's eye and Pin's diamond.
-        rows[#rows + 1] = { text = L["CTX_WOWHEAD"], icon = ns.LINK_ICON_TEX, chromeIcon = true, onClick = extra.onWowhead }
+        -- treatment as Guide's eye and Pin's diamond. A copy row: the URL
+        -- reaches the clipboard through the row's Ctrl+C.
+        rows[#rows + 1] = { text = L["CTX_WOWHEAD"], icon = ns.LINK_ICON_TEX, chromeIcon = true, copy = extra.wowheadUrl }
     end
     if extra and extra.sendLink then
         -- Hover-cascade flyout of chat channels, opened beside the row like
@@ -6867,8 +7060,9 @@ end
 
 -- Build the "Send link" flyout rows for a result's chat link: public/group
 -- channels, a whisper to the current target, a whisper by typed name, and
--- the clipboard prompt (WoW has no silent set-clipboard API, so a hardware
--- Ctrl+C is the copy). Returned as a submenu spec for the context menu.
+-- the clipboard copy row (WoW has no silent set-clipboard API, so a
+-- hardware Ctrl+C on the row is the copy). Returned as a submenu spec for
+-- the context menu.
 function ns.BuildSendLinkRows(link)
     if not link then return nil end
     local rows = {}
@@ -6905,13 +7099,12 @@ function ns.BuildSendLinkRows(link)
         end,
     }
     rows[#rows + 1] = { isSeparator = true }
+    -- The clipboard carries the text with links flattened to their
+    -- display names; the live link rides along for a chat paste.
     rows[#rows + 1] = {
         text = L["CTX_SEND_LINK_CLIPBOARD"],
-        onClick = function()
-            -- The clipboard carries the text with links flattened to their
-            -- display names; the live link rides along for a chat paste.
-            Utils.CopyToClipboard(Utils.ClipboardSafeText(link), link)
-        end,
+        copy = Utils.ClipboardSafeText(link),
+        copyLink = link,
     }
     return rows
 end

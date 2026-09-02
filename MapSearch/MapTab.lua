@@ -329,11 +329,7 @@ local function ShowPopup(isPinned, onPin, onGuide, onAddAlias, data)
     local extra
     local wowheadUrl = data and ns.GetWowheadLink and ns.GetWowheadLink(data)
     if wowheadUrl then
-        extra = {
-            onWowhead = function()
-                ns.CopyToClipboard(wowheadUrl)
-            end,
-        }
+        extra = { wowheadUrl = wowheadUrl }
     end
     -- Map results have a location but usually no game-object chat link, so the
     -- Send-link menu carries a world map pin the recipient can click to open the

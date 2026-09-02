@@ -632,12 +632,16 @@ function Results:ActivateResultRow(resultRow, source)
         self:ArmCalculatorResultFromRow(resultRow, source or "click")
         return true
     end
+    if resultRow.data.copyText then
+        if ns.RowCopy then ns.RowCopy:ArmFor(resultRow) end
+        return true
+    end
     self:SelectResult(resultRow.data)
     return true
 end
 
 function Results:ActivateSelected(source)
-    -- Enter on the grid's focused cell = the left-click action (copy the ID).
+    -- Enter on the grid's focused cell = the left-click action (the cell menu).
     if self.IsIconGridNavActive and self:IsIconGridNavActive() then
         if self:ActivateIconGridFocus() then return end
     end

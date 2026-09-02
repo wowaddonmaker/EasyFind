@@ -7,9 +7,9 @@ if not ns then return end
 -- The @icons grid (GitHub #22): the results dropdown becomes a fixed grid of
 -- icon cells, macro-picker style, filtered live by whatever follows @icons.
 -- The grid is a fixed cell matrix that RETEXTURES on scroll instead of
--- moving frames, so 33k icons cost one pooled page of buttons. Left click
--- copies the FileDataID (clipboard prompt); right click opens a cursor menu
--- with the copy actions and "create macro with this icon".
+-- moving frames, so 33k icons cost one pooled page of buttons. Ctrl+C over
+-- a cell copies its FileDataID (the shared row copy); either click opens a
+-- cursor menu with the copy rows and "create macro with this icon".
 
 local Search = ns.Search
 local Results = ns.Results
@@ -52,12 +52,19 @@ local function IconTooltip(cellBtn)
     if not cellBtn.iconName then return end
     GameTooltip:SetOwner(cellBtn, "ANCHOR_RIGHT")
     GameTooltip:SetText(cellBtn.iconName, 1, 1, 1)
-    GameTooltip:AddLine(tostring(cellBtn.iconID), 0.7, 0.7, 0.7)
+    GameTooltip:AddDoubleLine(tostring(cellBtn.iconID), "Ctrl+C",
+        0.7, 0.7, 0.7, Utils.RGB(ns.TEXT_DIM))
     GameTooltip:Show()
 end
 
-local function CopyIconID(iconID)
-    ns.CopyToClipboard(tostring(iconID))
+local function OnCellEnter(cellBtn)
+    IconTooltip(cellBtn)
+    if ns.RowCopy then ns.RowCopy:OnRowHover(cellBtn) end
+end
+
+local function OnCellLeave()
+    GameTooltip:Hide()
+    if ns.RowCopy then ns.RowCopy:OnRowHover(nil) end
 end
 
 local function CreateMacroWithIcon(iconID, withTooltip)
@@ -113,15 +120,9 @@ local function ShowCellMenu(cellBtn, keyboardMode)
     local iconID, iconName = cellBtn.iconID, cellBtn.iconName
     if not iconID then return end
     local rows = {
-        { text = L["CTX_COPY_ICON_ID"], onClick = function()
-            CopyIconID(iconID)
-        end },
-        { text = L["CTX_COPY_ICON_NAME"], onClick = function()
-            ns.CopyToClipboard(iconName)
-        end },
-        { text = L["CTX_COPY_ICON_PATH"], onClick = function()
-            ns.CopyToClipboard("Interface\\Icons\\" .. (iconName or ""))
-        end },
+        { text = L["CTX_COPY_ICON_ID"], copy = tostring(iconID) },
+        { text = L["CTX_COPY_ICON_NAME"], copy = iconName or "" },
+        { text = L["CTX_COPY_ICON_PATH"], copy = "Interface\\Icons\\" .. (iconName or "") },
         { text = L["CTX_CREATE_MACRO_ICON"], onClick = function()
             CreateMacroWithIcon(iconID)
         end },
@@ -187,6 +188,9 @@ function Repaint()
         if fIdx then
             local name, id = IconSearch:GetIcon(fIdx)
             cellBtn.iconName, cellBtn.iconID = name, id
+            -- The shared row copy reads this: Ctrl+C over the cell copies
+            -- the FileDataID.
+            cellBtn._efCopyText = tostring(id)
             cellBtn.tex:SetTexture(id)
             cellBtn:Show()
             if cellBtn:IsMouseOver() and GameTooltip:IsOwned(cellBtn) then
@@ -194,6 +198,7 @@ function Repaint()
             end
         else
             cellBtn.iconName, cellBtn.iconID = nil, nil
+            cellBtn._efCopyText = nil
             cellBtn:Hide()
         end
         -- The keyboard-focused cell wears the locked highlight (same light
@@ -208,12 +213,12 @@ function Repaint()
     end
     if host.countText then
         host.countText:SetText(sformat("%d/%d", filteredN, IconSearch:GetTotal()))
-        -- With no matches there is nothing to right-click; the hint slot
+        -- With no matches there is nothing to click or copy; the hint slot
         -- carries the no-results message instead (Blizzard's own string).
         if filteredN == 0 then
             host.hintText:SetText(_G["BROWSE_NO_RESULTS"] or "No results found.")
         else
-            host.hintText:SetText(L["ICON_GRID_RCLICK_HINT"])
+            host.hintText:SetText(L["ICON_GRID_CLICK_HINT"])
         end
         -- Same muted tone the renderer's inert amount text wears.
         local theme = Results.GetActiveTheme and Results:GetActiveTheme()
@@ -227,13 +232,11 @@ function Repaint()
     end
 end
 
-local function OnCellClick(cellBtn, button)
+-- A click cannot copy (the clipboard only takes a hardware Ctrl+C), so
+-- both buttons open the cell menu, whose copy rows carry the chord hint.
+local function OnCellClick(cellBtn)
     if not cellBtn.iconID then return end
-    if button == "RightButton" then
-        ShowCellMenu(cellBtn)
-    else
-        CopyIconID(cellBtn.iconID)
-    end
+    ShowCellMenu(cellBtn)
 end
 
 local function EnsureHost(resultsFrame)
@@ -300,8 +303,8 @@ local function EnsureCells(cellSize)
             cellBtn.tex:SetAllPoints()
             cellBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
             cellBtn:SetScript("OnClick", OnCellClick)
-            cellBtn:SetScript("OnEnter", IconTooltip)
-            cellBtn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            cellBtn:SetScript("OnEnter", OnCellEnter)
+            cellBtn:SetScript("OnLeave", OnCellLeave)
             cells[i] = cellBtn
         end
         local row = mfloor((i - 1) / gridCols)
@@ -512,20 +515,31 @@ function Results:JumpIconGridFocus(toEnd)
     GridNavShow()
 end
 
+local function FocusedCell()
+    local base = rowOffset * gridCols
+    local cellBtn = cells and cells[navIndex - base]
+    if cellBtn and cellBtn.iconID then return cellBtn end
+    return nil
+end
+
+-- Enter on the focused cell = the click: its menu.
 function Results:ActivateIconGridFocus()
+    return self:OpenIconGridFocusMenu()
+end
+
+-- Ctrl+C with the keyboard on the focused cell: arm the copy for it (the
+-- chord that follows is the native copy), same as a selected result row.
+function Results:ArmIconGridFocusCopy()
     if not self:IsIconGridNavActive() then return false end
-    local fIdx = filtered[navIndex]
-    if not fIdx then return false end
-    local _, id = IconSearch:GetIcon(fIdx)
-    if id then CopyIconID(id) end
-    return true
+    local cellBtn = FocusedCell()
+    if not (cellBtn and ns.RowCopy) then return false end
+    return ns.RowCopy:ArmFor(cellBtn)
 end
 
 function Results:OpenIconGridFocusMenu()
     if not self:IsIconGridNavActive() then return false end
-    local base = rowOffset * gridCols
-    local cellBtn = cells and cells[navIndex - base]
-    if not (cellBtn and cellBtn.iconID) then return false end
+    local cellBtn = FocusedCell()
+    if not cellBtn then return false end
     ShowCellMenu(cellBtn, true)
     return true
 end

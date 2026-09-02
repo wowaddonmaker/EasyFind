@@ -76,6 +76,8 @@ end
 -- the relevant variants in GetActionHint.
 local HINTS = {
     copyResult       = Hint(V.select, V.copyResult),
+    -- Plain copyable rows (quick answers): the chord is the whole gesture.
+    copyChord        = Hint("Ctrl+C", V.copyResult),
     quickKeybind     = Hint(V.click, V.enterMode, "Alt", V.settings),
     filterResults    = Hint(V.select, V.filterResults),
     applyTitle       = Hint(V.click, V.applyTitle),
@@ -131,6 +133,7 @@ local NON_DRESSABLE_SLOT = {
 function Handlers:GetActionHint(data)
     if not data then return nil end
     if data.calculatorResult then return HINTS.copyResult end
+    if data.copyText then return HINTS.copyChord end
     if data.quickKeybindActivate then return HINTS.quickKeybind end
     if data.quickFilterDef then return HINTS.filterResults end
     if data.titleID then
