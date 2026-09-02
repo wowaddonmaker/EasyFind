@@ -87,6 +87,49 @@ function tests.entryKey_forReputation()
     H.assertEq(Aliases:GetEntryKey({ factionID = 42 }), "reputation:42")
 end
 
+function tests.entryKey_forAchievement()
+    H.assertEq(Aliases:GetEntryKey({ achievementID = 6 }), "achievement:6")
+end
+
+function tests.findByKey_dispatchesThroughRegisteredResolver()
+    -- Rows built per query (achievements, map rows) never live in
+    -- uiSearchData: their key prefix must dispatch to a registered
+    -- resolver, or a learned pick records and then can never resurface
+    -- (the original bug: clicks appeared not to teach at all).
+    local prevDatabase = ns.Database
+    ns.Database = { uiSearchData = {} }
+    local resolvedRow = { achievementID = 77, name = "Test Achievement" }
+    local askedWith
+    Aliases:RegisterKeyResolver("achievement", function(key)
+        askedWith = key
+        return key == "achievement:77" and resolvedRow or nil
+    end)
+    H.assertEq(Aliases:FindEntryByKey("achievement:77"), resolvedRow)
+    H.assertEq(askedWith, "achievement:77", "resolver receives the full key")
+    -- Resolver miss (deleted/invalid id) stays a clean nil.
+    H.assertEq(Aliases:FindEntryByKey("achievement:99"), nil)
+    -- Unregistered prefixes fall through to nil, never to another
+    -- resolver.
+    H.assertEq(Aliases:FindEntryByKey("nosuchprefix:1"), nil)
+    Aliases:RegisterKeyResolver("achievement", nil)
+    ns.Database = prevDatabase
+end
+
+function tests.findByKey_snapshotBeatsResolver()
+    -- An alias's captured snapshot renders exactly as saved; a registered
+    -- resolver is the fallback, not an override.
+    local prevDatabase, prevDb = ns.Database, env.EasyFind.db
+    ns.Database = { uiSearchData = {} }
+    local snapshot = { name = "Captured" }
+    env.EasyFind.db = { aliases = { a1 = { key = "snaptest:77", snapshot = snapshot } } }
+    local resolverRan = false
+    Aliases:RegisterKeyResolver("snaptest", function() resolverRan = true end)
+    H.assertEq(Aliases:FindEntryByKey("snaptest:77"), snapshot)
+    H.assertTrue(not resolverRan, "snapshot must win before the resolver runs")
+    Aliases:RegisterKeyResolver("snaptest", nil)
+    ns.Database, env.EasyFind.db = prevDatabase, prevDb
+end
+
 function tests.entryKey_forLootItem()
     H.assertEq(Aliases:GetEntryKey({ itemID = 1000, category = "Loot" }), "loot:1000")
     -- itemID without Loot category should not match the loot branch

@@ -6,6 +6,7 @@ local Utils = ns.Utils
 
 local slower = Utils.slower
 local sfind = Utils.sfind
+local smatch = Utils.smatch
 local tconcat = Utils.tconcat
 local mfloor = Utils.mfloor
 local CreateFrame = CreateFrame
@@ -136,6 +137,31 @@ local function GetOrCreateAchievementEntry(id, name, icon, knownGuildAchievement
     }, ACHIEVEMENT_MT)
     achievementEntryByID[id] = entry
     return entry
+end
+
+-- Resolve an achievement into its full search row by ID alone. Learned
+-- picks and aliases store "achievement:<id>" keys, and achievement rows
+-- never live in uiSearchData to be found by the key index (they are built
+-- per query), so key resolution comes here instead.
+function Providers:GetAchievementRowByID(achievementID)
+    local id = tonumber(achievementID)
+    if not id then return nil end
+    local cached = achievementEntryByID[id]
+    if cached then return cached end
+    local getInfo = _G["GetAchievementInfo"]
+    if not getInfo then return nil end
+    local ok, _, name, _, _, _, _, _, _, _, icon, _, isGuild = pcall(getInfo, id)
+    if not ok or not name then return nil end
+    return GetOrCreateAchievementEntry(id, name, icon, isGuild)
+end
+
+-- Learned picks, aliases, and shortkeys store "achievement:<id>" keys;
+-- they resolve through this provider, registered here so the identity
+-- system never needs to know achievement internals.
+if ns.Aliases and ns.Aliases.RegisterKeyResolver then
+    ns.Aliases:RegisterKeyResolver("achievement", function(key)
+        return Providers:GetAchievementRowByID(smatch(key, "^achievement:(%d+)$"))
+    end)
 end
 
 -- Fallback for a broken client search registry. Achievements and

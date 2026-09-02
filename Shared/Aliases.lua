@@ -16,6 +16,7 @@ local strtrim = strtrim
 local sformat = string.format
 local mfloor = Utils.mfloor
 local ssub = Utils.ssub
+local smatch = Utils.smatch
 local tinsert = Utils.tinsert
 local tsort = Utils.tsort
 local time = time
@@ -111,6 +112,7 @@ function Aliases:GetEntryKey(data)
     if data.transmogSetID then return "appearanceSet:"  .. data.transmogSetID end
     if data.macroIndex    then return "macro:"          .. data.macroIndex end
     if data.factionID     then return "reputation:"     .. data.factionID end
+    if data.achievementID then return "achievement:"    .. data.achievementID end
     if data.itemID and data.category == "Loot" then return "loot:" .. data.itemID end
     if data.catalogItem and data.itemID then return "catalogitem:" .. data.itemID end
     if data.category == "Currency" and data.steps then
@@ -154,6 +156,18 @@ local function EntryKeyIndex(data)
     return idx
 end
 
+-- Rows that never live in uiSearchData (built per query by a provider)
+-- resolve through a registered resolver for their key prefix. The provider
+-- registers next to its own code; this file stays ignorant of provider
+-- internals. History demands it: map rows, catalog items, and achievements
+-- each shipped as bespoke branches here, and each was a silent learn/alias
+-- bug first.
+local keyResolvers = {}
+
+function Aliases:RegisterKeyResolver(prefix, resolver)
+    keyResolvers[prefix] = resolver
+end
+
 function Aliases:FindEntryByKey(key)
     if not key then return nil end
     local data = ns.Database and ns.Database.uiSearchData
@@ -170,9 +184,17 @@ function Aliases:FindEntryByKey(key)
             end
         end
     end
-    -- Otherwise rebuild map rows from the key (shortkeys, imports, legacy).
-    return ReconstructMapData(key)
+    local prefix = smatch(key, "^(%w+):")
+    local resolver = prefix and keyResolvers[prefix]
+    if resolver then
+        return resolver(key)
+    end
+    return nil
 end
+
+-- Map rows are generated live from the map APIs; their resolver is the key
+-- inverse defined above.
+Aliases:RegisterKeyResolver("map", ReconstructMapData)
 
 -- Map/zone/POI rows come from the live map search, not uiSearchData, so a saved
 -- reference (alias or shortkey) can't look them up later by key. Capture the

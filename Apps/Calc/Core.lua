@@ -23,6 +23,9 @@ Calculator._calculator = {
         category = CALC_NAME,
         path = { CALC_NAME },
         noPin = true,
+        -- Injected at match time, never in uiSearchData: a learned key for
+        -- it can never resolve, so the record would only be dead weight.
+        noLearn = true,
         calculatorLauncher = true,
         keywords = { "calculator", "calc", "math" },
     },
@@ -631,6 +634,9 @@ function Calculator:EvaluateCalculatorExpression(raw)
         category = "Calculator",
         path = c.PATH,
         noPin = true,
+        -- A math result exists only for its own query; learning it maps
+        -- the expression to itself.
+        noLearn = true,
         calculatorExpression = expression,
         calculatorResult = result,
         calculatorValue = value,

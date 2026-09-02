@@ -1059,10 +1059,21 @@ local function HandleWaitAchievementID(self, step, isLastStep)
         self:Cancel()
         return true
     end
-    local opener = _G["OpenAchievementFrameToAchievement"]
-    if opener then pcall(opener, step.achievementID) end
-    local btn
     local list = _G["AchievementFrameAchievements"]
+    local opener = _G["OpenAchievementFrameToAchievement"]
+    if opener then
+        pcall(opener, step.achievementID)
+    elseif list and list.ScrollBox and list.ScrollBox.ScrollToElementDataByPredicate then
+        -- The opener global is patch-fragile (it selects AND scrolls in one
+        -- call, and every caller nil-checks it, so its removal is silent).
+        -- Without it, scroll the already-selected category's list directly.
+        local function matches(elementData)
+            return type(elementData) == "table" and elementData.id == step.achievementID
+        end
+        local align = ScrollBoxConstants and ScrollBoxConstants.AlignCenter or 0.5
+        pcall(list.ScrollBox.ScrollToElementDataByPredicate, list.ScrollBox, matches, align)
+    end
+    local btn
     if list and list.ScrollBox then
         local getSelected = _G["AchievementFrameAchievements_GetSelectedElementData"]
         local elementData = getSelected and getSelected()
@@ -1070,6 +1081,14 @@ local function HandleWaitAchievementID(self, step, isLastStep)
            and list.ScrollBox.FindFrame then
             local ok, found = pcall(list.ScrollBox.FindFrame, list.ScrollBox, elementData)
             if ok and found and found:IsShown() then btn = found end
+        end
+        -- No selection (the opener is what selects): find the row by its
+        -- own element data, the way the statistics step does.
+        if not btn then
+            btn = ScrollBoxFindButton(list.ScrollBox, function(rowBtn)
+                local rowData = rowBtn.GetElementData and rowBtn:GetElementData()
+                return type(rowData) == "table" and rowData.id == step.achievementID
+            end)
         end
     end
     if btn then

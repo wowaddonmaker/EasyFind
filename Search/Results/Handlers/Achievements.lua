@@ -145,6 +145,31 @@ end
 -- Pet (battle pet) right-click actions. petID here is a Blizzard pet
 -- GUID string returned by GetPetInfoByIndex / similar, NOT a numeric
 
+-- Module-level target for the scroll predicate: the fallback runs on user
+-- clicks and guide ticks, and a fresh closure per call is the pattern the
+-- conventions ban in those paths.
+local scrollTargetAchievementID
+local function MatchesScrollTargetAchievement(elementData)
+    return type(elementData) == "table" and elementData.id == scrollTargetAchievementID
+end
+
+-- Blizzard's openers do category selection AND scrolling in one call, but
+-- they are plain globals a client patch can drop without an error anywhere
+-- (every caller nil-checks). When neither exists, scroll the visible
+-- achievement list directly by elementData id, the same predicate scroll
+-- the statistics guide step uses. Returns whether anything scrolled, so
+-- callers can tell an API-drift no-op from success.
+function Handlers:ScrollAchievementListTo(achievementID)
+    local list = _G["AchievementFrameAchievements"]
+    local box = list and list.ScrollBox
+    if not (box and box.ScrollToElementDataByPredicate) then return false end
+    scrollTargetAchievementID = achievementID
+    local align = ScrollBoxConstants and ScrollBoxConstants.AlignCenter or 0.5
+    local ok = pcall(box.ScrollToElementDataByPredicate, box,
+        MatchesScrollTargetAchievement, align)
+    return ok
+end
+
 function Handlers:OpenAchievementByID(achievementID)
     if not achievementID then return end
     if _G["AchievementFrame_LoadUI"] then
@@ -162,7 +187,9 @@ function Handlers:OpenAchievementByID(achievementID)
     local selector = _G["AchievementFrame_SelectAchievement"]
     if selector then
         pcall(selector, achievementID)
+        return
     end
+    self:ScrollAchievementListTo(achievementID)
 end
 
 -- OPEN MACRO FRAME AT SLOT

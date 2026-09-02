@@ -238,6 +238,9 @@ end
 local answerEntry = {
     category = "Statistic",
     noPin = true,
+    -- Per-query computed fact on a REUSED table: learning it would bind
+    -- the query to whatever this table holds later.
+    noLearn = true,
     nativeRun = CopyAnswer,
 }
 

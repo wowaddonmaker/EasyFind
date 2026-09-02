@@ -85,6 +85,9 @@ function ns.Results:GetIconSearchLauncherMatch(text)
         name = ns.L["ICON_SEARCH_APP"],
         iconSearchLauncher = true,
         noPin = true,
+        -- Injected at match time, never in uiSearchData: a learned key for
+        -- it can never resolve, so the record would only be dead weight.
+        noLearn = true,
         nativeRun = function()
             if ns.RequestIconSearch and ns.RequestIconSearch() then
                 ns.Results:OpenIconSearch()

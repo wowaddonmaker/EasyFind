@@ -220,12 +220,14 @@ function Handlers:SelectResult(data, forceGuide)
 
     -- Learn the pick before any branch can clear the typed query. EVERY
     -- destination row teaches, catalog, bank, and command rows included.
-    -- The only exclusions are mechanical: noPin marks the transient rows
-    -- that already rank above everything (inline answers, calculator) so
-    -- learning them would only inject duplicates, and quick-filter chips
+    -- The only exclusions are mechanical: noLearn marks rows learning can
+    -- do nothing for (per-query inline answers, and match-time-injected
+    -- launchers whose keys never resolve later), and quick-filter chips
     -- are mode switches whose copies would not survive as working rows.
+    -- noPin deliberately does NOT exclude: unpinnable is not unlearnable
+    -- (the snippet rows taught nothing for exactly that conflation).
     -- Unkeyable rows no-op inside RecordPick.
-    if ns.Learned and not data.quickFilterDef and not data.noPin then
+    if ns.Learned and not data.quickFilterDef and not data.noLearn then
         ns.Learned:RecordPick(data, Search.GetTypedQuery and Search:GetTypedQuery() or "")
     end
 
