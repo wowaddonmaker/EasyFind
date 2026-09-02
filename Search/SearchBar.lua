@@ -64,6 +64,14 @@ function Search:GetSearchFrame()
     return searchFrame
 end
 
+-- The update notice lives in the results window footer; a version arriving
+-- while results are open needs one re-render to reserve its row.
+function Search:RefreshUpdateNotice()
+    if resultsFrame and resultsFrame:IsShown() then
+        Results:RefreshShownResults()
+    end
+end
+
 function Search:GetResultsFrame()
     return resultsFrame
 end

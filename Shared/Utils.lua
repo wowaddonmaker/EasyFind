@@ -2333,6 +2333,52 @@ function ns.SetRoundedRectFill(frame, r, g, b, a, snapOff)
     end
 end
 
+-- The pill toggle-switch VISUAL the options panel's checkboxes wear
+-- (accent track, sliding knob), shared so inline toggles elsewhere (the
+-- update-notice footer) cannot drift from the options look. Pure visual:
+-- no mouse, no state store; the owning button calls :SetOn(bool).
+function ns.CreateToggleSwitchVisual(parent, trackW, trackH)
+    local track = CreateFrame("Frame", nil, parent)
+    track:SetSize(trackW, trackH)
+    track:EnableMouse(false)
+    ns.CreateRoundedRectBorder(track)
+    ns.SetRoundedRectBarHeight(track, trackH)
+    ns.SetRoundedRectBorderEdgeShown(track, false)
+    local knobSize = trackH - 2
+    local knob = CreateFrame("Frame", nil, track)
+    knob:SetSize(knobSize, knobSize)
+    knob:EnableMouse(false)
+    ns.CreateRoundedRectBorder(knob)
+    ns.SetRoundedRectBarHeight(knob, knobSize)
+    ns.SetRoundedRectBorderEdgeShown(knob, false)
+    ns.SetRoundedRectFill(knob, 0.96, 0.96, 0.96, 1)
+    track.knob = knob
+    -- Inline placements size the switch to the text it sits beside; the
+    -- knob and both rounded silhouettes follow.
+    function track:SetTrackSize(w, h)
+        self:SetSize(w, h)
+        ns.SetRoundedRectBarHeight(self, h)
+        local k = h - 2
+        knob:SetSize(k, k)
+        ns.SetRoundedRectBarHeight(knob, k)
+    end
+    function track:SetOn(on)
+        local accent = ns.CONTROL_ACCENT
+        if on then
+            ns.SetRoundedRectFill(self, accent[1], accent[2], accent[3], 1)
+        else
+            ns.SetRoundedRectFill(self, 0.23, 0.23, 0.25, 1)
+        end
+        knob:ClearAllPoints()
+        if on then
+            knob:SetPoint("RIGHT", self, "RIGHT", -1, 0)
+        else
+            knob:SetPoint("LEFT", self, "LEFT", 1, 0)
+        end
+    end
+    return track
+end
+
 -- Panel text retint for light themes: fontstrings sitting DIRECTLY on
 -- a wizard-glossed panel (titles, labels, hints) go dark; fontstrings
 -- inside rounded-fill controls (button pills, table cards) keep their

@@ -52,8 +52,10 @@ local DB_DEFAULTS = {
     windowBorder = false,
     lockPosition = false,
     tutorialDone = false,
+    updateNotify = true,
     snippets = {},
     snippetChatExpansion = true,
+    snippetTriggerChar = "\\",
     accountKeybinds = {},
     resultsTheme = "Modern",
     font = "Default",
@@ -615,6 +617,9 @@ local function CompareVersion(a, b)
         if av ~= bv then return av < bv and -1 or 1 end
     end
 end
+-- The What's New gate and the peer update check must rank versions the same
+-- way; one implementation, shared.
+ns.CompareVersion = CompareVersion
 
 local function OnInitialize()
     if not EasyFindDB then
@@ -964,6 +969,8 @@ local function OnPlayerLogin()
         SafeInit(ns.MapSearch,  "MapSearch")
     end
     SafeInit(ns.Search,        "UI")
+    SafeInit(ns.VersionCheck,  "VersionCheck")
+    SafeInit(ns.RowCopy,       "RowCopy")
     local regOk, regErr = xpcall(RegisterBlizzardOptionsStub, ErrorHandler)
     if not regOk then
         EasyFind:Print("|cffff4444" .. (L["ERR_OPTIONS_REGISTER_FAILED"]):format(tostring(regErr)) .. "|r")

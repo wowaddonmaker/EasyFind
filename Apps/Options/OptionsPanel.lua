@@ -11,6 +11,7 @@ ns.Options = Options
 local Utils   = ns.Utils
 local L       = ns.L
 local mfloor, mmin, mmax = Utils.mfloor, Utils.mmin, Utils.mmax
+local sformat = Utils.sformat
 local tostring = Utils.tostring
 local tinsert = Utils.tinsert
 local IsMouseButtonDown = IsMouseButtonDown
@@ -291,6 +292,7 @@ local function SyncOptionControls()
     if optionsFrame.macroPickerSearchCheckbox then optionsFrame.macroPickerSearchCheckbox:SetChecked(EasyFind.db.macroPickerSearch ~= false) end
     if optionsFrame.UpdateFocusBindEnabled then optionsFrame.UpdateFocusBindEnabled() end
     if optionsFrame.minimapBtnCheckbox then optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton ~= false) end
+    if optionsFrame.updateNotifyCheckbox then optionsFrame.updateNotifyCheckbox:SetChecked(EasyFind.db.updateNotify ~= false) end
     if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false) end
 
     if optionsFrame.mapTabShowRecentCheckbox then optionsFrame.mapTabShowRecentCheckbox:SetChecked(EasyFind.db.mapTabShowRecent ~= false) end
@@ -1157,6 +1159,23 @@ local function BuildHomeTab(ctx)
     homeVersion:SetPoint("BOTTOMLEFT", homeTitle, "BOTTOMRIGHT", 6, 2)
     local tocVersion = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("EasyFind", "Version")
     homeVersion:SetText("v" .. (tocVersion or ""))
+
+    -- The peer-heard update notice gets its own line under the title (the
+    -- title rides centered on the 80px icon, so this space is free):
+    -- appended to the version label it ran off the tab's right edge.
+    local homeUpdateNotice = homeTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    homeUpdateNotice:SetPoint("TOPLEFT", homeTitle, "BOTTOMLEFT", 1, -4)
+    homeUpdateNotice:SetJustifyH("LEFT")
+    local gold = ns.GOLD_COLOR
+    homeUpdateNotice:SetTextColor(gold[1], gold[2], gold[3], 1)
+    local function RefreshHomeUpdateNotice()
+        local newer = ns.VersionCheck and ns.VersionCheck:GetAvailableVersion()
+        homeUpdateNotice:SetShown(newer ~= nil)
+        if newer then
+            homeUpdateNotice:SetText(sformat(L["UPDATE_AVAILABLE_HINT"], newer))
+        end
+    end
+    RefreshHomeUpdateNotice()
     -- One step lighter than the title but still clearly theme-colored:
     -- pathColor is the mid-dark tier on light themes (textFaint washed
     -- out); dark themes keep the classic muted gray. Runs after the
@@ -1172,6 +1191,9 @@ local function BuildHomeTab(ctx)
     end
     UpdateHomeVersion()
     optionsFrame.UpdateHomeVersion = UpdateHomeVersion
+    function Options:RefreshVersionLabel()
+        RefreshHomeUpdateNotice()
+    end
 
     local FLOW_FONT = "GameFontHighlightSmall"
     local FLOW_W = FRAME_W - 24
@@ -1266,11 +1288,21 @@ local function BuildGeneralBindsTab(ctx)
         return row, label
     end
 
+    local updateNotifyCheckbox = CreateCheckbox(sec3, "UpdateNotify", L["OPT_UPDATE_NOTIFY"],
+        L["OPT_UPDATE_NOTIFY_TT"])
+    updateNotifyCheckbox:SetPoint("TOPLEFT", sec3, "TOPLEFT", 8, -8)
+    updateNotifyCheckbox:SetChecked(EasyFind.db.updateNotify ~= false)
+    updateNotifyCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.updateNotify = self:GetChecked() and true or false
+        if ns.VersionCheck then ns.VersionCheck:RefreshSurfaces() end
+    end)
+    optionsFrame.updateNotifyCheckbox = updateNotifyCheckbox
+
     local minimapBtnCheckbox = CreateCheckbox(sec3, "MinimapBtn", L["OPT_SHOW_MINIMAP_BUTTON"],
         L["OPT_MINIMAP_BTN_TT"])
     local aliasMessageCheckbox = CreateCheckbox(sec3, "AliasMessages", L["OPT_SHOW_ALIAS_MESSAGES"],
         L["OPT_ALIAS_MSG_TT"])
-    aliasMessageCheckbox:SetPoint("TOPLEFT", sec3, "TOPLEFT", 8, -8)
+    aliasMessageCheckbox:SetPoint("TOPLEFT", updateNotifyCheckbox, "BOTTOMLEFT", 0, -2)
     aliasMessageCheckbox:SetChecked(EasyFind.db.showAliasMessages ~= false)
     aliasMessageCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.showAliasMessages = self:GetChecked()

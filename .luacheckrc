@@ -105,7 +105,7 @@ read_globals = {
 
     -- C_* namespaces
     "C_AddOns", "EventUtil", "C_AchievementInfo", "C_AreaPoiInfo", "C_ClassTalents",
-    "C_CurrencyInfo", "C_EquipmentSet", "C_Item",
+    "C_ChatInfo", "C_CurrencyInfo", "C_EquipmentSet", "C_Item",
     "C_EncounterJournal", "C_GossipInfo", "C_Heirloom", "C_HousingCatalog", "C_HousingDecor", "C_LFGList", "C_MajorFactions", "C_Map",
     "C_Minimap", "C_MountJournal", "C_Navigation", "C_PetJournal",
     "C_Reputation", "C_SuperTrack", "C_TaxiMap", "C_Texture", "C_Timer",

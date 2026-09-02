@@ -11,7 +11,7 @@ local Shortcuts = ns.ResultShortcuts
 local Tooltips = ns.ResultTooltips
 local Database = ns.Database
 
-local mmin, mfloor = Utils.mmin, Utils.mfloor
+local mmin, mmax, mfloor = Utils.mmin, Utils.mmax, Utils.mfloor
 local wipe = wipe
 
 local collapsedNodes = Results._collapsedNodes
@@ -58,6 +58,69 @@ function Render:RestoreHoveredRow()
     end
 end
 
+-- The update-notice row: returns the extra bottom padding the results window
+-- must reserve for it, or 0 when there is nothing to announce. Styling runs
+-- here rather than in the theme pass because the notice is almost never up,
+-- and a SetFont per render is a typing cost worth skipping.
+function Render:LayoutUpdateFooter(resultsFrame)
+    local footer = resultsFrame.updateFooter
+    if not footer then return 0 end
+    local toggle = resultsFrame.updateFooterToggle
+    local newer = ns.VersionCheck and ns.VersionCheck:GetAvailableVersion()
+    if not newer then
+        footer:Hide()
+        if toggle then toggle:Hide() end
+        return 0
+    end
+    local theme = Results:GetActiveTheme()
+    local text = Utils.sformat(ns.L["UPDATE_AVAILABLE_HINT"], newer)
+        .. " " .. ns.L["UPDATE_AVAILABLE_SOURCE"]
+    if footer.efText ~= text then
+        footer.efText = text
+        footer:SetText(text)
+    end
+    Results:ScaleFont(footer, ns.SEARCHBAR_FONT)
+    local fontPath, fontSize, fontFlags = footer:GetFont()
+    if fontPath then
+        footer:SetFont(fontPath, fontSize * ns.UPDATE_NOTICE_FONT_SCALE, fontFlags)
+    end
+    if theme.textFaint then
+        footer:SetTextColor(theme.textFaint[1], theme.textFaint[2], theme.textFaint[3], 1)
+    end
+    -- The switch scales to the text so it reads as part of the small footer
+    -- line; its width is then RESERVED out of the text region, so a long
+    -- translation truncates before the switch instead of running under it
+    -- or pushing it past the window edge.
+    local switchH = mfloor((footer:GetStringHeight() or 10) + 0.5)
+    if switchH < 8 then switchH = 8 end
+    local switchW = switchH * 2
+    if toggle and toggle._efSwitchH ~= switchH then
+        toggle._efSwitchH = switchH
+        toggle:SetSize(switchW + 2, switchH + 4)
+        toggle.switch:SetTrackSize(switchW, switchH)
+    end
+    footer:ClearAllPoints()
+    -- Left inset clears the window's bottom-left corner curve; the text is
+    -- left-justified from there.
+    footer:SetPoint("BOTTOMLEFT", resultsFrame, "BOTTOMLEFT", 14, ns.UPDATE_NOTICE_BOTTOM_PAD)
+    footer:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", -(8 + switchW + 6), ns.UPDATE_NOTICE_BOTTOM_PAD)
+    footer:Show()
+    -- A truncated translation keeps its full text reachable: the switch's
+    -- tooltip leads with the whole message (see the OnEnter handler).
+    local unbounded = footer.GetUnboundedStringWidth or footer.GetStringWidth
+    footer.efTruncated = (unbounded(footer) or 0) > (footer:GetWidth() or 0) + 0.5
+    if toggle then
+        -- Just past the text's end; the reservation caps this at the
+        -- window's right edge minus the switch. The footer only renders
+        -- while reminders are enabled, so the switch always shows on.
+        toggle:ClearAllPoints()
+        toggle:SetPoint("LEFT", footer, "LEFT", mmin(footer:GetStringWidth() or 0, footer:GetWidth() or 0) + 6, 0)
+        toggle.switch:SetOn(true)
+        toggle:Show()
+    end
+    return (footer:GetStringHeight() or 10) + ns.UPDATE_NOTICE_BOTTOM_PAD + ns.UPDATE_NOTICE_TOP_PAD
+end
+
 -- Open the dropdown to fit `totalContentHeight` of content (viewport capped
 -- at maxVisibleHeight), wire the scroll machinery, and wrap the rounded
 -- container around bar + dropdown in either orientation. ONE owner for the
@@ -67,6 +130,15 @@ function Render:ApplyResultsFrameLayout(resultsFrame, totalContentHeight,
         maxVisibleHeight, padT, padB, scrollInset, preserveScroll)
     local hasScroll = totalContentHeight > maxVisibleHeight
     local visibleHeight = hasScroll and maxVisibleHeight or totalContentHeight
+
+    -- The update notice REPLACES the window's bottom padding rather than
+    -- stacking under it (padding + band read as a dead strip between the
+    -- last row and the text): the viewport keeps its height, and the window
+    -- grows only by what the text needs beyond the padding it already had.
+    local footerBand = Render:LayoutUpdateFooter(resultsFrame)
+    if footerBand > 0 then
+        padB = mmax(padB, footerBand)
+    end
 
     resultsFrame:SetHeight(padT + padB + visibleHeight)
     resultsFrame.scrollChild:SetWidth(resultsFrame:GetWidth() - scrollInset)

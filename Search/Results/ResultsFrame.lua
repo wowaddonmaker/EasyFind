@@ -73,6 +73,54 @@ function Results:CreateResultsFrame()
     bgAtlasTex:Hide()
     resultsFrame.bgAtlasTex = bgAtlasTex
 
+    -- The peer-heard update notice: one line along the bottom of the results
+    -- window, which grows by exactly this row when the notice is up.
+    local updateFooter = resultsFrame:CreateFontString(nil, "OVERLAY", ns.SEARCHBAR_FONT)
+    updateFooter:SetJustifyH("LEFT")
+    updateFooter:SetWordWrap(false)
+    updateFooter:Hide()
+    resultsFrame.updateFooter = updateFooter
+
+    -- Inline opt-out beside the notice: unchecking is the same switch as
+    -- "Show update reminders" in Options (one db field drives both), so it
+    -- can be re-enabled from there later. Living INSIDE the results frame,
+    -- it is covered by the outside-click closer's own IsMouseOver check;
+    -- a child below the frame would not be.
+    -- Sized at layout time from the footer text's rendered height, so the
+    -- switch matches the line it sits on across font-size settings.
+    local footerToggle = CreateFrame("Button", nil, resultsFrame)
+    local footerSwitch = ns.CreateToggleSwitchVisual(footerToggle, 22, 11)
+    footerSwitch:SetPoint("CENTER")
+    footerToggle.switch = footerSwitch
+    footerToggle:Hide()
+    footerToggle:SetScript("OnClick", function(self)
+        -- The footer only renders while reminders are on, so a click here
+        -- always opts out; the switch slides off for the frame before the
+        -- refresh hides the row.
+        EasyFind.db.updateNotify = false
+        self.switch:SetOn(false)
+        local optFrame = ns.optionsFrame
+        if optFrame and optFrame.updateNotifyCheckbox then
+            optFrame.updateNotifyCheckbox:SetChecked(false)
+        end
+        GameTooltip:Hide()
+        if ns.VersionCheck then ns.VersionCheck:RefreshSurfaces() end
+    end)
+    footerToggle:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine(L["OPT_UPDATE_NOTIFY"], 1, 1, 1)
+        -- A narrow window or long translation truncates the footer line;
+        -- the full message stays reachable here.
+        if updateFooter.efTruncated then
+            GameTooltip:AddLine(updateFooter:GetText() or "", GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], true)
+        end
+        GameTooltip:AddLine(L["UPDATE_NOTIFY_INLINE_TT"]:format(L["OPT_TAB_GENERAL_BINDS"]),
+            nil, nil, nil, true)
+        GameTooltip:Show()
+    end)
+    footerToggle:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    resultsFrame.updateFooterToggle = footerToggle
+
     resultsFrame:Hide()
 
     -- Click-outside-to-close: hides the results frame on any click that
