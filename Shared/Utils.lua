@@ -3992,8 +3992,9 @@ ns.AttachEscClose = function(frame, close, shouldEat) return Utils.AttachEscClos
 -- for the chat paste swap. The client decides how a copy is confirmed and
 -- whether a focus steal mid-arm is fought (a row hover holding Ctrl) or
 -- ends the arm (a one-shot prompt): { OnCopied = fn, HoldsFocus = fn ->
--- bool, OnDisarm = fn, OnKey = fn(key) }. OnKey receives every other
--- non-modifier key the focused box would otherwise swallow.
+-- bool, OnDisarm = fn, OnKey = fn(key), OnCtrlUp = fn }. OnKey receives
+-- every other non-modifier key the focused box would otherwise swallow;
+-- OnCtrlUp fires when Ctrl is released over the box (see its OnKeyUp).
 -- The frame focus is borrowed from carries _efClipboardHold until the
 -- borrow ends, so its own focus handlers can treat the round trip as a
 -- no-op (the search bar keeps its text, suffix and selection).
@@ -4047,6 +4048,16 @@ local function EnsureClipboardBox()
     end)
     -- Stray typing means the user wanted their previous editbox: hand
     -- focus straight back rather than eating input.
+    -- MODIFIER_STATE_CHANGED is not delivered while an EditBox has
+    -- keyboard focus (copytrace: both watchers silent the moment the
+    -- search box or this box held focus), and the armed box IS the
+    -- focused EditBox. Ctrl's release therefore reaches the client only
+    -- through this key-up.
+    box:SetScript("OnKeyUp", function(_, key)
+        if (key == "LCTRL" or key == "RCTRL") and client and client.OnCtrlUp then
+            client.OnCtrlUp()
+        end
+    end)
     box:SetScript("OnChar", function() Utils.DisarmClipboardBox(true) end)
     box:SetScript("OnEscapePressed", function()
         local holder = client
@@ -6213,6 +6224,9 @@ MenuCopy.client = {
     end,
     HoldsFocus = function() return MenuCopy.armedRow ~= nil and IsControlKeyDown() end,
     OnDisarm = function() MenuCopy.armedRow = nil end,
+    -- The focused box swallows MODIFIER_STATE_CHANGED; the release comes
+    -- through the box's own key-up and takes the same path.
+    OnCtrlUp = function() MenuCopy.OnModifier(nil, nil, "LCTRL", 0) end,
     -- OnKey is attached below CursorMenuOnKeyDown.
 }
 

@@ -6,11 +6,14 @@ local _, ns = ...
 -- name, an answer's value, an icon's FileDataID) to the OS clipboard
 -- through the shared hidden clipboard box (Utils).
 --
--- Arming: holding Ctrl while hovering a copyable target (or pressing Ctrl+C
--- while the search box or the nav frame holds the keyboard) fills, selects,
--- and focuses the hidden box; the next (or same-held) Ctrl+C is the native
--- copy, confirmed by a "Copied" flash on the target. Releasing Ctrl,
--- leaving the target, or hiding the results disarms and returns focus.
+-- Arming: Ctrl-down over a copyable target fills, selects, and focuses
+-- the hidden box, so the C of the same chord is the native copy,
+-- confirmed by a "Copied" flash on the target. Ctrl-down is read from
+-- MODIFIER_STATE_CHANGED while nothing has keyboard focus, and from the
+-- search box's own key-down while it is focused: a focused EditBox
+-- swallows that event entirely (copytrace). Releasing Ctrl (the hidden
+-- box's key-up, for the same reason), leaving the target, or hiding the
+-- results disarms and returns focus.
 
 local Search = ns.Search
 local Utils = ns.Utils
@@ -98,11 +101,19 @@ local client = {
     OnCopied = FlashCopied,
     HoldsFocus = function() return armedRow ~= nil and IsControlKeyDown() end,
     OnDisarm = function() armedRow = nil end,
+    -- The focused box swallows MODIFIER_STATE_CHANGED; the release
+    -- arrives through the box's own key-up instead.
+    OnCtrlUp = function() RowCopy:Disarm(true) end,
     OnKey = function(key)
         local navFrame = Search.GetNavFrame and Search:GetNavFrame()
-        if not (navFrame and navFrame:IsKeyboardEnabled()) then return end
-        local onKeyDown = navFrame:GetScript("OnKeyDown")
-        if onKeyDown then onKeyDown(navFrame, key) end
+        if navFrame and navFrame:IsKeyboardEnabled() then
+            local onKeyDown = navFrame:GetScript("OnKeyDown")
+            if onKeyDown then onKeyDown(navFrame, key) end
+            return
+        end
+        -- Armed off a focused search box and the key is not the chord:
+        -- the user is typing, not copying. Give focus straight back.
+        RowCopy:Disarm(true)
     end,
 }
 
@@ -197,6 +208,9 @@ local function ArmHovered()
 end
 
 function RowCopy:Initialize()
+    -- Ctrl edges reach this watcher only while no EditBox has keyboard
+    -- focus (nav mode, menus, popups); the focused search box is handled
+    -- by its own key hook below.
     local watcher = CreateFrame("Frame")
     watcher:RegisterEvent("MODIFIER_STATE_CHANGED")
     watcher:SetScript("OnEvent", function(_, _, key, state)
@@ -208,12 +222,20 @@ function RowCopy:Initialize()
         end
     end)
 
-    -- While the search box holds focus, the first Ctrl+C over a hovered
-    -- row arms; the next chord (Ctrl still held) is the native copy.
+    -- While the search box holds focus MODIFIER_STATE_CHANGED is never
+    -- delivered (copytrace: both watchers silent while EasyFindSearchBox
+    -- had focus, LCTRL arriving only as a key on the box), so Ctrl-down
+    -- is read off the box's own key-down and arms before the C of the
+    -- same chord lands. The Ctrl+C branch covers a chord whose Ctrl went
+    -- down elsewhere. Unfocused, the box still sees keys through WoW's
+    -- capture chain; those belong to whoever has focus.
     local searchFrame = Search.GetSearchFrame and Search:GetSearchFrame()
     if searchFrame and searchFrame.editBox then
-        searchFrame.editBox:HookScript("OnKeyDown", function(_, key)
-            if key == "C" and IsControlKeyDown() then ArmHovered() end
+        searchFrame.editBox:HookScript("OnKeyDown", function(self, key)
+            if not self:HasFocus() then return end
+            if key == "LCTRL" or key == "RCTRL" or (key == "C" and IsControlKeyDown()) then
+                ArmHovered()
+            end
         end)
     end
     local resultsFrame = Search.GetResultsFrame and Search:GetResultsFrame()
