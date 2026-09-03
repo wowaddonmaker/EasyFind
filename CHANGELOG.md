@@ -14,7 +14,6 @@ All notable changes to EasyFind will be documented in this file.
 - **Ctrl+C copies a hovered result**: Ctrl+C on a result row copies a snippet's entire message or a link to the real clipboard, ready to paste wherever you want with Ctrl+V, with a "Copied" flash confirming. The Send menu's Clipboard option likewise now copies the full text instead of showing the shift-click link dialog
 - **Ctrl+V pastes a real link into chat**: a copied item, spell, or achievement result pasted into the chat box becomes the live link (a snippet's embedded links come back too), while the same paste outside the game stays the readable name. The game strips link codes from anything pasted, so the copied text is recognized on arrival and swapped for its link in place
 - The tutorial's Apps deck gains a Snippets slide, each Apps slide is titled with the app it shows, and updating players get a one-time pointer to the new app on the apps button
-- **Quiet update notice**: when a guild or party member is running a newer EasyFind, a one-line notice appears along the bottom of the results window, and the options Home tab shows it under the addon title. Nothing is ever printed to chat, and it can be turned off with "Show update reminders" in Options > General & binds
 
 ### Changed
 - The options window and the tutorial are one settings row taller, and the aliases, blacklist, and snippets list cards align flush with the sidebar's bottom edge
