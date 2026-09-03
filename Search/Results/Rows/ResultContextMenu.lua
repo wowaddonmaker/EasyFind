@@ -106,9 +106,6 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
     end
     if pinData.snippetIndex then
         local snippetIndex = pinData.snippetIndex
-        extra.onSnippetInsert = function()
-            ns.Snippets:RunByName(pinData.name)
-        end
         extra.onSnippetEdit = function()
             ns.Snippets:OpenEditor(snippetIndex)
         end

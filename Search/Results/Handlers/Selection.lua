@@ -294,8 +294,8 @@ function Handlers:SelectResult(data, forceGuide)
 
     -- Snippet rows resolve by name (stable across pins and list edits;
     -- the create row carries nativeRun and never reaches this branch).
-    -- Selecting opens the editor; inserting into chat goes through the
-    -- keyword expansion or the row's context menu.
+    -- Selecting opens the editor; chat use goes through the keyword
+    -- expansion, a snippet shortkey, or the row's Send menu.
     if data.category == "Snippet" and ns.Snippets then
         local snippetName = data.name
         self:FinishResultSelection()

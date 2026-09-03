@@ -376,8 +376,9 @@ local function FindByName(name)
     return nil
 end
 
--- Chat-first insertion: the active chat editbox when one is open, else open
--- one pre-filled; the clipboard prompt is the no-chat-API fallback.
+-- Chat-first insertion (snippet shortkeys): the active chat editbox when
+-- one is open, else open one pre-filled; the clipboard prompt is the
+-- no-chat-API fallback.
 function Snippets:RunByName(name)
     local snippet = FindByName(name)
     if not snippet then return end

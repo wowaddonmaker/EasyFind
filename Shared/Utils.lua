@@ -7195,9 +7195,6 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     if extra and extra.onDestroyItem then
         extras[#extras + 1] = { text = L["CTX_DESTROY_ITEM"], onClick = extra.onDestroyItem }
     end
-    if extra and extra.onSnippetInsert then
-        extras[#extras + 1] = { text = L["SNIPPET_INSERT_CHAT"], onClick = extra.onSnippetInsert }
-    end
     if extra and extra.onSnippetEdit then
         extras[#extras + 1] = { text = _G["EDIT"] or "Edit", onClick = extra.onSnippetEdit }
     end
