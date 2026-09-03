@@ -200,9 +200,9 @@ local installed = false
 function ResultLinks:Install()
     if installed then return end
     installed = true
-    if ChatFrame_AddMessageEventFilter then
+    if AddMessageEventFilter then
         for i = 1, #CHAT_EVENTS do
-            ChatFrame_AddMessageEventFilter(CHAT_EVENTS[i], ChatFilter)
+            AddMessageEventFilter(CHAT_EVENTS[i], ChatFilter)
         end
     end
     -- hooksecurefunc, never a replacement: secure code reads SetItemRef and
