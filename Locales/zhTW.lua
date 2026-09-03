@@ -447,7 +447,7 @@ L["FILTER_ITEM_QUALITY"]                = "物品品質"
 L["TOOLTIP_RESULT_LOCKED"]              = "達到更高等級後解鎖"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "該角色尚未解鎖此欄目。"
 L["COPY_HINT"]                          = "Ctrl+C 複製"
-L["COPY_ROW_TT"]                        = "此列高亮時按住 Ctrl 再按 C 即可複製到剪貼簿，然後用 Ctrl+V 貼上到任意位置。只有這一按鍵能寫入剪貼簿，點擊做不到。"
+L["COPY_ROW_TT"]                        = "此列高亮時按住 Ctrl 再按 C 即可複製到剪貼簿，然後用 Ctrl+V 貼上到任意位置。"
 L["COPY_ROW_TT_RESULT"]                 = "在結果本身上同樣可行：懸停並按 Ctrl+C。"
 L["COPY_ROW_TT_CELL"]                   = "在圖示本身上同樣可行：懸停並按 Ctrl+C。"
 

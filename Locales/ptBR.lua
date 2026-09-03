@@ -447,7 +447,7 @@ L["FILTER_ITEM_QUALITY"]                = "Qualidade do item"
 L["TOOLTIP_RESULT_LOCKED"]              = "Desbloqueia em um nível mais alto"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "Essa seção ainda não está disponível para este personagem."
 L["COPY_HINT"]                          = "Ctrl+C para copiar"
-L["COPY_ROW_TT"]                        = "Segure Ctrl e pressione C enquanto esta linha está destacada para copiar para a área de transferência; depois cole em qualquer lugar com Ctrl+V. Só essa tecla consegue gravar na área de transferência, um clique não."
+L["COPY_ROW_TT"]                        = "Segure Ctrl e pressione C enquanto esta linha está destacada para copiar para a área de transferência; depois cole em qualquer lugar com Ctrl+V."
 L["COPY_ROW_TT_RESULT"]                 = "Também funciona no próprio resultado: passe o mouse sobre ele e pressione Ctrl+C."
 L["COPY_ROW_TT_CELL"]                   = "Também funciona no próprio ícone: passe o mouse sobre ele e pressione Ctrl+C."
 

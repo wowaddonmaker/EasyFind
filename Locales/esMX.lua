@@ -447,7 +447,7 @@ L["FILTER_ITEM_QUALITY"]                = "Calidad del objeto"
 L["TOOLTIP_RESULT_LOCKED"]              = "Se desbloquea a un nivel superior"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "Esa sección aún no está disponible para este personaje."
 L["COPY_HINT"]                          = "Ctrl+C para copiar"
-L["COPY_ROW_TT"]                        = "Mantén Ctrl y presiona C mientras esta fila está resaltada para copiar al portapapeles; luego pega en cualquier lugar con Ctrl+V. Solo esa pulsación puede escribir en el portapapeles, un clic no."
+L["COPY_ROW_TT"]                        = "Mantén Ctrl y presiona C mientras esta fila está resaltada para copiar al portapapeles; luego pega en cualquier lugar con Ctrl+V."
 L["COPY_ROW_TT_RESULT"]                 = "También funciona en el resultado mismo: pasa el cursor sobre él y presiona Ctrl+C."
 L["COPY_ROW_TT_CELL"]                   = "También funciona en el icono mismo: pasa el cursor sobre él y presiona Ctrl+C."
 
