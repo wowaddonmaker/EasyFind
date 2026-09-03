@@ -67,7 +67,7 @@ Search from the world map with nested results built for location-first browsing:
 - **Icon Search**: Browse and filter every game icon in a grid via `@icons`, the apps menu, or searching "Icon Search". Ctrl+C over an icon copies its ID, and a click offers its name, its path, or a new macro with that icon. The same search engine also appears inside the game's own macro icon picker. Ships as its own "EasyFind [Icons]" addon so it can be disabled entirely.
 - **Snippets**: Save text you type often and expand it anywhere with its keyword: type `\keyword` in chat or the macro editor and it expands as you type. Placeholders such as `{target}` and `{date}` fill in at use, and call-form keywords like `\greet(name)` take arguments. Manage them from the apps menu, by searching "Snippets", or with the `@snip` quick filter.
 - **Macro window search**: The game's macro window gains a search bar that filters your macros by name or body as you type.
-- **Copy with Ctrl+C**: Hold Ctrl over a result and press C to copy its text to your clipboard: a snippet's whole message, a link's name, or an inline answer. Pasting a copied item, spell, or achievement into chat brings back the live link.
+- **Copy with Ctrl+C**: Ctrl+C on a result copies a snippet's entire message, a link, or an inline answer to your clipboard, ready to paste wherever you want with Ctrl+V. Pasted into chat, an item, spell, or achievement comes back as the live link.
 - **Keyboard control**: Use arrows, Enter, Tab, Alt+number row shortcuts, or Alt+H/J/K/L navigation.
 
 ### Options
