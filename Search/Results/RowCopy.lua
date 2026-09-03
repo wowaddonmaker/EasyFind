@@ -25,6 +25,9 @@ ns.RowCopy = RowCopy
 local flashHolder, flashFade
 local armedRow
 local hoverTarget
+-- Extra copy surfaces (icon grid cells, the What's New link) register a
+-- function returning their frame under the mouse, or nil.
+local hoverScanners = {}
 
 -- Calculator rows own their richer two-part copy flow. Grid cells and
 -- answer rows carry their text outright; everything else copies its send
@@ -159,10 +162,39 @@ function RowCopy:OnRowHover(row)
     end
 end
 
-local function ArmHovered()
-    if hoverTarget and hoverTarget:IsShown() then
-        RowCopy:ArmFor(hoverTarget)
+function RowCopy:RegisterHoverScanner(fn)
+    hoverScanners[#hoverScanners + 1] = fn
+end
+
+-- The target under the mouse, by GEOMETRY. The enter/leave bookkeeping
+-- goes stale exactly when it matters: rows re-render under a stationary
+-- cursor (every keystroke, every autocomplete settle) and fire OnLeave
+-- with no matching OnEnter, so hoverTarget was nil when Ctrl went down
+-- and the first chords did nothing but strip the suffix and unfocus.
+local function ResolveHovered()
+    if hoverTarget and hoverTarget:IsShown() and hoverTarget:IsMouseOver() then
+        return hoverTarget
     end
+    local buttons = Search.GetResultButtons and Search:GetResultButtons()
+    if buttons then
+        for i = 1, #buttons do
+            local row = buttons[i]
+            if not row or not row:IsShown() then break end
+            if row:IsMouseOver() and RowPayload(row) then return row end
+        end
+    end
+    for i = 1, #hoverScanners do
+        local target = hoverScanners[i]()
+        if target and RowPayload(target) then return target end
+    end
+    return nil
+end
+
+local function ArmHovered()
+    local target = ResolveHovered()
+    if not target then return end
+    hoverTarget = target
+    RowCopy:ArmFor(target)
 end
 
 function RowCopy:Initialize()

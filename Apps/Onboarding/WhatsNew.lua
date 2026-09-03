@@ -118,6 +118,14 @@ function Onboarding:ShowWhatsNew(version)
         changelogLink:SetScript("OnClick", function(self)
             if ns.RowCopy then ns.RowCopy:ArmFor(self) end
         end)
+        if ns.RowCopy and ns.RowCopy.RegisterHoverScanner then
+            ns.RowCopy:RegisterHoverScanner(function()
+                if changelogLink:IsVisible() and changelogLink:IsMouseOver() then
+                    return changelogLink
+                end
+                return nil
+            end)
+        end
         f:HookScript("OnHide", function()
             if ns.RowCopy then ns.RowCopy:OnRowHover(nil) end
         end)

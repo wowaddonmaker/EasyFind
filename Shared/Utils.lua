@@ -1557,7 +1557,10 @@ function Utils.AttachAutocomplete(editBox, opts)
     editBox:HookScript("OnTextChanged", function(self, userInput)
         AutocompleteOnTextChanged(state, self, userInput)
     end)
-    editBox:HookScript("OnEditFocusLost", function()
+    editBox:HookScript("OnEditFocusLost", function(self)
+        -- The clipboard box borrowing focus for a Ctrl+C hands it back on
+        -- Ctrl-up; the suffix stays rendered through the round trip.
+        if self._efClipboardHold then return end
         AutocompleteStrip(state)
     end)
     editBox:HookScript("OnMouseDown", function(_, button)
@@ -3991,6 +3994,9 @@ ns.AttachEscClose = function(frame, close, shouldEat) return Utils.AttachEscClos
 -- ends the arm (a one-shot prompt): { OnCopied = fn, HoldsFocus = fn ->
 -- bool, OnDisarm = fn, OnKey = fn(key) }. OnKey receives every other
 -- non-modifier key the focused box would otherwise swallow.
+-- The frame focus is borrowed from carries _efClipboardHold until the
+-- borrow ends, so its own focus handlers can treat the round trip as a
+-- no-op (the search bar keeps its text, suffix and selection).
 do
 local box, client, clientLink, prevFocus
 
@@ -3999,10 +4005,19 @@ function Utils.DisarmClipboardBox(restoreFocus, who)
     local outgoing = client
     client, clientLink = nil, nil
     if box then box:ClearFocus() end
-    if restoreFocus and prevFocus and prevFocus.SetFocus and prevFocus:IsVisible() then
-        prevFocus:SetFocus()
-    end
+    local owner = prevFocus
     prevFocus = nil
+    if owner then
+        if restoreFocus and owner.SetFocus and owner:IsVisible() then
+            -- The owner's focus-gained handler still sees the hold, so it
+            -- keeps its text and selection exactly as they were.
+            owner:SetFocus()
+        elseif owner.StripAutocomplete then
+            -- Focus is not coming back: drop the suffix the hold kept.
+            owner:StripAutocomplete()
+        end
+        owner._efClipboardHold = nil
+    end
     if outgoing.OnDisarm then outgoing.OnDisarm() end
 end
 
@@ -4067,6 +4082,10 @@ function Utils.ArmClipboardBox(text, link, newClient)
     if not outgoing then
         local current = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
         prevFocus = (current and current ~= eb) and current or nil
+        -- Tell the frame we borrow from that focus comes straight back:
+        -- the search bar reads this to keep its text, autocomplete
+        -- suffix and selection untouched through the borrow.
+        if prevFocus then prevFocus._efClipboardHold = true end
     end
     client, clientLink = newClient, link
     if outgoing and outgoing ~= newClient and outgoing.OnDisarm then outgoing.OnDisarm() end

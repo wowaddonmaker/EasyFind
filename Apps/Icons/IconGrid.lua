@@ -65,6 +65,22 @@ local function OnCellLeave(cellBtn)
     if ns.RowCopy then ns.RowCopy:OnRowHover(nil) end
 end
 
+-- Ctrl over a cell arms the copy by geometry: the shared row copy asks
+-- each surface for its frame under the mouse rather than trusting
+-- enter/leave bookkeeping.
+if ns.RowCopy and ns.RowCopy.RegisterHoverScanner then
+    ns.RowCopy:RegisterHoverScanner(function()
+        if not (host and host:IsVisible() and cells) then return nil end
+        for i = 1, #cells do
+            local cellBtn = cells[i]
+            if cellBtn:IsShown() and cellBtn.iconID and cellBtn:IsMouseOver() then
+                return cellBtn
+            end
+        end
+        return nil
+    end)
+end
+
 local function CreateMacroWithIcon(iconID, withTooltip)
     -- CreateMacro errors in combat; the whole search UI is dormant there
     -- anyway, this is a guard for stray calls.

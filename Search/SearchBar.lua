@@ -576,6 +576,10 @@ function Search:CreateSearchFrame()
                 return
             end
         end
+        -- Focus returning from the clipboard box (Ctrl-up after a row
+        -- copy): the bar was never really left, so its selection and
+        -- suffix stay instead of the fresh-focus select-all.
+        if self._efClipboardHold then return end
         if selectedIndex > 0 then
             selectedIndex = 0
             toggleFocused = false
@@ -635,6 +639,11 @@ function Search:CreateSearchFrame()
             self:HighlightText(0, 0)
             return
         end
+        -- The clipboard box is borrowing focus for a Ctrl+C on a hovered
+        -- row and hands it straight back on Ctrl-up: the bar keeps its
+        -- text, suffix and selection exactly as they are, and nothing
+        -- here is a click-outside.
+        if self._efClipboardHold then return end
         -- Intentional unfocus while a row context menu opens: keys belong
         -- to the menu, and the results (pinned view included) must stay
         -- exactly as they are. Set around ClearFocus in ShowResultContextMenu.
