@@ -6,7 +6,7 @@ local _, ns = ...
 -- The server strips unknown |H link types from outgoing chat, so the link
 -- travels as plain text: "[EasyFind: Talents]" for a UI row, with the
 -- row's canonical key appended when the name alone does not identify it
--- ("[EasyFind: Swift Spectral Tiger] (ef:mount:123)"). Readers without
+-- ("[EasyFind: Swift Spectral Tiger] {ef:mount:123}"). Readers without
 -- the addon see exactly that text. Readers with it see a blue clickable
 -- link: a chat message filter rewrites the marker into a real
 -- |Heasyfind:row:...|h link on arrival, and the SetItemRef hook resolves
@@ -67,8 +67,8 @@ local function PlainName(data)
     local name = Utils.StripMarkup and Utils.StripMarkup(data.name) or data.name
     name = name and Utils.ClipboardSafeText and Utils.ClipboardSafeText(name) or name
     if not name or name == "" then return nil end
-    -- Brackets and parentheses are the marker's own syntax.
-    name = sgsub(name, "[%[%]%(%)]", "")
+    -- Brackets and braces are the marker's own syntax.
+    name = sgsub(name, "[%[%]{}]", "")
     if #name > MAX_NAME then name = ssub(name, 1, MAX_NAME) end
     return name
 end
@@ -92,7 +92,9 @@ function ResultLinks:BuildShareText(data)
     local name = PlainName(data)
     local text = sformat("[%s: %s]", MARKER, name)
     if key ~= "ui:" .. name then
-        text = text .. sformat(" (ef:%s)", key)
+        -- Braces, not parentheses: UI path keys carry ">" and may carry
+        -- parentheses of their own, and a key with a brace is unheard of.
+        text = text .. sformat(" {ef:%s}", key)
     end
     if #text > MAX_MESSAGE then return nil end
     return text
@@ -117,7 +119,7 @@ end
 -- keyed form is matched first so its "(ef:...)" tail is consumed with it.
 local function Linkify(msg)
     if not msg or not smatch(msg, "%[" .. MARKER .. ": ") then return msg end
-    msg = sgsub(msg, "%[" .. MARKER .. ": ([^%]]-)%]%s?%(ef:([^%)]+)%)", function(name, key)
+    msg = sgsub(msg, "%[" .. MARKER .. ": ([^%]]-)%]%s?{ef:([^}]+)}", function(name, key)
         return BlueLink(key, name)
     end)
     msg = sgsub(msg, "%[" .. MARKER .. ": ([^%]]-)%]", function(name)
