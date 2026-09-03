@@ -447,6 +447,9 @@ L["FILTER_ITEM_QUALITY"]                = "Calidad del objeto"
 L["TOOLTIP_RESULT_LOCKED"]              = "Se desbloquea a un nivel superior"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "Esa sección aún no está disponible para este personaje."
 L["COPY_HINT"]                          = "Ctrl+C para copiar"
+L["COPY_ROW_TT"]                        = "Mantén Ctrl y pulsa C mientras esta fila está resaltada para copiar al portapapeles; luego pega en cualquier sitio con Ctrl+V. Solo esa pulsación puede escribir en el portapapeles, un clic no."
+L["COPY_ROW_TT_RESULT"]                 = "También funciona en el propio resultado: pasa el cursor por encima y pulsa Ctrl+C."
+L["COPY_ROW_TT_CELL"]                   = "También funciona en el propio icono: pasa el cursor por encima y pulsa Ctrl+C."
 
 -- =============================================================================
 -- Localization audit additions

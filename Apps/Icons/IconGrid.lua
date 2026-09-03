@@ -120,9 +120,11 @@ local function ShowCellMenu(cellBtn, keyboardMode)
     local iconID, iconName = cellBtn.iconID, cellBtn.iconName
     if not iconID then return end
     local rows = {
-        { text = L["CTX_COPY_ICON_ID"], copy = tostring(iconID) },
-        { text = L["CTX_COPY_ICON_NAME"], copy = iconName or "" },
-        { text = L["CTX_COPY_ICON_PATH"], copy = "Interface\\Icons\\" .. (iconName or "") },
+        { text = L["CTX_COPY_ICON_ID"], copy = tostring(iconID),
+          tooltip = L["COPY_ROW_TT"], tooltipNote = L["COPY_ROW_TT_CELL"] },
+        { text = L["CTX_COPY_ICON_NAME"], copy = iconName or "", tooltip = L["COPY_ROW_TT"] },
+        { text = L["CTX_COPY_ICON_PATH"], copy = "Interface\\Icons\\" .. (iconName or ""),
+          tooltip = L["COPY_ROW_TT"] },
         { text = L["CTX_CREATE_MACRO_ICON"], onClick = function()
             CreateMacroWithIcon(iconID)
         end },

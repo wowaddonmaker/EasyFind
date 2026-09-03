@@ -449,6 +449,9 @@ L["FILTER_ITEM_QUALITY"]                = "Gegenstandsqualität"
 L["TOOLTIP_RESULT_LOCKED"]              = "Wird auf einer höheren Stufe freigeschaltet"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "Dieser Bereich ist für diesen Charakter noch nicht verfügbar."
 L["COPY_HINT"]                          = "Strg+C zum Kopieren"
+L["COPY_ROW_TT"]                        = "Halte Strg und drücke C, während diese Zeile hervorgehoben ist, um in die Zwischenablage zu kopieren; füge es dann überall mit Strg+V ein. Nur dieser Tastendruck kann die Zwischenablage beschreiben, ein Klick nicht."
+L["COPY_ROW_TT_RESULT"]                 = "Geht auch am Ergebnis selbst: darüber fahren und Strg+C drücken."
+L["COPY_ROW_TT_CELL"]                   = "Geht auch am Symbol selbst: darüber fahren und Strg+C drücken."
 
 -- =============================================================================
 -- Localization audit additions

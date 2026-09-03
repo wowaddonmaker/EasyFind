@@ -447,6 +447,9 @@ L["FILTER_ITEM_QUALITY"]                = "物品品质"
 L["TOOLTIP_RESULT_LOCKED"]              = "达到更高等级后解锁"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "该角色尚未解锁此栏目。"
 L["COPY_HINT"]                          = "Ctrl+C 复制"
+L["COPY_ROW_TT"]                        = "此行高亮时按住 Ctrl 再按 C 即可复制到剪贴板，然后用 Ctrl+V 粘贴到任意位置。只有这一按键能写入剪贴板，点击做不到。"
+L["COPY_ROW_TT_RESULT"]                 = "在结果本身上同样可行：悬停并按 Ctrl+C。"
+L["COPY_ROW_TT_CELL"]                   = "在图标本身上同样可行：悬停并按 Ctrl+C。"
 
 -- =============================================================================
 -- Localization audit additions

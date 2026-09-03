@@ -488,6 +488,9 @@ L["FILTER_ITEM_QUALITY"]                = "Item quality"
 L["TOOLTIP_RESULT_LOCKED"]              = "Unlocks at a higher level"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "That section isn't available to this character yet."
 L["COPY_HINT"]                          = "Ctrl+C to copy"
+L["COPY_ROW_TT"]                        = "Hold Ctrl and press C while this row is highlighted to copy to your clipboard, then paste anywhere with Ctrl+V. Only that keypress can write the clipboard; a click cannot."
+L["COPY_ROW_TT_RESULT"]                 = "Also works on the result itself: hover it and press Ctrl+C."
+L["COPY_ROW_TT_CELL"]                   = "Also works on the icon itself: hover it and press Ctrl+C."
 
 -- =============================================================================
 -- Localization audit additions

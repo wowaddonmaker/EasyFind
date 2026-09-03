@@ -447,6 +447,9 @@ L["FILTER_ITEM_QUALITY"]                = "아이템 품질"
 L["TOOLTIP_RESULT_LOCKED"]              = "더 높은 레벨에서 잠금 해제"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "이 캐릭터는 아직 해당 항목을 이용할 수 없습니다."
 L["COPY_HINT"]                          = "Ctrl+C로 복사"
+L["COPY_ROW_TT"]                        = "이 행이 강조된 상태에서 Ctrl을 누른 채 C를 누르면 클립보드에 복사되며, Ctrl+V로 어디에나 붙여넣을 수 있습니다. 클립보드에는 이 키 입력만 쓸 수 있고 클릭으로는 불가능합니다."
+L["COPY_ROW_TT_RESULT"]                 = "결과 자체에서도 됩니다: 마우스를 올리고 Ctrl+C를 누르세요."
+L["COPY_ROW_TT_CELL"]                   = "아이콘 자체에서도 됩니다: 마우스를 올리고 Ctrl+C를 누르세요."
 
 -- =============================================================================
 -- Localization audit additions

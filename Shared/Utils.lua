@@ -5961,6 +5961,28 @@ function MenuCopy.PaintHint(row, lit)
     end
 end
 
+-- An engaged copy row explains itself after the standard hover delay:
+-- the row's own text as the title, def.tooltip as the body, and
+-- def.tooltipNote as a dim afterthought (the shortcut past the menu).
+function MenuCopy.ShowTip(row)
+    if not row._tooltip then return end
+    local token = (MenuCopy.tipToken or 0) + 1
+    MenuCopy.tipToken = token
+    Utils.SafeAfter(ns.TOOLTIP_HOVER_DELAY, function()
+        if MenuCopy.tipToken ~= token or MenuCopy.row ~= row or not row:IsShown() then return end
+        GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+        GameTooltip:SetText(row.label:GetText() or "")
+        GameTooltip:AddLine(row._tooltip, 1, 1, 1, true)
+        if row._tooltipNote then GameTooltip:AddLine(row._tooltipNote, 0.7, 0.7, 0.7, true) end
+        GameTooltip:Show()
+    end)
+end
+
+function MenuCopy.HideTip(row)
+    MenuCopy.tipToken = (MenuCopy.tipToken or 0) + 1
+    if row and GameTooltip:IsOwned(row) then GameTooltip:Hide() end
+end
+
 function MenuCopy.Disarm(restoreFocus)
     if not MenuCopy.armedRow then return end
     Utils.DisarmClipboardBox(restoreFocus, MenuCopy.client)
@@ -5995,7 +6017,10 @@ function MenuCopy.Sync(row, menu)
     if row == MenuCopy.row then return end
     local prev = MenuCopy.row
     MenuCopy.row, MenuCopy.menu = row, menu
-    if prev then MenuCopy.PaintHint(prev, false) end
+    if prev then
+        MenuCopy.PaintHint(prev, false)
+        MenuCopy.HideTip(prev)
+    end
     if not row then
         if not IsControlKeyDown() then
             MenuCopy.Disarm(true)
@@ -6004,6 +6029,7 @@ function MenuCopy.Sync(row, menu)
         return
     end
     MenuCopy.PaintHint(row, true)
+    MenuCopy.ShowTip(row)
     if not MenuCopy.watcher then
         MenuCopy.watcher = CreateFrame("Frame")
         MenuCopy.watcher:SetScript("OnEvent", MenuCopy.OnModifier)
@@ -6659,6 +6685,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 -- that turns into "Copied" when the chord lands. The label
                 -- hangs off the hint so a wider confirmation never overlaps.
                 row._copyText, row._copyLink = def.copy, def.copyLink
+                row._tooltip, row._tooltipNote = def.tooltip, def.tooltipNote
                 row._efLabelColor = labelColor
                 row._efCopyDone = nil
                 if def.copy then
@@ -6819,6 +6846,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             row.onClick = nil
             row._submenuRows = nil
             row._copyText, row._copyLink = nil, nil
+            row._tooltip, row._tooltipNote = nil, nil
             row:SetScript("OnClick", nil)
             row:SetScript("OnMouseDown", nil)
         end
@@ -6937,7 +6965,10 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
         -- Our own chain-link glyph (textures/link.tga), the same custom
         -- treatment as Guide's eye and Pin's diamond. A copy row: the URL
         -- reaches the clipboard through the row's Ctrl+C.
-        rows[#rows + 1] = { text = L["CTX_WOWHEAD"], icon = ns.LINK_ICON_TEX, chromeIcon = true, copy = extra.wowheadUrl }
+        rows[#rows + 1] = {
+            text = L["CTX_WOWHEAD"], icon = ns.LINK_ICON_TEX, chromeIcon = true,
+            copy = extra.wowheadUrl, tooltip = L["COPY_ROW_TT"],
+        }
     end
     if extra and extra.sendLink then
         -- Hover-cascade flyout of chat channels, opened beside the row like
@@ -7100,11 +7131,15 @@ function ns.BuildSendLinkRows(link)
     }
     rows[#rows + 1] = { isSeparator = true }
     -- The clipboard carries the text with links flattened to their
-    -- display names; the live link rides along for a chat paste.
+    -- display names; the live link rides along for a chat paste. The
+    -- tooltip also points at the shortcut: Ctrl+C on the result row
+    -- itself copies the same text without the menu.
     rows[#rows + 1] = {
         text = L["CTX_SEND_LINK_CLIPBOARD"],
         copy = Utils.ClipboardSafeText(link),
         copyLink = link,
+        tooltip = L["COPY_ROW_TT"],
+        tooltipNote = L["COPY_ROW_TT_RESULT"],
     }
     return rows
 end
