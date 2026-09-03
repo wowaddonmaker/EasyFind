@@ -144,13 +144,12 @@ end
 -- Called from the canonical row OnEnter/OnLeave (Rows/Tooltips.lua) and
 -- the grid cell hover.
 -- CRITICAL: while Ctrl is held, hover-loss must NOT disarm or restore
--- focus. Arming steals focus from the search box, whose autocomplete
--- strip re-runs the search and re-renders the rows -- which fires OnLeave
--- with the mouse never moving. Disarm-with-refocus here re-applied the
--- ghost and restarted the cycle, eating 3-4 Ctrl+C presses before one
--- landed. The payload is already captured in the hidden box, so a
--- re-render cannot hurt it; focus returns exactly once, on Ctrl-up (or
--- Escape / stray typing).
+-- focus. Rows re-render under a stationary cursor (a pending search, an
+-- autocomplete settle) and fire OnLeave with the mouse never moving; a
+-- disarm-with-refocus here restarted the whole cycle and ate 3-4 chords
+-- before one landed. The payload is already captured in the hidden box,
+-- so a re-render cannot hurt it; focus returns exactly once, on Ctrl-up
+-- (or Escape / stray typing).
 function RowCopy:OnRowHover(row)
     hoverTarget = row
     if row then
