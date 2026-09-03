@@ -1232,7 +1232,12 @@ local function AutocompleteStrip(state)
         editBox:SetCursorPosition(#state.typedText)
         editBox:HighlightText(0, 0)
         state.programmatic = false
-    else
+    elseif not state.endOfTextOnly then
+        -- Search bar only: drop a stray selection so Enter is not swallowed
+        -- as a deselect. A shared chat box keeps whatever selection it
+        -- holds: the client's own /w name completion keeps the rest of the
+        -- name selected for Tab, and clearing it here committed the name
+        -- unasked on every keystroke.
         editBox:HighlightText(0, 0)
     end
     state.currentCandidate = nil
@@ -1400,8 +1405,12 @@ local function AutocompleteOnTextChanged(state, box, userInput)
         extended = true
     end
     if not extended then
+        -- Only a selection this helper painted (its own ghost) is its to
+        -- clear; a selection it never made belongs to someone else (the
+        -- client's chat name completion).
+        local hadGhost = state.currentCandidate ~= nil
         state.currentCandidate = nil
-        box:HighlightText(0, 0)
+        if hadGhost then box:HighlightText(0, 0) end
     end
     if state.onTypedChanged then state.onTypedChanged(box, state.typedText, prevText, grew) end
     -- Self-driving surfaces (chat boxes): nothing external calls

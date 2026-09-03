@@ -4,6 +4,13 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [3.1.1] - 2026-09-03
+
+### Fixed
+- **Whispers no longer complete a name on their own**: typing `/w` and the first letters of a name filled in the rest of the name as if you had accepted it. The game's own suggestion works as before: the rest of the name stays highlighted and Tab accepts it
+
+---
+
 ## [3.1.0] - 2026-09-02
 
 ### Added
