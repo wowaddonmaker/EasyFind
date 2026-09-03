@@ -93,8 +93,8 @@ local function GroupChannel()
     return nil
 end
 
--- The one place a peer version enters the module. EasyFindDev's probe calls
--- this directly to exercise the flag without a second player.
+-- The one place a peer version enters the module; callable directly to
+-- exercise the flag without a second player.
 function VersionCheck:NotePeerVersion(peerVersion, channel)
     if not ROSTER_CHANNELS[channel] then return false end
     if not IsValidVersion(peerVersion) then return false end
@@ -176,7 +176,7 @@ function VersionCheck:Initialize()
     end)
 end
 
--- EasyFindDev reads these for /efd vercheck.
+-- Diagnostic snapshot of the module's state.
 function VersionCheck:GetDiagnostics()
     return {
         prefix = PREFIX,
