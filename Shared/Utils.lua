@@ -7142,6 +7142,14 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
             }
         end
     end
+    if extra and extra.easyFindLinkRows then
+        -- Plain text another EasyFind user's chat turns into a clickable
+        -- link to this very row (Shared/ResultLinks.lua).
+        rows[#rows + 1] = {
+            text = L["CTX_EASYFIND_LINK"],
+            submenu = extra.easyFindLinkRows,
+        }
+    end
     if extra and extra.addNoteRows then
         rows[#rows + 1] = {
             text = L["CTX_ADD_NOTE"],

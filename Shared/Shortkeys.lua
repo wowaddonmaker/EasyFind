@@ -229,6 +229,9 @@ local function RequestProviderForRowKey(rowKey)
     end
 end
 
+-- EasyFind links resolve the same keys from a chat click.
+Shortkeys.RequestProviderForRowKey = RequestProviderForRowKey
+
 local function ShortkeyButtonData(self)
     local rowKey = self._rowKey
     local data = rowKey and ResolveData(rowKey)

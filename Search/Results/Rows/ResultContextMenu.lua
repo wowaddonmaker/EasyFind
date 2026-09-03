@@ -123,6 +123,7 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
         end
     end
     extra.wowheadUrl = ns.GetWowheadLink and ns.GetWowheadLink(pinData)
+    extra.easyFindLinkRows = ns.ResultLinks and ns.ResultLinks:BuildSendRows(pinData)
     local chatLink = ns.GetResultLink and ns.GetResultLink(pinData)
     if chatLink then
         extra.sendLink = { link = chatLink }

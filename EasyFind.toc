@@ -43,6 +43,7 @@ Database/StaticLocations.lua
 Shared/Aliases.lua
 Shared/Shortkeys.lua
 Shared/UIPins.lua
+Shared/ResultLinks.lua
 Search/Modules.lua
 Search/Engine.lua
 Search/SearchBar.lua
