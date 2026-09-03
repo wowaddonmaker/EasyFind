@@ -265,7 +265,7 @@ L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffRecherche dans la fenêtre des macros|r\n" ..
     "    |cff999999-|r La fenêtre des macros gagne une barre de recherche qui filtre vos macros par nom ou par texte\n" ..
     "|cffFFD100\226\128\162|r |cffffffffCopier les résultats avec Ctrl+C|r\n" ..
-    "    |cff999999-|r Maintenez Ctrl sur une ligne de résultat et appuyez sur C : le message complet d'un fragment ou le nom d'un lien arrive dans le presse-papiers"
+    "    |cff999999-|r Ctrl+C sur une ligne copie le message complet d'un fragment ou un lien, que vous pouvez ensuite coller où vous voulez avec Ctrl+V"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"

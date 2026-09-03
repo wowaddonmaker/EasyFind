@@ -288,7 +288,7 @@ L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffMacro window search|r\n" ..
     "    |cff999999-|r The macro window gains a search bar that filters your macros by name or text\n" ..
     "|cffFFD100\226\128\162|r |cffffffffCopy results with Ctrl+C|r\n" ..
-    "    |cff999999-|r Hold Ctrl over a result row and press C: a snippet's whole message or a link's name lands on your clipboard"
+    "    |cff999999-|r Ctrl+C on a row copies a snippet's entire message or a link that you can then paste wherever you want with Ctrl+V"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels

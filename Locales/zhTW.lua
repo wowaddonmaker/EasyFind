@@ -265,7 +265,7 @@ L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffff巨集視窗搜尋|r\n" ..
     "    |cff999999-|r 巨集視窗新增搜尋列，可按名稱或內容篩選你的巨集\n" ..
     "|cffFFD100\226\128\162|r |cffffffffCtrl+C 複製結果|r\n" ..
-    "    |cff999999-|r 在結果行上按住 Ctrl 並按 C：片段的完整內容或連結名稱即會複製到剪貼簿"
+    "    |cff999999-|r 在結果行上按 Ctrl+C 可複製片段的完整內容或連結，然後用 Ctrl+V 貼上到任意位置"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "新增別名"

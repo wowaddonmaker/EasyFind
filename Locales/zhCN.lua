@@ -265,7 +265,7 @@ L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffff宏窗口搜索|r\n" ..
     "    |cff999999-|r 宏窗口新增搜索栏，可按名称或内容筛选你的宏\n" ..
     "|cffFFD100\226\128\162|r |cffffffffCtrl+C 复制结果|r\n" ..
-    "    |cff999999-|r 在结果行上按住 Ctrl 并按 C：片段的完整内容或链接名称即会复制到剪贴板"
+    "    |cff999999-|r 在结果行上按 Ctrl+C 可复制片段的完整内容或链接，然后用 Ctrl+V 粘贴到任意位置"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "添加别名"

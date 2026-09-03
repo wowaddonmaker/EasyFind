@@ -267,7 +267,7 @@ L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffSuche im Makrofenster|r\n" ..
     "    |cff999999-|r Das Makrofenster erhält eine Suchleiste, die deine Makros nach Name oder Text filtert\n" ..
     "|cffFFD100\226\128\162|r |cffffffffErgebnisse mit Strg+C kopieren|r\n" ..
-    "    |cff999999-|r Halte Strg über einer Ergebniszeile und drücke C: die ganze Baustein-Nachricht oder der Name eines Links landet in der Zwischenablage"
+    "    |cff999999-|r Strg+C auf einer Zeile kopiert die ganze Baustein-Nachricht oder einen Link, den du dann überall mit Strg+V einfügen kannst"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"

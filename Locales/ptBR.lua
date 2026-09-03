@@ -265,7 +265,7 @@ L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffBusca na janela de macros|r\n" ..
     "    |cff999999-|r A janela de macros ganha uma barra de busca que filtra seus macros por nome ou texto\n" ..
     "|cffFFD100\226\128\162|r |cffffffffCopie resultados com Ctrl+C|r\n" ..
-    "    |cff999999-|r Segure Ctrl sobre uma linha de resultado e pressione C: a mensagem inteira de um fragmento ou o nome de um link vai para a área de transferência"
+    "    |cff999999-|r Ctrl+C em uma linha copia a mensagem inteira de um fragmento ou um link, que você pode colar onde quiser com Ctrl+V"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"
