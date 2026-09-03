@@ -21,7 +21,6 @@ local L = ns.L
 local mceil, mfloor, mmax = Utils.mceil, Utils.mfloor, Utils.mmax
 local sformat = Utils.sformat
 local InCombatLockdown = InCombatLockdown
-local GameTooltip = GameTooltip
 local hooksecurefunc = hooksecurefunc
 
 local CELL_GAP = 4
@@ -48,13 +47,12 @@ local menuCell
 -- row list has works identically on cells.
 local navIndex = 0
 
+-- Themed hint panel, never GameTooltip: name, FileDataID, and the copy
+-- chord that takes the ID straight from the cell.
 local function IconTooltip(cellBtn)
     if not cellBtn.iconName then return end
-    GameTooltip:SetOwner(cellBtn, "ANCHOR_RIGHT")
-    GameTooltip:SetText(cellBtn.iconName, 1, 1, 1)
-    GameTooltip:AddDoubleLine(tostring(cellBtn.iconID), "Ctrl+C",
-        0.7, 0.7, 0.7, Utils.RGB(ns.TEXT_DIM))
-    GameTooltip:Show()
+    ns.ShowHintTooltip(cellBtn, "ANCHOR_RIGHT", cellBtn.iconName,
+        tostring(cellBtn.iconID), L["COPY_HINT"])
 end
 
 local function OnCellEnter(cellBtn)
@@ -62,8 +60,8 @@ local function OnCellEnter(cellBtn)
     if ns.RowCopy then ns.RowCopy:OnRowHover(cellBtn) end
 end
 
-local function OnCellLeave()
-    GameTooltip:Hide()
+local function OnCellLeave(cellBtn)
+    ns.HideHintTooltip(cellBtn)
     if ns.RowCopy then ns.RowCopy:OnRowHover(nil) end
 end
 
@@ -195,7 +193,7 @@ function Repaint()
             cellBtn._efCopyText = tostring(id)
             cellBtn.tex:SetTexture(id)
             cellBtn:Show()
-            if cellBtn:IsMouseOver() and GameTooltip:IsOwned(cellBtn) then
+            if cellBtn:IsMouseOver() and ns.IsHintTooltipOwned(cellBtn) then
                 IconTooltip(cellBtn)
             end
         else

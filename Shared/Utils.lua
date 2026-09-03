@@ -1659,9 +1659,11 @@ ns.SEARCH_WINDOW_ALPHA = 0.95
 -- Initial hover delay before supplementary tooltips appear.
 ns.TOOLTIP_HOVER_DELAY = 0.4
 
--- Standard delayed hover tooltip. resolve(frame) returns title, body and an
--- optional dim third line; returning nothing shows nothing. Hooks (never
--- sets) OnEnter/OnLeave so it composes with a control's own hover visuals.
+-- Standard delayed hover tooltip on the themed hint panel (never
+-- GameTooltip, which is for real item and spell tooltips). resolve(frame)
+-- returns title, body and an optional dim third line; returning nothing
+-- shows nothing. Hooks (never sets) OnEnter/OnLeave so it composes with a
+-- control's own hover visuals.
 function Utils.AttachDelayedTooltip(frame, anchor, resolve)
     frame:HookScript("OnEnter", function(self)
         local token = (self._efTipToken or 0) + 1
@@ -1670,16 +1672,12 @@ function Utils.AttachDelayedTooltip(frame, anchor, resolve)
             if self._efTipToken ~= token or not self:IsMouseOver() then return end
             local title, body, dimLine = resolve(self)
             if not title and not body then return end
-            GameTooltip:SetOwner(self, anchor or "ANCHOR_RIGHT")
-            if title then GameTooltip:SetText(title) end
-            if body then GameTooltip:AddLine(body, 1, 1, 1, true) end
-            if dimLine then GameTooltip:AddLine(dimLine, 0.7, 0.7, 0.7, true) end
-            GameTooltip:Show()
+            ns.ShowHintTooltip(self, anchor, title, body, dimLine)
         end)
     end)
     frame:HookScript("OnLeave", function(self)
         self._efTipToken = (self._efTipToken or 0) + 1
-        GameTooltip_Hide()
+        ns.HideHintTooltip(self)
     end)
 end
 function ns.GetSearchWindowAlpha()
@@ -3800,6 +3798,138 @@ function ns.TooltipTextColor()
     end
     local c = (theme and theme.leafColor) or { 1, 1, 1 }
     return c[1], c[2], c[3]
+end
+
+-- The addon's own messaging tooltip: one pooled panel styled exactly like
+-- the menus (StyleMenuPanel), so hints, explanations and hover help never
+-- ride Blizzard's GameTooltip (that stays for real item, spell and
+-- achievement tooltips). Title in the shared tooltip text color, body in
+-- the theme's reading tone, an optional dim note; the panel matches the
+-- owner's scale and hides only for the owner that showed it. Anchors use
+-- GameTooltip's vocabulary (ANCHOR_RIGHT, ANCHOR_CURSOR, ...) so call
+-- sites read the same.
+do
+local tip
+local MAX_W = 280
+local PAD_X, PAD_Y = 12, 10
+local ANCHORS = {
+    ANCHOR_RIGHT = { "BOTTOMLEFT", "TOPRIGHT" },
+    ANCHOR_LEFT = { "BOTTOMRIGHT", "TOPLEFT" },
+    ANCHOR_TOP = { "BOTTOM", "TOP" },
+    ANCHOR_BOTTOM = { "TOP", "BOTTOM" },
+    ANCHOR_TOPRIGHT = { "BOTTOMRIGHT", "TOPRIGHT" },
+    ANCHOR_TOPLEFT = { "BOTTOMLEFT", "TOPLEFT" },
+    ANCHOR_BOTTOMRIGHT = { "TOPRIGHT", "BOTTOMRIGHT" },
+    ANCHOR_BOTTOMLEFT = { "TOPLEFT", "BOTTOMLEFT" },
+}
+
+local function PaintHintTooltip(self)
+    local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    local light = theme and theme.lightTheme
+    self.title:SetTextColor(ns.TooltipTextColor())
+    local body = light and theme.leafColor or ns.TEXT_PRIMARY
+    self.body:SetTextColor(body[1], body[2], body[3], 1)
+    local note = light and (theme.textFaint or theme.leafColor) or ns.TEXT_DIM
+    self.note:SetTextColor(note[1], note[2], note[3], 1)
+    local shadow = light and 0 or 1
+    self.title:SetShadowColor(0, 0, 0, shadow)
+    self.body:SetShadowColor(0, 0, 0, shadow)
+    self.note:SetShadowColor(0, 0, 0, shadow)
+end
+
+local function EnsureHintTooltip()
+    if tip then return tip end
+    tip = CreateFrame("Frame", "EasyFindHintTooltip", UIParent, "BackdropTemplate")
+    tip:SetFrameStrata("TOOLTIP")
+    tip:SetFrameLevel(9999)
+    tip:SetClampedToScreen(true)
+    ns.StyleMenuPanel(tip)
+    tip.title = tip:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    tip.body = tip:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    tip.note = tip:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    for _, fs in ipairs({ tip.title, tip.body, tip.note }) do
+        -- Painted here, never by the menu retint walk (which would flatten
+        -- the three tones into one).
+        fs._efOwnColor = true
+        fs:SetJustifyH("LEFT")
+        fs:SetJustifyV("TOP")
+        fs:SetWordWrap(true)
+        fs:SetNonSpaceWrap(false)
+    end
+    tip._efOnThemeRestyle = PaintHintTooltip
+    tip:Hide()
+    return tip
+end
+
+-- Natural (unwrapped) width of a wrapping FontString.
+local function NaturalWidth(fs)
+    fs:SetWidth(0)
+    return fs:GetStringWidth() or 0
+end
+
+function ns.ShowHintTooltip(owner, anchor, title, body, note)
+    if not owner or (not title and not body) then return end
+    local t = EnsureHintTooltip()
+    t._owner = owner
+    t.title:SetText(title or "")
+    t.body:SetText(body or "")
+    t.note:SetText(note or "")
+    local w = 0
+    if title then w = mmax(w, NaturalWidth(t.title)) end
+    if body then w = mmax(w, NaturalWidth(t.body)) end
+    if note then w = mmax(w, NaturalWidth(t.note)) end
+    w = mmin(MAX_W, mceil(w))
+    t.title:SetWidth(w)
+    t.body:SetWidth(w)
+    t.note:SetWidth(w)
+    local y = -PAD_Y
+    local blocks = { title and t.title, body and t.body, note and t.note }
+    for _, fs in ipairs({ t.title, t.body, t.note }) do
+        fs:ClearAllPoints()
+        fs:Hide()
+    end
+    for i = 1, #blocks do
+        local fs = blocks[i]
+        if fs then
+            fs:SetPoint("TOPLEFT", t, "TOPLEFT", PAD_X, y)
+            fs:Show()
+            y = y - mceil(fs:GetStringHeight()) - (fs == t.title and 4 or 6)
+        end
+    end
+    t:SetSize(w + PAD_X * 2, -y - 6 + PAD_Y)
+    -- Read at the owner's size: menus and the search panel scale with the
+    -- user's UI scale setting, the tooltip beside them must too.
+    local ownerScale = owner.GetEffectiveScale and owner:GetEffectiveScale()
+    if ownerScale and ownerScale > 0 then
+        t:SetScale(ownerScale / UIParent:GetEffectiveScale())
+    else
+        t:SetScale(1)
+    end
+    t:ClearAllPoints()
+    if anchor == "ANCHOR_CURSOR" then
+        local scale = t:GetEffectiveScale()
+        local x, cy = GetCursorPosition()
+        t:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + 12, cy / scale + 12)
+    else
+        local a = ANCHORS[anchor] or ANCHORS.ANCHOR_RIGHT
+        t:SetPoint(a[1], owner, a[2], 0, 0)
+    end
+    PaintHintTooltip(t)
+    t:Show()
+end
+
+-- Hides only when `owner` (or nothing) is the frame that showed it, so a
+-- late OnLeave from one control never kills another's tooltip.
+function ns.HideHintTooltip(owner)
+    if not tip then return end
+    if owner and tip._owner ~= owner then return end
+    tip._owner = nil
+    tip:Hide()
+end
+
+function ns.IsHintTooltipOwned(owner)
+    return tip ~= nil and tip:IsShown() and tip._owner == owner
+end
 end
 
 -- Ctrl-C confirmation shared by the copy dialogs. Addons cannot read the
@@ -5970,17 +6100,13 @@ function MenuCopy.ShowTip(row)
     MenuCopy.tipToken = token
     Utils.SafeAfter(ns.TOOLTIP_HOVER_DELAY, function()
         if MenuCopy.tipToken ~= token or MenuCopy.row ~= row or not row:IsShown() then return end
-        GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
-        GameTooltip:SetText(row.label:GetText() or "")
-        GameTooltip:AddLine(row._tooltip, 1, 1, 1, true)
-        if row._tooltipNote then GameTooltip:AddLine(row._tooltipNote, 0.7, 0.7, 0.7, true) end
-        GameTooltip:Show()
+        ns.ShowHintTooltip(row, "ANCHOR_RIGHT", row.label:GetText(), row._tooltip, row._tooltipNote)
     end)
 end
 
 function MenuCopy.HideTip(row)
     MenuCopy.tipToken = (MenuCopy.tipToken or 0) + 1
-    if row and GameTooltip:IsOwned(row) then GameTooltip:Hide() end
+    if row then ns.HideHintTooltip(row) end
 end
 
 function MenuCopy.Disarm(restoreFocus)
