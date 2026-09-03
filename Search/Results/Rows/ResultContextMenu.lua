@@ -104,7 +104,7 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
             Handlers:DestroyBagItem(pinData)
         end
     end
-    if pinData.snippetIndex then
+    if pinData.snippetIndex and ns.Snippets then
         local snippetIndex = pinData.snippetIndex
         extra.onSnippetEdit = function()
             ns.Snippets:OpenEditor(snippetIndex)

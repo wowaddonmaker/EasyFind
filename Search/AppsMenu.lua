@@ -47,18 +47,21 @@ function ns.BuildApplicationEntries()
     -- The panel is a LoadOnDemand companion: request it before touching
     -- ns.Options (the options tutorial button shipped broken for skipping
     -- exactly this).
-    apps[#apps + 1] = {
-        name = L["FILTER_SNIPPETS"],
-        category = "Snippet",
-        snippetsLauncher = true,
-        noPin = true,
-        nativeRun = function()
-            if ns.RequestOptionsPanel and ns.RequestOptionsPanel()
-               and ns.Options and ns.Options.OpenAtSnippets then
-                ns.Options:OpenAtSnippets()
-            end
-        end,
-    }
+    -- Hidden when the snippets companion is disabled in the AddOns list.
+    if not (ns.IsCompanionLoadable and not ns.IsCompanionLoadable("EasyFind_Snippets")) then
+        apps[#apps + 1] = {
+            name = L["FILTER_SNIPPETS"],
+            category = "Snippet",
+            snippetsLauncher = true,
+            noPin = true,
+            nativeRun = function()
+                if ns.RequestOptionsPanel and ns.RequestOptionsPanel()
+                   and ns.Options and ns.Options.OpenAtSnippets then
+                    ns.Options:OpenAtSnippets()
+                end
+            end,
+        }
+    end
     return apps
 end
 

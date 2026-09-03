@@ -1,11 +1,19 @@
-local _, ns = ...
+-- The EasyFind_Snippets companion: loaded at login whenever it is enabled
+-- (RequiredDeps EasyFind, no LoadOnDemand), because keyword expansion must
+-- be live in chat before the search bar ever opens. Core never assumes it:
+-- every core call site guards on ns.Snippets, and the entry-point UI (apps
+-- menu row, filter row, quick filter, options tab, tutorial slide) hides
+-- when the companion is disabled in the AddOns list.
+local EasyFind = EasyFind
+local ns = EasyFind and EasyFind._ns
+if not ns then return end
 
--- Reusable text snippets. Stored in EasyFindDB.snippets so they work with no
--- companion loaded: search rows insert into chat, a keyword followed by a
--- space expands inline in chat editboxes, and the notes companion (when
--- present) receives the raw body so its formatting survives there. Bodies use
--- the notes markdown tokens (**bold**, *italic*, __underline__, ~~strike~~);
--- chat always receives the flattened plain text.
+-- Reusable text snippets. Stored in the core saved variables
+-- (EasyFindDB.snippets) so the list survives this companion being disabled:
+-- a keyword followed by a space expands inline in chat editboxes, and the
+-- notes companion (when present) receives the raw body so its formatting
+-- survives there. Bodies use the notes markdown tokens (**bold**, *italic*,
+-- __underline__, ~~strike~~); chat always receives the flattened plain text.
 
 local Snippets = {}
 ns.Snippets = Snippets

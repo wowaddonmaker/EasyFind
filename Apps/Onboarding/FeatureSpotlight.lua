@@ -218,7 +218,8 @@ function Spotlight:Initialize()
             function()
                 -- The snippets tab lives in the options companion; never
                 -- point at a feature whose companion can't load.
-                if ns.IsCompanionLoadable and not ns.IsCompanionLoadable("EasyFind_Options") then
+                if ns.IsCompanionLoadable and (not ns.IsCompanionLoadable("EasyFind_Options")
+                   or not ns.IsCompanionLoadable("EasyFind_Snippets")) then
                     return nil
                 end
                 local sf = ns.Search and ns.Search.GetSearchFrame and ns.Search:GetSearchFrame()

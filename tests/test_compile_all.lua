@@ -32,6 +32,7 @@ local TOCS = {
     "Apps/Settings/EasyFind_Settings.toc",
     "Apps/Guide/EasyFind_Guide.toc",
     "Apps/Onboarding/EasyFind_Onboarding.toc",
+    "Apps/Snippets/EasyFind_Snippets.toc",
 }
 
 local tests = {}

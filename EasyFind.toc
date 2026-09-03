@@ -44,6 +44,7 @@ Shared/Aliases.lua
 Shared/Shortkeys.lua
 Shared/UIPins.lua
 Shared/ResultLinks.lua
+Shared/ChatPasteSwap.lua
 Search/Modules.lua
 Search/Engine.lua
 Search/SearchBar.lua
@@ -84,7 +85,6 @@ Search/Filters/HousingOptions.lua
 Search/Filters/ProfessionOptions.lua
 Search/Filters/Dropdown.lua
 Search/Providers/Achievements.lua
-Search/Snippets.lua
 Search/MacroListSearch.lua
 Search/Aliases.lua
 Search/History.lua

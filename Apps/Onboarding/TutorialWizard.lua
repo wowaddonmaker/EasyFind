@@ -244,9 +244,20 @@ local APPS_TUTORIAL_SLIDES = {
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_SLIDE_SNIPPETS"],
+        companion = "EasyFind_Snippets",
         title = sformat(L["TUT_APPS_SLIDE_HEADER"], L["FILTER_SNIPPETS"]),
     },
 }
+-- A slide about a companion's feature is dropped when that companion is
+-- disabled in the AddOns list (the snippets slide).
+for i = #APPS_TUTORIAL_SLIDES, 1, -1 do
+    local slide = APPS_TUTORIAL_SLIDES[i]
+    if slide.companion and ns.IsCompanionLoadable
+       and not ns.IsCompanionLoadable(slide.companion) then
+        table.remove(APPS_TUTORIAL_SLIDES, i)
+    end
+end
+
 local MAP_SEARCH_TUTORIAL_SLIDES = {
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-map-intro-hires",

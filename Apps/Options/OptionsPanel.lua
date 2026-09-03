@@ -4188,7 +4188,10 @@ function Options:Initialize()
     BuildShortcutsTab(ctx)
     BuildAliasesTab(ctx)
     BuildBlacklistTab(ctx)
-    BuildSnippetsTab(ctx)
+    -- The snippets tab manages a companion's feature; no tab without it.
+    if not (ns.IsCompanionLoadable and not ns.IsCompanionLoadable("EasyFind_Snippets")) then
+        BuildSnippetsTab(ctx)
+    end
     BuildFeedbackTab(ctx)
 
     SwitchToTab(1)

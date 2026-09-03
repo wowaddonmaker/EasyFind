@@ -213,7 +213,7 @@ local UI_FILTER_OPTIONS = {
           },
       } },
     { key = "snippets",    label = L["FILTER_SNIPPETS"], iconTex = ns.SNIPPET_ICON_TEX,
-      iconCoords = ns.SNIPPET_ICON_COORDS,
+      iconCoords = ns.SNIPPET_ICON_COORDS, companion = "EasyFind_Snippets",
       flyoutRadio = {
           checkboxes = {
               { dbKey = "snippetChatExpansion",
@@ -442,13 +442,20 @@ end
 -- advertises an error. Enable state is constant for the session (changing
 -- it requires a reload), so pruning once at load is exact. ONE owner:
 -- every consumer of the options table sees the pruned truth.
-for i = 1, #UI_FILTER_OPTIONS do
-    local subs = UI_FILTER_OPTIONS[i].flyoutSubFilters
-    if subs then
-        for si = #subs, 1, -1 do
-            if subs[si].companion and ns.IsCompanionLoadable
-               and not ns.IsCompanionLoadable(subs[si].companion) then
-                tremove(subs, si)
+for i = #UI_FILTER_OPTIONS, 1, -1 do
+    local opt = UI_FILTER_OPTIONS[i]
+    if opt.companion and ns.IsCompanionLoadable
+       and not ns.IsCompanionLoadable(opt.companion) then
+        -- A whole filter row owned by a disabled companion (snippets).
+        tremove(UI_FILTER_OPTIONS, i)
+    else
+        local subs = opt.flyoutSubFilters
+        if subs then
+            for si = #subs, 1, -1 do
+                if subs[si].companion and ns.IsCompanionLoadable
+                   and not ns.IsCompanionLoadable(subs[si].companion) then
+                    tremove(subs, si)
+                end
             end
         end
     end

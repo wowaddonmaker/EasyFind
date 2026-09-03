@@ -1,4 +1,4 @@
--- Tests for Search/Snippets.lua: flattening, placeholders, search rows, and
+-- Tests for Apps/Snippets/Snippets.lua: flattening, placeholders, search rows, and
 -- the chat keyword expansion hook.
 
 local H = require("Harness")
@@ -20,8 +20,9 @@ env.InCombatLockdown = function() return false end
 -- _G at the env so per-test stubs are visible to them.
 env._G = env
 
-local Snippets = H.loadModule("Search/Snippets.lua", env, ns)
-H.assertNotNil(Snippets, "Search/Snippets.lua must return the module")
+env.EasyFind._ns = ns
+local Snippets = H.loadModule("Apps/Snippets/Snippets.lua", env, ns)
+H.assertNotNil(Snippets, "Apps/Snippets/Snippets.lua must return the module")
 H.assertEq(Snippets, ns.Snippets)
 
 local tests = {}
