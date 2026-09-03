@@ -280,9 +280,12 @@ L["POPUP_UNAPPLIED_APPLY"]              = "Apply and Exit"
 L["POPUP_UNAPPLIED_CANCEL"]             = "Cancel"
 L["WHATSNEW_CHAT_HELLO"]                = "Welcome to |cFF00FF00EasyFind v%s|r! See update summary %s."
 L["WHATSNEW_CHAT_HERE"]                 = "here"
--- The body is rewritten per release. Edit this single string each version.
+-- One entry per announced release (WHATSNEW_BODY_<x>_<y>_<z>), newest first; never rewrite an old one.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
-L["WHATSNEW_BODY"]                      =
+L["WHATSNEW_BODY_3_2_0"]                =
+    "|cffFFD100\226\128\162|r |cffffffffEasyFind links|r\n" ..
+    "    |cff999999-|r Right-click a result, pick EasyFind link, and send it to chat: anyone with EasyFind clicks it to open that result, everyone else sees plain text"
+L["WHATSNEW_BODY_3_1_0"]                =
     "|cffFFD100\226\128\162|r |cffffffffSnippets|r\n" ..
     "    |cff999999-|r Save reusable text once, then type \\keyword to expand it in chat as you type, or straight into a macro\n" ..
     "|cffFFD100\226\128\162|r |cffffffffMacro window search|r\n" ..

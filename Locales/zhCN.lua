@@ -259,7 +259,10 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "取消"
 L["WHATSNEW_CHAT_HELLO"]                = "欢迎使用|cFF00FF00EasyFind v%s|r！点击%s查看更新摘要。"
 L["WHATSNEW_CHAT_HERE"]                 = "这里"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日志"
-L["WHATSNEW_BODY"]                      =
+L["WHATSNEW_BODY_3_2_0"]                =
+    "|cffFFD100\226\128\162|r |cffffffffEasyFind 链接|r\n" ..
+    "    |cff999999-|r 右键点击结果，选择 EasyFind 链接并发送到聊天：装有 EasyFind 的人点击即可打开该结果，其他人看到的是普通文字"
+L["WHATSNEW_BODY_3_1_0"]                =
     "|cffFFD100\226\128\162|r |cffffffff文本片段|r\n" ..
     "    |cff999999-|r 保存一次可复用的文字，输入 \\关键词 即可在聊天中边打边展开，或直接写入宏\n" ..
     "|cffFFD100\226\128\162|r |cffffffff宏窗口搜索|r\n" ..

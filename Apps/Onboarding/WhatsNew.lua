@@ -36,14 +36,28 @@ local WN_BTN_TEXT_PAD = 24
 -- the one string in the popup the client can translate for us. 6948 is the
 -- Hearthstone, which every character carries.
 local HEARTHSTONE_ITEM_ID = 6948
-local function BodyText()
+-- Every announced release newer than `since` (the version the user came
+-- from), newest first, so a returning user sees everything they missed in
+-- one popup. Without `since` (the /ef whatsnew command) just the newest.
+-- Two or more sections get a dim version line each.
+local function BodyText(since)
     local name = GetItemInfo and GetItemInfo(HEARTHSTONE_ITEM_ID)
-    return Utils.sformat(L["WHATSNEW_BODY"], name or "Hearthstone")
+    local entries = ns.WhatsNewEntries and ns.WhatsNewEntries(since) or {}
+    if not since and entries[2] then entries = { entries[1] } end
+    local parts = {}
+    for i = 1, #entries do
+        local body = Utils.sformat(entries[i].body, name or "Hearthstone")
+        if #entries > 1 then
+            body = "|cff999999v" .. entries[i].version .. "|r\n" .. body
+        end
+        parts[#parts + 1] = body
+    end
+    return table.concat(parts, "\n\n")
 end
 
 local frame
 
-function Onboarding:ShowWhatsNew(version)
+function Onboarding:ShowWhatsNew(since)
     if frame and frame:IsShown() then return end
 
     if not frame then
@@ -84,7 +98,7 @@ function Onboarding:ShowWhatsNew(version)
         body:SetJustifyV("TOP")
         body:SetSpacing(4)
         body:SetTextColor(Utils.RGB(TEXT_BODY, 1))
-        body:SetText(BodyText())
+        body:SetText(BodyText(since))
         f._body = body
 
         -- Permanent footer: "See full changelog" is a copy target for the
@@ -140,10 +154,9 @@ function Onboarding:ShowWhatsNew(version)
             mceil(okBtn._label:GetStringWidth()) + WN_BTN_TEXT_PAD), WN_BTN_H)
     end
 
-    local versionLabel = version or ns.version or "?"
-    frame._verText:SetText("v" .. versionLabel)
+    frame._verText:SetText("v" .. (ns.version or "?"))
 
-    frame._body:SetText(BodyText())
+    frame._body:SetText(BodyText(since))
 
     local contentW = Utils.MaxContentWidth({ frame._title, frame._verText, frame._body })
     frame:SetWidth(mmax(WN_MIN_W, mmin(WN_MAX_W, mceil(contentW) + WN_PAD_X * 2)))

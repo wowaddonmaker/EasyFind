@@ -259,7 +259,10 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "취소"
 L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 것을 환영합니다! 업데이트 요약은 %s에서 확인하세요."
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
-L["WHATSNEW_BODY"]                      =
+L["WHATSNEW_BODY_3_2_0"]                =
+    "|cffFFD100\226\128\162|r |cffffffffEasyFind 링크|r\n" ..
+    "    |cff999999-|r 결과를 우클릭해 EasyFind 링크를 선택하고 대화창으로 보내세요: EasyFind가 있는 사람은 클릭해 그 결과를 열고, 나머지는 일반 텍스트로 봅니다"
+L["WHATSNEW_BODY_3_1_0"]                =
     "|cffFFD100\226\128\162|r |cffffffff스니펫|r\n" ..
     "    |cff999999-|r 재사용할 텍스트를 한 번 저장하고 \\키워드를 입력하면 대화창에서 입력 중에 확장되거나 매크로에 바로 들어갑니다\n" ..
     "|cffFFD100\226\128\162|r |cffffffff매크로 창 검색|r\n" ..

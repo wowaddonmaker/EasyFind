@@ -259,7 +259,10 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "Отмена"
 L["WHATSNEW_CHAT_HELLO"]                = "Добро пожаловать в |cFF00FF00EasyFind v%s|r! Обзор обновления доступен %s."
 L["WHATSNEW_CHAT_HERE"]                 = "здесь"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Полный список изменений"
-L["WHATSNEW_BODY"]                      =
+L["WHATSNEW_BODY_3_2_0"]                =
+    "|cffFFD100\226\128\162|r |cffffffffСсылки EasyFind|r\n" ..
+    "    |cff999999-|r Щёлкните результат правой кнопкой, выберите Ссылка EasyFind и отправьте в чат: у кого есть EasyFind, тот откроет результат щелчком, остальные увидят обычный текст"
+L["WHATSNEW_BODY_3_1_0"]                =
     "|cffFFD100\226\128\162|r |cffffffffЗаготовки|r\n" ..
     "    |cff999999-|r Сохраните текст один раз и вводите \\слово, чтобы развернуть его в чате при вводе или прямо в макрос\n" ..
     "|cffFFD100\226\128\162|r |cffffffffПоиск в окне макросов|r\n" ..

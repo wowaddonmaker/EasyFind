@@ -4198,6 +4198,46 @@ end
 ns.CopyToClipboard = Utils.CopyToClipboard
 end
 
+-- Dotted version compare: -1 / 0 / 1. Missing or non-numeric segments count
+-- as 0 ("2.0" == "2.0.0"); a string compare would rank "2.0.2" over "2.0.10".
+function Utils.CompareVersion(a, b)
+    local ai = tostring(a or ""):gmatch("%d+")
+    local bi = tostring(b or ""):gmatch("%d+")
+    while true do
+        local x, y = ai(), bi()
+        if not x and not y then return 0 end
+        x, y = tonumber(x) or 0, tonumber(y) or 0
+        if x ~= y then return x < y and -1 or 1 end
+    end
+end
+
+-- What's New content lives in the locales as one entry per announced
+-- release, WHATSNEW_BODY_<major>_<minor>_<patch>, never rewritten: a release
+-- adds its own key in all 11 locales. Returns the entries newer than
+-- `since` (all of them when since is nil), newest first, as
+-- { version = "3.2.0", body = <localized text> }.
+function ns.WhatsNewEntries(since)
+    local entries = {}
+    for key in pairs(ns.L) do
+        local a, b, c = string.match(key, "^WHATSNEW_BODY_(%d+)_(%d+)_(%d+)$")
+        if a then
+            local version = a .. "." .. b .. "." .. c
+            if not since or Utils.CompareVersion(version, since) > 0 then
+                entries[#entries + 1] = { version = version, body = ns.L[key] }
+            end
+        end
+    end
+    table.sort(entries, function(x, y) return Utils.CompareVersion(x.version, y.version) > 0 end)
+    return entries
+end
+
+-- The newest announced release: the login notice fires for users whose last
+-- seen version is older than this. Derived, so adding an entry IS the gate.
+function ns.WhatsNewLatestVersion()
+    local entries = ns.WhatsNewEntries(nil)
+    return entries[1] and entries[1].version or nil
+end
+
 -- Themed replacement for Blizzard StaticPopup confirm/input dialogs, styled
 -- like the rest of EasyFind (StyleMenuPanel + CreateModernButton). One pooled
 -- frame. opts: { text, acceptText, cancelText, hasEditBox, editBoxDefault,

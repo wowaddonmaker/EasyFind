@@ -259,7 +259,10 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "Cancelar"
 L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a |cFF00FF00EasyFind v%s|r! Consulta el resumen de novedades %s."
 L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver el registro de cambios completo"
-L["WHATSNEW_BODY"]                      =
+L["WHATSNEW_BODY_3_2_0"]                =
+    "|cffFFD100\226\128\162|r |cffffffffEnlaces de EasyFind|r\n" ..
+    "    |cff999999-|r Haz clic derecho en un resultado, elige Enlace de EasyFind y envíalo al chat: quien tenga EasyFind le da clic para abrir ese resultado, los demás ven texto normal"
+L["WHATSNEW_BODY_3_1_0"]                =
     "|cffFFD100\226\128\162|r |cffffffffFragmentos|r\n" ..
     "    |cff999999-|r Guarda texto reutilizable una vez y escribe \\palabraclave para expandirlo en el chat mientras escribes, o directamente en un macro\n" ..
     "|cffFFD100\226\128\162|r |cffffffffBúsqueda en la ventana de macros|r\n" ..
