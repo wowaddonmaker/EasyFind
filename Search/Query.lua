@@ -66,8 +66,8 @@ local searchRefreshQueued = false
 -- Paint hold (see the provider request in OnSearchTextChangedNow): the
 -- query whose paint is being held, and the query whose hold already timed
 -- out (painted anyway, never held again).
-local PAINT_HOLD_MAX = 0.4
-local paintHoldText, paintHoldForcedFor
+local PAINT_HOLD_MAX = 0.6
+local paintHoldText, paintHoldForcedFor, paintHoldTimerFor
 -- Repaint only. Providers that changed the dataset already invalidated
 -- through Database:ResetSearchCache, whose coalesced deferred re-run is
 -- the single ordered repaint path. Routing THIS callback through the
@@ -354,10 +354,14 @@ function Search:OnSearchTextChangedNow(text, force)
         if syncChanged then
             results = ns.Database:SearchUI(text, skipCategories)
         end
-        if SearchEngine.HasPendingProviders and SearchEngine:HasPendingProviders()
-           and paintHoldForcedFor ~= text then
-            if paintHoldText ~= text then
-                paintHoldText = text
+        local pendingLoad = SearchEngine.HasPendingProviders and SearchEngine:HasPendingProviders()
+        local warming = ns.Database.IsWarmingProviders and ns.Database:IsWarmingProviders()
+        if (pendingLoad or warming) and paintHoldForcedFor ~= text then
+            paintHoldText = text
+            -- The warm chain releases the hold itself when it ends; a lone
+            -- provider load gets a timeout in case it never reports back.
+            if pendingLoad and not warming and paintHoldTimerFor ~= text then
+                paintHoldTimerFor = text
                 local held = text
                 Utils.SafeAfter(PAINT_HOLD_MAX, function()
                     if paintHoldText == held then

@@ -428,6 +428,9 @@ function Database:LoadEagerDynamicProviders()
         end
         self._loadingEagerProviders = false
         Utils.ReleaseGC("eagerProviders")
+        -- A query typed during the chain held its paint (Search/Query.lua
+        -- waits while IsWarmingProviders); paint it now the data is whole.
+        RefreshActiveSearch()
         if ns.SearchIndex and ns.SearchIndex.EnsureBudget then
             ns.SearchIndex:EnsureBudget(3)
         end
@@ -436,6 +439,14 @@ function Database:LoadEagerDynamicProviders()
     -- Deferred so the load lands after the login frame (which is kept light)
     -- and after the first few frames of API data settling.
     Utils.SafeAfter(0, step)
+end
+
+-- True while either first-focus warm chain (the staggered sync providers,
+-- then the eager providers) is still landing categories one per frame.
+-- The query pipeline holds its paint meanwhile: painting per arrival was
+-- the list reshuffling a moment after the user stopped typing.
+function Database:IsWarmingProviders()
+    return (self._dynamicBatchLoading or self._loadingEagerProviders) and true or false
 end
 
 function Database:LoadDeferredSyncProvidersStaggered()
