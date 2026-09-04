@@ -1231,8 +1231,20 @@ function Database:SearchUI(query, skipCategories)
     wipe(sharedKwScores)
     wipe(resultsQueryWords)
     local queryWords = resultsQueryWords
-    for w in query:gmatch("%S+") do
-        queryWords[#queryWords + 1] = w
+    -- Query words are cut the way name words are (GetWords: punctuation
+    -- dropped, apostrophes kept). Cut on whitespace alone, a typed colon,
+    -- hyphen or bracket made "pattern:" or "(journal)" a word no name
+    -- has, and every word-level tier (loot rows, multi-word names,
+    -- keywords, the index) lost the row while the raw prefix tier still
+    -- matched: loot patterns vanished at the colon, and one typo in
+    -- "radis (journal)" found nothing. The raw query still drives the
+    -- exact and prefix tiers, so "pattern:" itself matches as before.
+    local cut = GetWords(query)
+    for i = 1, #cut do queryWords[i] = cut[i] end
+    if #queryWords == 0 then
+        for w in query:gmatch("%S+") do
+            queryWords[#queryWords + 1] = w
+        end
     end
 
     -- Gates: without "boss" in the query, bosses match name only ("icc"

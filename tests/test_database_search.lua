@@ -277,5 +277,38 @@ function tests.searchUI_gatedRejectsContainsOnlyWord()
     end)
 end
 
+-- Query words are cut like name words: punctuation in the typed text must
+-- not turn a word into one no name has. Loot rows match word by word and
+-- were vanishing at the colon of "pattern:"; a typo in one word of a
+-- bracketed name found nothing.
+local lootPattern = {
+    name = "Pattern: Sunfire Sash", nameLower = "pattern: sunfire sash",
+    category = "Loot", lootEntry = true,
+}
+local bracketed = {
+    name = "Raids (Journal)", nameLower = "raids (journal)",
+    category = "Adventure Guide", keywordsLower = { "journal" },
+}
+
+function tests.searchUI_lootRowSurvivesPunctuationInQuery()
+    withEntries({ lootPattern }, function()
+        for _, q in ipairs({ "pattern", "pattern:", "pattern: s", "pattern: sunfire" }) do
+            Database:ResetSearchCache()
+            H.assertTrue(findsEntry(Database:SearchUI(q), lootPattern), "loot row must match: " .. q)
+        end
+    end)
+end
+
+function tests.searchUI_typoInOneWordOfBracketedName()
+    withEntries({ bracketed }, function()
+        Database:ResetSearchCache()
+        H.assertTrue(findsEntry(Database:SearchUI("radis (journal)"), bracketed),
+            "one transposition in the first word must still find the bracketed name")
+        Database:ResetSearchCache()
+        H.assertTrue(findsEntry(Database:SearchUI("raids (jour"), bracketed),
+            "a bracketed prefix must match")
+    end)
+end
+
 local pass, fail, failures = H.runSuite("Database/Search", tests)
 return { pass = pass, fail = fail, failures = failures }
