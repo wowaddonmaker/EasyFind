@@ -536,12 +536,37 @@ end
 ---learned query has no such floor -- it is always at least as specific as
 ---what was taught.
 local LEARN_PREFIX_MIN = 4
+
+-- Typing PAST a learned query keeps its pick only while the pick still
+-- matches what was typed: a launcher ranks a remembered choice first among
+-- the rows the text matches, it never keeps showing a row the text has
+-- left behind ("rated battlegrounds (premade)" is not "Well Decorated").
+-- Name and keyword scoring are the search's own, so "still matches" means
+-- exactly what a natural hit means. Without a scorer (unit stubs) the pick
+-- is kept.
+local function LearnedStillMatches(entry, queryLower)
+    local db = ns.Database
+    if not (db and db.ScoreName) then return true end
+    local nameLower = (entry.nameLower or entry.name or ""):lower()
+    if nameLower == "" then return true end
+    local words = {}
+    for w in queryLower:gmatch("%S+") do words[#words + 1] = w end
+    if db:ScoreName(nameLower, queryLower, #queryLower, words) > 0 then return true end
+    local kws = entry.keywordsLower or entry.keywords or entry.kwLower
+    if kws and db.ScoreKeywords
+       and db:ScoreKeywords(kws, queryLower, #queryLower, words) > 0 then
+        return true
+    end
+    return false
+end
+
 function Learned:GetBoost(queryLower)
     if not (EasyFind and EasyFind.db) then return nil end
     if EasyFind.db.learnFromPicks == false then return nil end
     local store = EasyFind.db.queryLearn
     if type(store) ~= "table" then return nil end
     local rec = store[queryLower]
+    local typedPast = false
     if not rec and #queryLower >= 2 then
         local bestLen = 0
         for learnedQuery, learnedRec in pairs(store) do
@@ -551,6 +576,7 @@ function Learned:GetBoost(queryLower)
                 if ssub(learnedQuery, 1, shorter) == ssub(queryLower, 1, shorter) then
                     bestLen = ll
                     rec = learnedRec
+                    typedPast = ql > ll
                 end
             end
         end
@@ -558,6 +584,9 @@ function Learned:GetBoost(queryLower)
     if not rec or not rec.key then return nil end
     local entry = Aliases:FindEntryByKey(rec.key)
     if not entry then entry = rec.snapshot end
+    if entry and typedPast and not LearnedStillMatches(entry, queryLower) then
+        return nil
+    end
     return entry
 end
 

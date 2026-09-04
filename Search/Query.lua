@@ -39,9 +39,13 @@ local ALIAS_SCORE_BASE = 1e9
 -- One band below aliases: a learned pick is a habit the addon inferred, so
 -- any alias the user set up deliberately must outrank it.
 local LEARNED_SCORE = 1e8
--- One band below learned picks: the default local-category boost is fully
--- implicit, so both deliberate aliases and learned habits outrank it.
-local LOCAL_CATEGORY_SCORE = 5e7
+-- Category-word injection (typing "dungeon" surfaces a few dungeons): the
+-- rows sit below any row whose NAME the word matches exactly or as a
+-- prefix (1000 / 500, "Dungeon Finder"), and above the substring, keyword
+-- and typo tiers. Injecting them above everything put three arbitrary
+-- dungeons over the Dungeon Finder the moment the word completed, and the
+-- list reshuffled at the next letter.
+local CATEGORY_ROW_SCORE = 450
 
 -- Identity of a map row across the pooled copies the map search hands out:
 -- boosted injections record theirs so the same POI is not shown again when
@@ -463,7 +467,7 @@ function Search:OnSearchTextChangedNow(text, force)
                     seenMapRows[rowKey] = true
                     local wrapped = {}
                     for k, v in pairs(src) do wrapped[k] = v end
-                    tinsert(results, 1, { data = wrapped, score = LOCAL_CATEGORY_SCORE - j, isAlias = true })
+                    tinsert(results, 1, { data = wrapped, score = CATEGORY_ROW_SCORE - j, isAlias = true })
                 end
             end
         end

@@ -468,7 +468,11 @@ function tests.learned_prefixFallback()
     ns.Learned:RecordPick(toyEntry, "glad mount")
     H.assertEq(ns.Learned:GetBoost("glad mo"), toyEntry, "shorter typing must still surface the pick")
     H.assertEq(ns.Learned:GetBoost("glad"), toyEntry, "4 chars is enough for the fallback")
-    H.assertEq(ns.Learned:GetBoost("glad mounts"), toyEntry, "typing past must still surface the pick")
+    -- Typing past the learned query keeps the pick only while the pick
+    -- still matches the text: "glad mounts" is not the Garrison Hearthstone.
+    H.assertNil(ns.Learned:GetBoost("glad mounts"), "typing past a pick the text no longer matches drops it")
+    ns.Learned:RecordPick(mountEntry, "gran")
+    H.assertEq(ns.Learned:GetBoost("grand gr"), mountEntry, "typing past keeps a pick the text still matches")
     H.assertNil(ns.Learned:GetBoost("gl"), "short fragments stay natural, no habit hijack")
     H.assertNil(ns.Learned:GetBoost("gla"), "3 chars is still below the fallback floor")
     H.assertNil(ns.Learned:GetBoost("g"), "1-char queries stay exact-only")
