@@ -128,6 +128,17 @@ local function ShowInlineSettingDropdown(owner, opts, getCurrent, onSelect)
     popup:Raise()
 end
 
+-- ESC's innermost layer (Search:HandleEscape): close an open picker and
+-- report it, so the press stops here instead of dismissing the results
+-- underneath while the picker stays up.
+function Rows.HideInlineSettingDropdown()
+    if inlineDropdownPopup and inlineDropdownPopup:IsShown() then
+        inlineDropdownPopup:Hide()
+        return true
+    end
+    return false
+end
+
 function Rows.ToggleInlineSettingDropdown(owner, opts, getCurrent, onSelect)
     if inlineDropdownPopup and inlineDropdownPopup:IsShown()
        and inlineDropdownPopup.owner == owner then

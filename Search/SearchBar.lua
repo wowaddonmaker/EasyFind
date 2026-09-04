@@ -2189,10 +2189,23 @@ function Search:HandleEscape(fromUnfocused)
         end)
     end
     self._escClosingMenus = true
-    -- One layer per ESC press: the deepest open filter popup first, then
-    -- its parent, then the dropdown itself; only then does ESC move on to
-    -- text-clear / bar-hide. CloseTopFilterLayer owns the depth order.
-    local closedAny = Filters.CloseTopFilterLayer and Filters.CloseTopFilterLayer() or false
+    -- One layer per ESC press, innermost first: a row's inline picker (the
+    -- Color / mode dropdowns) opened by a click, then any cursor menu left
+    -- open from a right-click, then the deepest open filter popup, its
+    -- parent, the filter dropdown itself; only then does ESC move on to
+    -- text-clear / bar-hide. Skipping the popups here dismissed the results
+    -- underneath while the picker stayed on screen.
+    local closedAny = false
+    if EasyFind._inlineDropdownMenuOpen and Results and ns.ResultRows
+       and ns.ResultRows.HideInlineSettingDropdown then
+        closedAny = ns.ResultRows.HideInlineSettingDropdown() and true or false
+    end
+    if not closedAny and Utils.HideCursorMenus and Utils.HideCursorMenus() then
+        closedAny = true
+    end
+    if not closedAny then
+        closedAny = Filters.CloseTopFilterLayer and Filters.CloseTopFilterLayer() or false
+    end
     -- The apps dropdown is its own single layer, closed only when no
     -- filter layer consumed this press.
     local escSearchFrame = self:GetSearchFrame()
