@@ -136,7 +136,17 @@ end
 
 -- ==== activation ===========================================================
 
-local function IsSecure(data)
+-- Rows whose action can only run from a secure button click: casts, uses,
+-- summons, macros. Panel openers (talents, spellbook-only abilities, micro
+-- button entries) are secure on the row but open fine from insecure code
+-- inside a hardware event, exactly as a shortkey press does.
+local function OpensPanel(data)
+    return ns.SecureOpeners and ns.SecureOpeners.OpenKeyForData
+        and ns.SecureOpeners.OpenKeyForData(data) or nil
+end
+
+local function NeedsSecureClick(data)
+    if OpensPanel(data) then return false end
     return ns.ResultIcons and ns.ResultIcons.IsSecureActionResult
         and ns.ResultIcons:IsSecureActionResult(data) or false
 end
@@ -167,8 +177,11 @@ local function ShowForClick(data)
     end)
 end
 
-local function Activate(data)
-    if IsSecure(data) then
+-- `deferred` marks an activation from a retry timer, outside the click's
+-- hardware event: a panel open would be blocked there, so it takes the
+-- show-the-row path too.
+local function Activate(data, deferred)
+    if NeedsSecureClick(data) or (deferred and OpensPanel(data)) then
         ShowForClick(data)
         return
     end
@@ -205,12 +218,12 @@ local function RequestFor(key)
 end
 
 local function OpenKey(key, attempt)
+    attempt = attempt or 0
     local data = Resolve(key)
     if data then
-        Activate(data)
+        Activate(data, attempt > 0)
         return
     end
-    attempt = attempt or 0
     if attempt == 0 then RequestFor(key) end
     local delay = RETRY_DELAYS[attempt + 1]
     if not delay then
