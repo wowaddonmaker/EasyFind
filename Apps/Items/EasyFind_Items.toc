@@ -2,7 +2,7 @@
 ## Title: EasyFind [Item Catalog]
 ## Notes: Item catalog search companion for EasyFind, loaded on first use
 ## Author: justawower
-## Version: 3.1.1
+## Version: 3.2.0
 ## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
 ## Group: EasyFind
 ## Category: UI

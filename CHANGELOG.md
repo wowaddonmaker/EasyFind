@@ -4,6 +4,18 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [3.2.0] - 2026-09-04
+
+### Added
+- **EasyFind links**: right-click any result and choose EasyFind link to send it to a chat channel, a whisper, or your clipboard. Anyone running EasyFind sees a clickable link that opens that result on their side, the same as clicking it in their own search; everyone else sees plain text. Abilities, mounts, toys, outfits, and macros open where they live (spellbook, journal, toy box, transmog, macro window), since a chat link cannot cast or use
+- **What's New remembers what you missed**: the update popup lists every release you skipped since you last logged in, newest first, instead of only the latest
+
+### Changed
+- **Snippets is its own addon**: it appears in the AddOns list as "EasyFind [Snippets]" and can be disabled there. Saved snippets stay in the core, and the Snippets row, filter, options tab, and tutorial slide hide while it is off
+- Pasting a copied result into chat brings back the live link whether or not Snippets is enabled
+
+---
+
 ## [3.1.1] - 2026-09-03
 
 ### Fixed

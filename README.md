@@ -50,8 +50,9 @@ Search from the world map with nested results built for location-first browsing:
     - **Blacklist**: Keep a result out of every search. Restore it any time from the Blacklist tab in the options menu.
   - On most results:
     - **Guide**: Walk to the result with step-by-step highlights.
-    - **Send link**: Share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper, or a link box you can shift-click into any chat message).
-    - **Wowhead link**: Copy-ready Wowhead URL.
+    - **Send**: Share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, or a whisper), or copy it to your clipboard.
+    - **Wowhead**: Copy the result's Wowhead URL to your clipboard.
+    - **EasyFind link**: Send the result to chat as a link other EasyFind users can click to open it; everyone else sees plain text.
   - Row-specific extras, for example:
     - **Achievements**: objective tracking.
     - **Currencies**: backpack pinning and currency transfer.
@@ -65,7 +66,7 @@ Search from the world map with nested results built for location-first browsing:
 - **Apps button**: A dot-grid button on the search bar opens the apps menu; Calculator, Icon Search, and Snippets live there, with more on the way.
 - **Calculator**: Type math directly into search, including arithmetic, trig functions, and factorials, or open the full calculator from the apps menu or with `Alt+C`. Ships as its own "EasyFind [Calculator]" addon so it can be disabled entirely.
 - **Icon Search**: Browse and filter every game icon in a grid via `@icons`, the apps menu, or searching "Icon Search". Ctrl+C over an icon copies its ID, and a click offers its name, its path, or a new macro with that icon. The same search engine also appears inside the game's own macro icon picker. Ships as its own "EasyFind [Icons]" addon so it can be disabled entirely.
-- **Snippets**: Save text you type often and expand it anywhere with its keyword: type `\keyword` in chat or the macro editor and it expands as you type. Placeholders such as `{target}` and `{date}` fill in at use, and call-form keywords like `\greet(name)` take arguments. Manage them from the apps menu, by searching "Snippets", or with the `@snip` quick filter.
+- **Snippets**: Save text you type often and expand it anywhere with its keyword: type `\keyword` in chat or the macro editor and it expands as you type. Placeholders such as `{target}` and `{date}` fill in at use, and call-form keywords like `\greet(name)` take arguments. Manage them from the apps menu, by searching "Snippets", or with the `@snip` quick filter. Ships as its own "EasyFind [Snippets]" addon so it can be disabled entirely.
 - **Macro window search**: The game's macro window gains a search bar that filters your macros by name or body as you type.
 - **Copy with Ctrl+C**: Ctrl+C on a result copies a snippet's entire message, a link, or an inline answer to your clipboard, ready to paste wherever you want with Ctrl+V. Pasted into chat, an item, spell, or achievement comes back as the live link.
 - **Keyboard control**: Use arrows, Enter, Tab, Alt+number row shortcuts, or Alt+H/J/K/L navigation.

@@ -2,7 +2,7 @@
 ## Title: EasyFind [Onboarding]
 ## Notes: Tutorial, What's New, and new-feature spotlight companion for EasyFind, loaded while onboarding is pending
 ## Author: justawower
-## Version: 3.1.1
+## Version: 3.2.0
 ## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
 ## Group: EasyFind
 ## Category: UI
