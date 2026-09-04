@@ -166,9 +166,9 @@ local function Activate(data)
     -- Secure kinds take the Alt+click route: SelectResult reads the flag
     -- through IsSourceModifierHeld and opens the row where it lives.
     Handlers._openInPlace = true
-    local ok, err = pcall(Handlers.SelectResult, Handlers, data)
+    local handler = _G["geterrorhandler"] and _G["geterrorhandler"]() or print
+    xpcall(Handlers.SelectResult, handler, Handlers, data)
     Handlers._openInPlace = nil
-    if not ok then geterrorhandler()(err) end
 end
 
 local function Resolve(key)
