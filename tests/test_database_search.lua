@@ -17,6 +17,17 @@ H.assertEq(Database, ns.Database)
 
 local tests = {}
 
+function tests.keywordTiers_beatTypoNameMatches()
+    local kws = { "brackenhide", "bh" }
+    local words = { "brackenhide" }
+    H.assertEq(Database:ScoreKeywords(kws, "brackenhide", 11, words), 100, "exact long keyword")
+    H.assertEq(Database:ScoreKeywords(kws, "brack", 5, { "brack" }), 90, "five-letter prefix")
+    H.assertEq(Database:ScoreKeywords(kws, "bra", 3, { "bra" }), 70, "short prefix")
+    H.assertEq(Database:ScoreKeywords(kws, "bh", 2, { "bh" }), 140, "short exact abbreviation")
+    -- A one-typo name match scores 85: below the exact and long-prefix tiers.
+    H.assertEq(Database:ScoreFuzzy("black rat", "brack", 5), 85, "typo name match")
+end
+
 function tests.queryAsksFor_exactAndPrefixWords()
     local ask = { "teleport", "tp", "portal", "dungeon" }
     H.assertTrue(Database.QueryAsksFor({ "kara", "teleport" }, ask), "exact word")

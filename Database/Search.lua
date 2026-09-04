@@ -802,9 +802,15 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
             local kwScore = 0
             if kw == query then
                 -- Short abbreviations (2-3 chars) get boosted above initials.
-                kwScore = queryLen <= 3 and 140 or 80
+                -- Longer exact keywords sit above any typo-tolerant name
+                -- match (85): a word the row literally answers to beats a
+                -- name one letter off ("brackenhide" over the "black" rows).
+                kwScore = queryLen <= 3 and 140 or 100
             elseif sfind(kw, query, 1, true) == 1 then
-                kwScore = 70
+                -- A prefix of five or more letters is the same evidence the
+                -- typo path needs before it fires at all, so it outranks a
+                -- typo too; shorter prefixes stay below.
+                kwScore = queryLen >= FUZZY_EDIT1_LEN and 90 or 70
             elseif Database:FindAtWordBoundary(kw, query) then
                 kwScore = 55
             end

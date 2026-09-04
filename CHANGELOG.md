@@ -17,6 +17,7 @@ All notable changes to EasyFind will be documented in this file.
 ### Fixed
 - **Results no longer rearrange after you stop typing**: when a query pulled in a category that was still loading, the list painted once without it and again with it, so rows jumped around a moment after the last keystroke. The first paint now waits for that load
 - **Dungeon teleports rank like everything else**: typing a dungeon's nickname such as `bran` no longer lifts its teleport above items and toys whose names start with it. Typing the dungeon name out still ranks the teleport like an exact match, and a query that says teleport, tp, portal, dungeon, keystone, or mythic still puts it first
+- **Exact and long keyword matches outrank typo matches**: a result that answers to the word you typed, or to five or more letters of it, now ranks above results whose name is merely one letter off (`brack` finds Brackenhide before the Black rows)
 
 ---
 
