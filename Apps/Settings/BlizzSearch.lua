@@ -3159,7 +3159,9 @@ end
 -- restore from the same module constant the collector used.
 -- Bump when the serialized entry shape changes so stale caches rebuild.
 -- v2: round-trips customToggle (the chat-toggle left-click-only flag).
-local OPTIONS_CACHE_SCHEMA = 3
+-- 4: searchable names are stripped of UI markup (SearchLower); a cache
+-- written by 3 carries the raw names and must be rebuilt.
+local OPTIONS_CACHE_SCHEMA = 4
 
 -- Cheap deterministic hash of the enabled-addon set. Addon options categories
 -- exist only for enabled addons, so the cache must invalidate when that set

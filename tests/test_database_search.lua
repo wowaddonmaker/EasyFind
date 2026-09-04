@@ -299,6 +299,36 @@ function tests.searchUI_lootRowSurvivesPunctuationInQuery()
     end)
 end
 
+local ampersand = {
+    name = "Guild & Communities", nameLower = "guild & communities",
+    category = "Menu Bar", keywordsLower = { "guild", "communities" },
+}
+local outfit2 = {
+    name = "Outfit (2)", nameLower = "outfit (2)", category = "Outfit", keywordsLower = { "outfit" },
+}
+local hyphenA = { name = "Proto-Drake Rusted", nameLower = "proto-drake rusted", category = "Mount", keywordsLower = {} }
+local hyphenB = { name = "Red Proto-Drake", nameLower = "red proto-drake", category = "Mount", keywordsLower = {} }
+
+function tests.searchUI_stray_punctuation_tokens_do_not_hide_rows()
+    withEntries({ ampersand, outfit2 }, function()
+        for _, q in ipairs({ "& guild", "guild &", "guild  &" }) do
+            Database:ResetSearchCache()
+            H.assertTrue(findsEntry(Database:SearchUI(q), ampersand), "ampersand query must match: " .. q)
+        end
+        Database:ResetSearchCache()
+        H.assertTrue(findsEntry(Database:SearchUI("outfti ("), outfit2),
+            "a typo followed by a stray bracket must still match")
+    end)
+end
+
+function tests.searchUI_hyphenPrefixKeepsPrefixRank()
+    withEntries({ hyphenB, hyphenA }, function()
+        Database:ResetSearchCache()
+        local r = Database:SearchUI("proto-dra")
+        H.assertEq(r[1] and r[1].data, hyphenA, "the hyphenated prefix must rank the prefix match first")
+    end)
+end
+
 function tests.searchUI_typoInOneWordOfBracketedName()
     withEntries({ bracketed }, function()
         Database:ResetSearchCache()

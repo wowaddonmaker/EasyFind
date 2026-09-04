@@ -1246,6 +1246,14 @@ function Database:SearchUI(query, skipCategories)
             queryWords[#queryWords + 1] = w
         end
     end
+    -- The raw string still drives the exact, prefix and contains tiers.
+    -- When cutting changed it ("& guild" -> "guild", "outfti (" ->
+    -- "outfti"), the cut form is a second chance for rows the raw tiers
+    -- scored under 100: the single-word tiers compared the raw string,
+    -- so a stray ampersand or bracket found nothing at all.
+    local queryNorm = tconcat(queryWords, " ")
+    local queryNormLen = #queryNorm
+    if queryNorm == query or queryNormLen < 2 then queryNorm = nil end
 
     -- Gates: without "boss" in the query, bosses match name only ("icc"
     -- alone shouldn't flood with bosses). Achievements (~175 entries with
@@ -1631,6 +1639,11 @@ function Database:SearchUI(query, skipCategories)
                         Database:ScoreName(nameLower, entryQuery, entryQueryLen, entryQueryWords),
                         kwScore
                     )
+                    if queryNorm and score < 100 and entryQuery == query then
+                        score = mmax(score,
+                            Database:ScoreName(nameLower, queryNorm, queryNormLen, entryQueryWords),
+                            kws and Database:ScoreKeywords(kws, queryNorm, queryNormLen, entryQueryWords) or 0)
+                    end
                     if #entryQueryWords >= 2 then
                         score = mmax(score, Database:ScoreEntryFields(data, entryQueryWords))
                     end
