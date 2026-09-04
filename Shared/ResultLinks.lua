@@ -141,13 +141,35 @@ local function IsSecure(data)
         and ns.ResultIcons:IsSecureActionResult(data) or false
 end
 
+-- A chat click cannot run a secure action (cast, use, summon, macro): open
+-- the bar showing that one row, keyboard-selected, so Enter or a click on
+-- the row fires it. Search:Show focuses the editbox a frame later in
+-- auto-hide mode, and a focused EMPTY bar shows the empty-query view, which
+-- hides the results when nothing is pinned; rendering synchronously flashed
+-- the row and lost it. So: render after that settles, select the row, and
+-- hand the keyboard to the nav frame with the editbox unfocused (the
+-- selection is set first so the focus-lost handler reads it as nav entry,
+-- never as a click outside).
+local function ShowForClick(data)
+    local Search, Results = ns.Search, ns.Results
+    if not (Search and Search.Show and Results and Results.ShowSingleResult) then return end
+    Search:Show(false)
+    Utils.SafeAfter(0.05, function()
+        local frame = Search.GetSearchFrame and Search:GetSearchFrame()
+        if not (frame and frame:IsShown()) then return end
+        Results:ShowSingleResult(data)
+        if Search.SetSelectedIndex then Search:SetSelectedIndex(1) end
+        if Results.UpdateSelectionHighlight then Results:UpdateSelectionHighlight() end
+        local editBox = frame.editBox
+        if editBox and editBox:HasFocus() then editBox:ClearFocus() end
+        local navFrame = Search.GetNavFrame and Search:GetNavFrame()
+        if navFrame then Utils.SafeCallMethod(navFrame, "EnableKeyboard", true) end
+    end)
+end
+
 local function Activate(data)
     if IsSecure(data) then
-        -- A chat click cannot run a secure action: show the row for one.
-        if ns.Search and ns.Search.Show then ns.Search:Show(false) end
-        if ns.Results and ns.Results.ShowSingleResult then
-            ns.Results:ShowSingleResult(data)
-        end
+        ShowForClick(data)
         return
     end
     if ns.ResultRows and ns.ResultRows.ActivateSettingResult
