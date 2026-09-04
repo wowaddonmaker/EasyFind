@@ -211,6 +211,7 @@ local function RequestProviderForRowKey(rowKey)
         -- Ambiguous legacy prefix: the settings walk, abilities, appearance
         -- items, and static tree rows all mint it. Kick every possible owner.
         pcall(ns.Database.RequestDynamicProviderLoaded, ns.Database, "abilities", nil)
+        pcall(ns.Database.RequestDynamicProviderLoaded, ns.Database, "talents", nil)
         pcall(ns.Database.RequestDynamicProviderLoaded, ns.Database, "appearanceItems", nil)
         local options = ns.BlizzOptionsSearch
         if options and options.EnsurePopulatedAsync then

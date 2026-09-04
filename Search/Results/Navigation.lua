@@ -22,7 +22,6 @@ local StaticPopup_Show = StaticPopup_Show
 local MAX_BUTTON_POOL = 100
 local GetAllPins = UIPins.GetAll
 local pinnedOnlyEntries = {}
-local linkedEntries = {}
 -- Name of the row button ENTER is currently override-bound to (nil = no
 -- binding). Binding writes are dedup'd against it: redundant writes near
 -- the combat boundary put Blizzard's key re-attach pass on EasyFind's
@@ -390,24 +389,6 @@ function Results:ShowPinnedItems()
         entries[i] = nil
     end
     self:ShowHierarchicalResults(entries)
-end
-
--- One shared row (an EasyFind link whose action is secure and so cannot
--- fire from a chat click): rendered like the pinned-only view, so a real
--- click on the row runs it.
-function Results:ShowSingleResult(data)
-    if not ResultsFrame() or not data then return end
-    wipe(CollapsedNodes())
-    local e = linkedEntries[1] or {}
-    linkedEntries[1] = e
-    e.name = data.name
-    e.depth = 0
-    e.isPathNode = false
-    e.isMatch = true
-    e.isPinned = false
-    e.isFlat = true
-    e.data = data
-    self:ShowHierarchicalResults(linkedEntries)
 end
 
 function Results:SelectFirstResult()

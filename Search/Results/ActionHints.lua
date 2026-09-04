@@ -11,7 +11,11 @@ local IsControlKeyDown = IsControlKeyDown
 local C_Item = C_Item
 local select = select
 
+-- _openInPlace: an EasyFind link click (Shared/ResultLinks.lua) cannot run
+-- a secure action, so it activates the row as an Alt+click would: show the
+-- ability in the spellbook, the mount in the journal, the toy in the box.
 function Handlers:IsSourceModifierHeld()
+    if Handlers._openInPlace then return true end
     return IsAltKeyDown and IsAltKeyDown() and not Shortcuts._resultShortcutActivation
 end
 

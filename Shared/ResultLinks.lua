@@ -14,9 +14,12 @@ local _, ns = ...
 -- identity aliases and shortkeys use) and activates it.
 --
 -- Activation mirrors a shortkey press: setting rows toggle, navigation
--- rows open or guide. Rows whose action is secure (cast, use, summon,
--- macro) cannot fire from a chat click, so those open the search bar
--- showing that single row for a real click.
+-- rows open or guide, panel openers (talents, spellbook-only abilities)
+-- open their panel. Rows whose action is secure (cast, use, summon, macro)
+-- cannot fire from a chat click, so those activate as an Alt+click would:
+-- the ability opens in the spellbook, the mount in the journal, the toy in
+-- the toy box, the outfit in the transmog list, the macro in its window.
+-- The search bar itself never opens from a link.
 
 local ResultLinks = {}
 ns.ResultLinks = ResultLinks
@@ -140,58 +143,32 @@ end
 -- summons, macros. Panel openers (talents, spellbook-only abilities, micro
 -- button entries) are secure on the row but open fine from insecure code
 -- inside a hardware event, exactly as a shortkey press does.
-local function OpensPanel(data)
-    return ns.SecureOpeners and ns.SecureOpeners.OpenKeyForData
-        and ns.SecureOpeners.OpenKeyForData(data) or nil
-end
-
 local function NeedsSecureClick(data)
-    if OpensPanel(data) then return false end
+    if ns.SecureOpeners and ns.SecureOpeners.OpenKeyForData
+       and ns.SecureOpeners.OpenKeyForData(data) then
+        return false
+    end
     return ns.ResultIcons and ns.ResultIcons.IsSecureActionResult
         and ns.ResultIcons:IsSecureActionResult(data) or false
 end
 
--- A chat click cannot run a secure action (cast, use, summon, macro): open
--- the bar showing that one row, keyboard-selected, so Enter or a click on
--- the row fires it. Search:Show focuses the editbox a frame later in
--- auto-hide mode, and a focused EMPTY bar shows the empty-query view, which
--- hides the results when nothing is pinned; rendering synchronously flashed
--- the row and lost it. So: render after that settles, select the row, and
--- hand the keyboard to the nav frame with the editbox unfocused (the
--- selection is set first so the focus-lost handler reads it as nav entry,
--- never as a click outside).
-local function ShowForClick(data)
-    local Search, Results = ns.Search, ns.Results
-    if not (Search and Search.Show and Results and Results.ShowSingleResult) then return end
-    Search:Show(false)
-    Utils.SafeAfter(0.05, function()
-        local frame = Search.GetSearchFrame and Search:GetSearchFrame()
-        if not (frame and frame:IsShown()) then return end
-        Results:ShowSingleResult(data)
-        if Search.SetSelectedIndex then Search:SetSelectedIndex(1) end
-        if Results.UpdateSelectionHighlight then Results:UpdateSelectionHighlight() end
-        local editBox = frame.editBox
-        if editBox and editBox:HasFocus() then editBox:ClearFocus() end
-        local navFrame = Search.GetNavFrame and Search:GetNavFrame()
-        if navFrame then Utils.SafeCallMethod(navFrame, "EnableKeyboard", true) end
-    end)
-end
-
--- `deferred` marks an activation from a retry timer, outside the click's
--- hardware event: a panel open would be blocked there, so it takes the
--- show-the-row path too.
-local function Activate(data, deferred)
-    if NeedsSecureClick(data) or (deferred and OpensPanel(data)) then
-        ShowForClick(data)
-        return
-    end
+local function Activate(data)
+    local Handlers = ns.ResultHandlers
     if ns.ResultRows and ns.ResultRows.ActivateSettingResult
        and ns.ResultRows:ActivateSettingResult(data) then
         return
     end
-    if ns.ResultHandlers and ns.ResultHandlers.SelectResult then
-        ns.ResultHandlers:SelectResult(data)
+    if not (Handlers and Handlers.SelectResult) then return end
+    if not NeedsSecureClick(data) then
+        Handlers:SelectResult(data)
+        return
     end
+    -- Secure kinds take the Alt+click route: SelectResult reads the flag
+    -- through IsSourceModifierHeld and opens the row where it lives.
+    Handlers._openInPlace = true
+    local ok, err = pcall(Handlers.SelectResult, Handlers, data)
+    Handlers._openInPlace = nil
+    if not ok then geterrorhandler()(err) end
 end
 
 local function Resolve(key)
@@ -221,7 +198,7 @@ local function OpenKey(key, attempt)
     attempt = attempt or 0
     local data = Resolve(key)
     if data then
-        Activate(data, attempt > 0)
+        Activate(data)
         return
     end
     if attempt == 0 then RequestFor(key) end
