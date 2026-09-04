@@ -198,5 +198,14 @@ function tests.liveSettingsCanFillCuratedVariablesMissingFromFastPass()
     H.assertEq(entry.name, "Enemy Player Names")
 end
 
+function tests.searchLowerStripsMarkupInsideNames()
+    local ns = loadOptionsSearch()
+    local lower = ns.BlizzOptionsSearch.SearchLower
+    H.assertEq(lower("Better|cff00c0ffBlizz|rFrames |A:gmchat-icon-blizz:16:16|a"), "betterblizzframes",
+        "color codes and texture escapes must not survive into the searchable name")
+    H.assertEq(lower("Auto Loot"), "auto loot", "plain names are only lowered")
+    H.assertEq(lower("|cff00ff00|r"), "|cff00ff00|r", "a name that is only markup keeps its raw form")
+end
+
 local pass, fail, failures = H.runSuite("BlizzOptionsSearch", tests)
 return { pass = pass, fail = fail, failures = failures }

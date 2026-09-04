@@ -14,6 +14,18 @@ local SearchFocus = ns.SearchFocus
 local tinsert = Utils.tinsert
 local slower = Utils.slower
 local SafeAfter = Utils.SafeAfter
+
+-- Searchable form of a settings name. Addon authors color and icon their
+-- category names ("Better|cff00c0ffBlizz|rFrames |A:...|a"); lowered raw,
+-- the escape sits inside the word, so "better" matched as a prefix,
+-- "betterbl" only as a two-letter typo of "better", and "betterbli"
+-- found nothing. Strip UI markup first; the display name keeps it.
+local function SearchLower(s)
+    if type(s) ~= "string" then return s end
+    local clean = Utils.StripMarkup and Utils.StripMarkup(s) or s
+    return slower(clean ~= "" and clean or s)
+end
+BlizzOptionsSearch.SearchLower = SearchLower
 local pcall = pcall
 local coroutine = coroutine
 local setmetatable = setmetatable
@@ -1795,8 +1807,8 @@ local function CollectCuratedGameEntries(resolveCategoryIDs, useApiNames)
         if nameSuffix and nameSuffix ~= "" and name:sub(-#nameSuffix) ~= nameSuffix then
             name = name .. nameSuffix
         end
-        local nameLower = slower(name)
-        local catLower = slower(catName)
+        local nameLower = SearchLower(name)
+        local catLower = SearchLower(catName)
         local resolved = TYPE_MAP[typeCode] or "other"
         local sliderInfo = resolved == "slider" and QUALITY_SLIDER_OVERRIDES[var] or nil
         local settingFormatter
@@ -1881,7 +1893,7 @@ local function CollectEntries(includeCurated)
         local catName = cat:GetName()
         local catID = cat.GetID and cat:GetID()
         if not catName or catName == "" then return end
-        local catNameLower = slower(catName)
+        local catNameLower = SearchLower(catName)
         local kw = { "settings", "options", catNameLower }
         AddKeyword(kw, parentName)
         local pathArr = parentName and { "Game Settings", parentName } or nil
@@ -2294,7 +2306,7 @@ local function CollectKeybindings()
         local qkbName = Loc["KEYBIND_TOGGLE_FMT"]:format(_G["QUICK_KEYBIND_MODE"] or "Quick Keybind Mode")
         tinsert(entries, setmetatable({
             name = qkbName,
-            nameLower = slower(qkbName),
+            nameLower = SearchLower(qkbName),
             keywords = { "quick keybind mode", "quick", "keybind", "binding", "hover bind" },
             quickKeybindActivate = true,
             steps = { { settingsCategory = "Keybindings" } },
@@ -2310,7 +2322,7 @@ local function CollectKeybindings()
         local chatToggleName = Loc["KEYBIND_TOGGLE_FMT"]:format(_G["HUD_EDIT_MODE_CHAT_FRAME_LABEL"] or "Chat Frame")
         tinsert(entries, setmetatable({
             name = chatToggleName,
-            nameLower = slower(chatToggleName),
+            nameLower = SearchLower(chatToggleName),
             keywords = { "chat", "chat frame", "chat window", "hide chat", "show chat", "toggle" },
             settingType = "keybind",
             bindingAction = "EASYFIND_TOGGLECHATFRAME",
@@ -2345,7 +2357,7 @@ local function CollectKeybindings()
             if type(displayName) ~= "string" or displayName == "" then
                 displayName = action
             end
-            local nameLower = slower(displayName)
+            local nameLower = SearchLower(displayName)
             -- No bare "key" keyword: it EXACT-matched the 3-char query "key"
             -- on every one of ~250 bindings and flooded results. "keybind" /
             -- "binding" (intentional queries) and the action's own name/header
@@ -2461,8 +2473,8 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix, entryCatego
                     end
                 end
             end
-            local nameLower = slower(label)
-            local kw = { "addon", "setting", "option", nameLower, slower(catName or "") }
+            local nameLower = SearchLower(label)
+            local kw = { "addon", "setting", "option", nameLower, SearchLower(catName or "") }
             tinsert(out, setmetatable({
                 name = label,
                 nameLower = nameLower,
