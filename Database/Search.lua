@@ -1657,7 +1657,7 @@ function Database:SearchUI(query, skipCategories)
                 -- matches; bare "kara" leaves it at its natural rank.
                 local bonus = data.scoreBonus
                 if bonus and data.scoreBonusWords
-                   and not QueryAsksFor(entryQueryWords, data.scoreBonusWords) then
+                   and not QueryAsksFor(queryWords, data.scoreBonusWords) then
                     bonus = nil
                 end
                 r.score = score + (bonus or 0)
