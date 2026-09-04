@@ -568,6 +568,24 @@ local function GateSkipsEntry(data)
 end
 
 -- exact -> starts-with -> word-boundary -> substring -> initials -> fuzzy.
+-- True when a query word asks for the kind a scoreBonus row represents:
+-- one of askWords exactly, or three or more letters that begin one of
+-- them ("tele", "port", "dun"). Rows carry askWords as scoreBonusWords.
+local function QueryAsksFor(queryWords, askWords)
+    if not (queryWords and askWords) then return false end
+    for i = 1, #queryWords do
+        local w = queryWords[i]
+        for j = 1, #askWords do
+            local ask = askWords[j]
+            if w == ask or (#w >= 3 and #ask > #w and ssub(ask, 1, #w) == w) then
+                return true
+            end
+        end
+    end
+    return false
+end
+Database.QueryAsksFor = QueryAsksFor
+
 function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
     if ssub(query, queryLen, queryLen) == " " then
         query = query:match("^(.-)%s+$") or query
@@ -1607,6 +1625,20 @@ function Database:SearchUI(query, skipCategories)
                             entryQuery, entryQueryLen, entryQueryWords)
                         if kwNameScore > score then score = kwNameScore end
                     end
+                    -- A dungeon teleport's dungeon name is its second name
+                    -- too; its nicknames ("bran", "kara") are plain keywords.
+                    local tpName = data.teleportNameLower
+                    if tpName then
+                        local tpScore = Database:ScoreName(tpName,
+                            entryQuery, entryQueryLen, entryQueryWords)
+                        local tpEn = data.teleportNameEnLower
+                        if tpEn and tpEn ~= tpName then
+                            local enScore = Database:ScoreName(tpEn,
+                                entryQuery, entryQueryLen, entryQueryWords)
+                            if enScore > tpScore then tpScore = enScore end
+                        end
+                        if tpScore > score then score = tpScore end
+                    end
                 end
             end
 
@@ -1619,10 +1651,16 @@ function Database:SearchUI(query, skipCategories)
                 end
                 r.data = data
                 -- scoreBonus: per-row rank lift, applied per MATCH (not per
-                -- candidate, so off the scoring hot path). Dungeon teleports
-                -- carry it so an actionable "Path of ..." row outranks the
-                -- catalog's name-substring item rows inside the result cap.
-                r.score = score + (data.scoreBonus or 0)
+                -- candidate, so off the scoring hot path), and only when the
+                -- query asks for the row's kind (scoreBonusWords): "teleport
+                -- kara" puts the "Path of ..." row above the catalog's name
+                -- matches; bare "kara" leaves it at its natural rank.
+                local bonus = data.scoreBonus
+                if bonus and data.scoreBonusWords
+                   and not QueryAsksFor(entryQueryWords, data.scoreBonusWords) then
+                    bonus = nil
+                end
+                r.score = score + (bonus or 0)
                 r.isAlias = nil
                 results[resultsN] = r
                 candidateIdx = candidateIdx + 1

@@ -183,10 +183,19 @@ function Engine:RequestDynamicProvider(key, onChanged)
     pendingDynamic[key] = true
     local started = Database:RequestDynamicProviderLoaded(key, function(changed)
         pendingDynamic[key] = nil
-        if changed and onChanged then onChanged(true) end
+        -- Always report, changed or not: the query pipeline counts on one
+        -- callback per started load to know when nothing is pending.
+        if onChanged then onChanged(changed and true or false) end
     end)
     if not started then pendingDynamic[key] = nil end
     return started
+end
+
+-- Any dynamic provider load still in flight (requested by a query and not
+-- yet reported back). The query pipeline holds its paint while this is
+-- true so results never reshuffle after the user has stopped typing.
+function Engine:HasPendingProviders()
+    return next(pendingDynamic) ~= nil
 end
 
 function Engine:RequestOptions(ctx, onChanged, resultCount)

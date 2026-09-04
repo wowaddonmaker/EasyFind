@@ -4178,16 +4178,24 @@ function Database:PopulateDynamicAbilities()
             kw[#kw + 1] = slower(lineName)
         end
         -- M+ dungeon teleports answer to their dungeon's name, not just
-        -- their flavor name; the score bonus keeps the actionable teleport
-        -- above the item catalog's name matches inside the result cap
-        -- (measured: 'karazhan' ranked the teleport 16th of a 15-row cap).
-        local isTeleport = ns.AppendDungeonTeleportKeywords
-            and ns.AppendDungeonTeleportKeywords(kw, spellID)
+        -- their flavor name. The dungeon name scores as the row's second
+        -- name (typed out, it ranks like an exact name hit) and nicknames
+        -- stay ordinary keywords, so bare "bran" ranks the teleport below
+        -- rows NAMED Bran... The lift applies only when the query asks for
+        -- a teleport ("teleport kara", "tp bran"): then it outranks the
+        -- catalog's name matches inside the result cap.
+        local isTeleport, teleportName, teleportNameEn
+        if ns.AppendDungeonTeleportKeywords then
+            isTeleport, teleportName, teleportNameEn = ns.AppendDungeonTeleportKeywords(kw, spellID)
+        end
         uiSearchData[#uiSearchData + 1] = {
             name = displayName,
             nameLower = nameLower,
             keywords = kw,
             scoreBonus = isTeleport and 500 or nil,
+            scoreBonusWords = isTeleport and ns.DUNGEON_TELEPORT_ASK_WORDS or nil,
+            teleportNameLower = teleportName,
+            teleportNameEnLower = teleportNameEn,
             category = "Ability",
             treeName = lineName,
             isOffSpec = isOffSpec or false,

@@ -17,6 +17,16 @@ H.assertEq(Database, ns.Database)
 
 local tests = {}
 
+function tests.queryAsksFor_exactAndPrefixWords()
+    local ask = { "teleport", "tp", "portal", "dungeon" }
+    H.assertTrue(Database.QueryAsksFor({ "kara", "teleport" }, ask), "exact word")
+    H.assertTrue(Database.QueryAsksFor({ "tp", "bran" }, ask), "two-letter exact")
+    H.assertTrue(Database.QueryAsksFor({ "tele", "kara" }, ask), "prefix of teleport")
+    H.assertFalse(Database.QueryAsksFor({ "kara" }, ask), "bare nickname")
+    H.assertFalse(Database.QueryAsksFor({ "te" }, ask), "two letters do not prefix")
+    H.assertFalse(Database.QueryAsksFor(nil, ask), "nil words")
+end
+
 function tests.normalize_passthroughForSimple()
     H.assertEq(Database:NormalizeSearchQuery("mount"), "mount")
 end

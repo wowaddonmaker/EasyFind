@@ -63,6 +63,11 @@ function Search:RefreshActiveSearch()
 end
 
 local searchRefreshQueued = false
+-- Paint hold (see the provider request in OnSearchTextChangedNow): the
+-- query whose paint is being held, and the query whose hold already timed
+-- out (painted anyway, never held again).
+local PAINT_HOLD_MAX = 0.4
+local paintHoldText, paintHoldForcedFor
 -- Repaint only. Providers that changed the dataset already invalidated
 -- through Database:ResetSearchCache, whose coalesced deferred re-run is
 -- the single ordered repaint path. Routing THIS callback through the
@@ -327,7 +332,43 @@ function Search:OnSearchTextChangedNow(text, force)
         results = ns.Database:SearchUI(text, skipCategories)
     end
     if providerContext and not calculatorData and not calculatorLauncher then
-        SearchEngine:RequestProviders(providerContext, RefreshSearchAfterProviderLoad, #results)
+        -- A provider this query needs (its trigger word, the low-result
+        -- fallback) loads through the urgent scheduler budget: what fits
+        -- completes inside this call, the rest lands over the next frames
+        -- and repaints via RefreshSearchAfterProviderLoad. Painting first
+        -- and again on arrival was a visible reshuffle after typing had
+        -- stopped ("bran": the toys, then the teleport jumped to the top).
+        -- So a load that completed here re-runs the query into THIS paint,
+        -- and a load still pending holds the paint back (the previous
+        -- results stay up) until the arrival repaints, or the hold times
+        -- out and paints what there is.
+        local syncPhase, syncChanged = true, false
+        SearchEngine:RequestProviders(providerContext, function(changed)
+            if syncPhase then
+                if changed then syncChanged = true end
+            else
+                RefreshSearchAfterProviderLoad(changed)
+            end
+        end, #results)
+        syncPhase = false
+        if syncChanged then
+            results = ns.Database:SearchUI(text, skipCategories)
+        end
+        if SearchEngine.HasPendingProviders and SearchEngine:HasPendingProviders()
+           and paintHoldForcedFor ~= text then
+            if paintHoldText ~= text then
+                paintHoldText = text
+                local held = text
+                Utils.SafeAfter(PAINT_HOLD_MAX, function()
+                    if paintHoldText == held then
+                        paintHoldForcedFor = held
+                        Search:RefreshActiveSearch()
+                    end
+                end)
+            end
+            return
+        end
+        paintHoldText = nil
     end
 
     -- Inject user-defined alias hits at the front. Aliases bypass

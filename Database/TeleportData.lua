@@ -133,7 +133,11 @@ end
 -- Shared terms every teleport row answers to. (A localized "teleport"
 -- keyword would need a probe-verified Blizzard GlobalString key; the
 -- localized DUNGEON name below is the piece that matters per locale.)
-local sharedTeleportKw
+local sharedTeleportKw = { "teleport", "tp", "portal", "dungeon", "keystone", "mythic" }
+-- The words a query must carry for a teleport row's rank lift to apply
+-- (Database/Search.lua QueryAsksFor): "teleport kara" wants the teleport
+-- first; bare "kara" ranks it like any other keyword hit.
+ns.DUNGEON_TELEPORT_ASK_WORDS = sharedTeleportKw
 
 local slower = string.lower
 local resolvedNames = {}
@@ -166,14 +170,15 @@ end
 -- Appends this teleport's dungeon keywords to an ability row's keyword
 -- list: localized dungeon name (whole, plus per-word for word-overlap
 -- scoring), English fallback name, abbreviations, shared teleport terms.
--- Returns true when spellID is a mapped teleport (keywords appended).
+-- Returns true when spellID is a mapped teleport (keywords appended),
+-- followed by the lowercased localized and English dungeon names: the
+-- scorer treats them as the row's second name, so typing the dungeon name
+-- out ranks the teleport like an exact name hit while its nicknames stay
+-- ordinary keywords.
 function ns.AppendDungeonTeleportKeywords(kw, spellID)
     local map = ns.DUNGEON_TELEPORT_SPELLS
     local entry = map and map[spellID]
     if not entry then return false end
-    if not sharedTeleportKw then
-        sharedTeleportKw = { "teleport", "tp", "portal", "dungeon", "keystone", "mythic" }
-    end
     local localized = InstanceNameOf(entry)
     if localized then
         kw[#kw + 1] = slower(localized)
@@ -191,5 +196,5 @@ function ns.AppendDungeonTeleportKeywords(kw, spellID)
     for i = 1, #sharedTeleportKw do
         kw[#kw + 1] = sharedTeleportKw[i]
     end
-    return true
+    return true, localized and slower(localized) or nil, en
 end
