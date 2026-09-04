@@ -489,6 +489,13 @@ function Providers:RequestAchievementSearch(query)
     return nil
 end
 
+-- True while Blizzard's answer for exactly this query is still in flight:
+-- the paint hold in Query.lua waits for it (capped at about two frames)
+-- instead of painting without the rows and again with them.
+function Providers:IsAchievementSearchPending(query)
+    return achSearchPending ~= nil and achSearchPending.query == query
+end
+
 -- Debug peek: exercises the fallback path directly -- arm state, build
 -- state, and the blob-scan hits for a query.
 function Providers:_DebugFallbackSearch(query)

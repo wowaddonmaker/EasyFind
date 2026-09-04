@@ -71,6 +71,10 @@ local searchRefreshQueued = false
 -- query whose paint is being held, and the query whose hold already timed
 -- out (painted anyway, never held again).
 local PAINT_HOLD_MAX = 0.6
+-- A pending achievement answer holds for about two frames at most: the
+-- ACHIEVEMENT_SEARCH_UPDATED event lands in 12-15 ms (measured), so the
+-- cap only matters when the client is late.
+local ACH_HOLD_MAX = 0.035
 local paintHoldText, paintHoldForcedFor, paintHoldTimerFor
 -- Repaint only. Providers that changed the dataset already invalidated
 -- through Database:ResetSearchCache, whose coalesced deferred re-run is
@@ -306,6 +310,7 @@ function Search:OnSearchTextChangedNow(text, force)
     local filters = providerFilters
     local optionsOff = filters and filters.options == false
     local statisticsOff = filters and filters.statistics == false and not explicitStatistics
+    local achHits, achPending
     local skipCategories
     if filters then
         -- Category skip set derives from the shared map so the filter menu,
@@ -334,6 +339,17 @@ function Search:OnSearchTextChangedNow(text, force)
         end
     else
         results = ns.Database:SearchUI(text, skipCategories)
+        -- Achievement rows come from Blizzard's search string API, which
+        -- answers through ACHIEVEMENT_SEARCH_UPDATED about a frame later
+        -- (12-15 ms measured). Ask before the paint decision so a pending
+        -- answer can hold THIS paint: painting without the rows and again
+        -- with them merged in re-sorted the list on nearly every keystroke.
+        if text ~= "" and ((quickFilter and quickFilter.key == "achievements")
+            or (not quickFilter and (not filters or filters.achievements ~= false))) then
+            achHits = self:RequestAchievementSearch(text)
+            achPending = achHits == nil and self.IsAchievementSearchPending
+                and self:IsAchievementSearchPending(text) or false
+        end
     end
     if providerContext and not calculatorData and not calculatorLauncher then
         -- A provider this query needs (its trigger word, the low-result
@@ -360,14 +376,16 @@ function Search:OnSearchTextChangedNow(text, force)
         end
         local pendingLoad = SearchEngine.HasPendingProviders and SearchEngine:HasPendingProviders()
         local warming = ns.Database.IsWarmingProviders and ns.Database:IsWarmingProviders()
-        if (pendingLoad or warming) and paintHoldForcedFor ~= text then
+        if (pendingLoad or warming or achPending) and paintHoldForcedFor ~= text then
             paintHoldText = text
             -- The warm chain releases the hold itself when it ends; a lone
-            -- provider load gets a timeout in case it never reports back.
-            if pendingLoad and not warming and paintHoldTimerFor ~= text then
+            -- provider load gets a timeout in case it never reports back,
+            -- and a pending achievement answer the two-frame cap (its
+            -- event repaints well inside one).
+            if (pendingLoad or achPending) and not warming and paintHoldTimerFor ~= text then
                 paintHoldTimerFor = text
                 local held = text
-                Utils.SafeAfter(PAINT_HOLD_MAX, function()
+                Utils.SafeAfter(pendingLoad and PAINT_HOLD_MAX or ACH_HOLD_MAX, function()
                     if paintHoldText == held then
                         paintHoldForcedFor = held
                         Search:RefreshActiveSearch()
@@ -762,19 +780,14 @@ function Search:OnSearchTextChangedNow(text, force)
     end
     for ri = #combined, kept + 1, -1 do combined[ri] = nil end
 
-    -- Inline achievement results: drive Blizzard's indexed achievement
-    -- search and surface its results directly in our dropdown. First
-    -- call for a given query kicks off the (already-built) index lookup
-    -- and returns nothing; ACHIEVEMENT_SEARCH_UPDATED fires next frame
-    -- and we re-render with the cached results. Score each one through
-    -- ScoreName so they interleave naturally with mount / toy / setting
-    -- hits ranked off the same query, instead of clumping at a fixed
-    -- band.
-    if not calculatorData and not calculatorLauncher and text ~= ""
-       and ((quickFilter and quickFilter.key == "achievements")
-            or (not quickFilter and (not filters or filters.achievements ~= false))) then
-        local achHits = self:RequestAchievementSearch(text)
-        if achHits and ns.Database and ns.Database.ScoreName then
+    -- Inline achievement results, requested above next to the search so
+    -- a pending answer holds the paint; by the time this runs the rows
+    -- are here (cached from the event) or the hold gave up. Score each
+    -- one through ScoreName so they interleave naturally with mount /
+    -- toy / setting hits ranked off the same query, instead of clumping
+    -- at a fixed band.
+    if achHits then
+        if ns.Database and ns.Database.ScoreName then
             local lowerQ = slower(text)
             local qLen = #lowerQ
             -- Blizzard's index returns matches across name + description
