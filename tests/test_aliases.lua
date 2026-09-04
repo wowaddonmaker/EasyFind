@@ -478,9 +478,9 @@ function tests.learned_prefixFallback()
     H.assertNil(ns.Learned:GetBoost("g"), "1-char queries stay exact-only")
     -- A SHORT query the user explicitly taught is a different case from the
     -- fallback: exact records are honored at any length.
-    ns.Learned:RecordPick(mountEntry, "gl")
-    H.assertEq(ns.Learned:GetBoost("gl"), mountEntry, "explicit 2-char pick must still learn and boost")
-    H.assertEq(ns.Learned:GetBoost("gla"), mountEntry, "extending an explicit short record boosts it")
+    ns.Learned:RecordPick(mountEntry, "gr")
+    H.assertEq(ns.Learned:GetBoost("gr"), mountEntry, "explicit 2-char pick must still learn and boost")
+    H.assertEq(ns.Learned:GetBoost("gra"), mountEntry, "extending an explicit short record keeps it while it matches")
     -- Exact beats prefix: a different pick learned under the short form wins there.
     ns.Learned:RecordPick(mountEntry, "glad mo")
     H.assertEq(ns.Learned:GetBoost("glad mo"), mountEntry, "exact record must beat prefix fallback")
