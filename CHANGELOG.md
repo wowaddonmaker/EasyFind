@@ -12,6 +12,10 @@ All notable changes to EasyFind will be documented in this file.
 ### Changed
 - **Snippets can be turned off**: it is listed under EasyFind in the AddOns list as "EasyFind [Snippets]"
 - **Several picks per query**: picking different rows for the same query keeps up to three of them on top, ranked by how often and how recently each was chosen, instead of only the last one
+- **A swapped first pair counts as a typo**: `ocntrol` finds Control and `ramor` finds Armor; a wrong first letter is still not a match
+- **Same-name rows keep a fixed order**: when an ability and a talent share a name (Swipe), the talent lists first every session instead of whichever loaded first
+- **Dungeon teleports rank like everything else**: typing a dungeon's nickname such as `bran` no longer lifts its teleport above items and toys whose names start with it. Typing the dungeon name out still ranks the teleport like an exact match, and a query that says teleport, tp, portal, dungeon, keystone, or mythic still puts it first
+- **Category words no longer bury name matches**: typing `dungeon` lists Dungeon Finder and the other rows named for it first, then the nearby dungeons, instead of the dungeons above everything
 
 ### Fixed
 - **Gathering professions are searchable again**: Herbalism, Mining and Skinning had lost nearly every entry (Lush Argentleaf, Mana Lily, Tranquility Bloom) to a data rule meant for world nodes; the rows their windows list are back, regenerated from the current game data
@@ -20,14 +24,10 @@ All notable changes to EasyFind will be documented in this file.
 - **Achievement rows no longer shuffle the list a frame after each keystroke**: the game answers an achievement search one frame later, and the list used to paint without those rows and again with them mixed in; the first paint now waits that frame
 - **Punctuation in what you type no longer hides rows**: a colon, hyphen or bracket in the query (`pattern:`, `raids (journal)`) made loot rows and multi-word names drop out the moment it was typed; the query is now cut into words the same way names are
 - **Addon settings with colored or iconed names are searchable past the color**: an addon whose settings category name carries a color code or icon inside it (BetterBlizzFrames) matched only up to the color and vanished one letter later; the searchable name is now stripped of that markup
-- **A swapped first pair counts as a typo**: `ocntrol` finds Control and `ramor` finds Armor; a wrong first letter is still not a match
-- **Same-name rows keep a fixed order**: when an ability and a talent share a name (Swipe), the talent lists first every session instead of whichever loaded first
-- **Dungeon teleports rank like everything else**: typing a dungeon's nickname such as `bran` no longer lifts its teleport above items and toys whose names start with it. Typing the dungeon name out still ranks the teleport like an exact match, and a query that says teleport, tp, portal, dungeon, keystone, or mythic still puts it first
 - **Exact and long keyword matches outrank typo matches**: a result that answers to the word you typed, or to five or more letters of it, now ranks above results whose name is merely one letter off (`brack` finds Brackenhide before the Black rows)
 - **Escape closes what is on top**: with a setting's dropdown or a right-click menu open, Escape closes that first instead of dismissing the results underneath it
 - **A remembered pick no longer appears twice**: the row you picked for a query showed at the top and again in its natural place; the copy is gone, achievements included
 - **Learned picks stop following a query they no longer match**: typing past a remembered query keeps its pick on top only while the pick still matches what you typed
-- **Category words no longer bury name matches**: typing `dungeon` lists Dungeon Finder and the other rows named for it first, then the nearby dungeons, instead of the dungeons above everything
 
 ---
 
