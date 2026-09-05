@@ -75,6 +75,10 @@ local PROVIDERS = {
     { key = "appearanceItems", words = { "appearance", "appearances", "item", "items", "tmog", "transmog", "xmog" }, explicitOnly = true },
     { key = "loot", words = { "gear", "item", "items", "loot" }, heavyQuery = true },
     { key = "bosses", lookup = BOSS_WORDS, loadWhenEnabled = true },
+    -- Loaded on demand like the rest: only the first-focus warm chains
+    -- loaded it before, and on a fresh profile those run for a long
+    -- time, so turning the filter on showed nothing (3.1.2 zip test).
+    { key = "professions", words = { "profession", "professions", "crafting", "tradeskill", "trade" }, loadOnLowResults = true, loadWhenEnabled = true },
 }
 
 local pendingDynamic = {}
