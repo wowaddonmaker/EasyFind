@@ -74,7 +74,7 @@ local searchRefreshQueued = false
 -- Paint hold (see the provider request in OnSearchTextChangedNow): the
 -- query whose paint is being held, and the query whose hold already timed
 -- out (painted anyway, never held again).
-local PAINT_HOLD_MAX = 0.6
+local PAINT_HOLD_MAX = 0.25
 -- A pending achievement answer holds for about two frames at most: the
 -- ACHIEVEMENT_SEARCH_UPDATED event lands in 12-15 ms (measured), so the
 -- cap only matters when the client is late.
@@ -378,15 +378,16 @@ function Search:OnSearchTextChangedNow(text, force)
         if syncChanged then
             results = ns.Database:SearchUI(text, skipCategories)
         end
+        -- Never held for the first-focus warm chain: on a fresh install
+        -- with cold caches that chain runs for seconds, and holding every
+        -- keystroke behind it made the search feel a second late (zip test,
+        -- 2026-09-05). A load the query itself triggered is held for a
+        -- quarter second at most; a pending achievement answer for the
+        -- two-frame cap (its event repaints well inside one).
         local pendingLoad = SearchEngine.HasPendingProviders and SearchEngine:HasPendingProviders()
-        local warming = ns.Database.IsWarmingProviders and ns.Database:IsWarmingProviders()
-        if (pendingLoad or warming or achPending) and paintHoldForcedFor ~= text then
+        if (pendingLoad or achPending) and paintHoldForcedFor ~= text then
             paintHoldText = text
-            -- The warm chain releases the hold itself when it ends; a lone
-            -- provider load gets a timeout in case it never reports back,
-            -- and a pending achievement answer the two-frame cap (its
-            -- event repaints well inside one).
-            if (pendingLoad or achPending) and not warming and paintHoldTimerFor ~= text then
+            if paintHoldTimerFor ~= text then
                 paintHoldTimerFor = text
                 local held = text
                 Utils.SafeAfter(pendingLoad and PAINT_HOLD_MAX or ACH_HOLD_MAX, function()
