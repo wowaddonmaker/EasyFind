@@ -31,17 +31,19 @@ function tests.rowsWithoutTheirOwnChatLinkAreShareable()
         "share text carries the marker and the key when the key is not the bare name")
 end
 
-function tests.rowsThatLinkInChatAreNotShareable()
-    H.assertFalse(ResultLinks:CanShare(ability), "a spell links on its own")
-    H.assertFalse(ResultLinks:CanShare(catalogItem), "a catalog item links on its own")
+function tests.catalogItemsAndBagRowsAreNotShareable()
+    H.assertFalse(ResultLinks:CanShare(catalogItem), "a catalog item's EasyFind link adds nothing over its item link")
+    H.assertFalse(ResultLinks:CanShare({ name = "Cowl", category = "Appearance", appearanceItemID = 77 }),
+        "appearance rows are catalog items")
     H.assertFalse(ResultLinks:CanShare(bagItem), "bag rows are never shared")
-    H.assertNil(ResultLinks:BuildShareText(ability), "no share text for a spell")
     H.assertNil(ResultLinks:BuildSendRows(catalogItem), "no send rows for a catalog item")
 end
 
-function tests.unlinkableRowsStayShareableWhenNothingLinks()
-    ns.GetResultLink = function() return nil end
-    H.assertTrue(ResultLinks:CanShare(ability), "with no chat link, the row is shareable again")
+function tests.rowsWithAnEasyFindActionKeepTheirLinkEvenWithAChatLink()
+    H.assertTrue(ResultLinks:CanShare(ability), "a spell opens in the spellbook: worth an EasyFind link")
+    H.assertTrue(ResultLinks:CanShare({ name = "Ebon Gryphon", category = "Mount", mountID = 5 }),
+        "a mount opens in the journal")
+    H.assertNotNil(ResultLinks:BuildShareText(ability), "share text for a spell")
 end
 
 local pass, fail, failures = H.runSuite("ResultLinks", tests)

@@ -84,10 +84,12 @@ function ResultLinks:CanShare(data)
        or data.copyText or data.snippetCreate or data.snippetsLauncher then
         return false
     end
-    -- A row that links in chat on its own (an item, a spell, a mount, an
-    -- achievement) is shared through that link, not through ours: the
-    -- EasyFind link exists for rows that have no link of their own.
-    if ns.GetResultLink and ns.GetResultLink(data) then return false end
+    -- A catalog item's EasyFind link would open nothing the item link does
+    -- not already show, so it is shared through the item link alone. Rows
+    -- whose click does something a chat link cannot (a spell opens the
+    -- spellbook, a mount the journal, a talent the talent window) keep
+    -- theirs.
+    if data.catalogItem or data.appearanceItemID then return false end
     return EntryKey(data) ~= nil and PlainName(data) ~= nil
 end
 
