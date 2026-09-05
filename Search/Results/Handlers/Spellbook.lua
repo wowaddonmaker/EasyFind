@@ -523,7 +523,10 @@ local function OpenSpellbookHiddenAt(data)
     end
     if not frame then return false end
     if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then return false end
-    if frame:IsShown() then HideUIPanel(frame) end
+    -- The hide runs as secure code (see Openers): the spellbook's hide
+    -- handler writes the action bars' shown-buttons state, and written
+    -- under our taint that blocked the next action-button hover.
+    if not Openers:SecureHideUIPanel(frame) then return false end
     local tab = ns.SecureOpeners and ns.SecureOpeners.TAB_SPELLBOOK or 3
     if frame.SetTab then pcall(frame.SetTab, frame, tab) end
     local book = frame.SpellBookFrame

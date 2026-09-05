@@ -27,6 +27,29 @@ local function SecureShowUIPanel(frame)
     return SecureCall(ShowUIPanel, frame)
 end
 
+-- Hiding a UI panel from addon code runs its OnHide under our taint: the
+-- spellbook's hide handler tells the action bars to stop showing every
+-- button, and that written flag then blocks the next action-button hover
+-- (MultiBarBottomLeftButton1:SetShown, the Weapon Skills link). A
+-- restricted-environment snippet hides the frame as secure code, so the
+-- hide handler's writes stay secure. The following ShowUIPanel finds the
+-- frame hidden and places it as usual.
+local hideHandler
+local function SecureHideUIPanel(frame)
+    if not frame or not frame:IsShown() then return true end
+    if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then return false end
+    if not (SecureHandlerExecute and SecureHandlerSetFrameRef) then
+        HideUIPanel(frame)
+        return not frame:IsShown()
+    end
+    if not hideHandler then
+        hideHandler = CreateFrame("Frame", "EasyFindSecureHideHandler", UIParent, "SecureHandlerBaseTemplate")
+    end
+    SecureHandlerSetFrameRef(hideHandler, "target", frame)
+    SecureHandlerExecute(hideHandler, [[ self:GetFrameRef("target"):Hide() ]])
+    return not frame:IsShown()
+end
+
 local function IsPlayerSpellsTabSelected(tabIndex)
     local frame = _G["PlayerSpellsFrame"]
     if not frame then return false end
@@ -93,7 +116,7 @@ local function OpenPlayerSpellsFrame(tabIndex)
     -- action-button hover afterwards trips ADDON_ACTION_BLOCKED (the
     -- Weapon Skills link autopsy). A frame open on another tab is hidden
     -- and reshown, one blink, on the right tab.
-    if frame:IsShown() then HideUIPanel(frame) end
+    if not SecureHideUIPanel(frame) then return false end
     if tabIndex and frame.SetTab then pcall(frame.SetTab, frame, tabIndex) end
     SecureShowUIPanel(frame)
     if frame:IsShown() then return true end
@@ -175,6 +198,10 @@ end
 
 function Openers:IsPlayerSpellsTabSelected(tabIndex)
     return IsPlayerSpellsTabSelected(tabIndex)
+end
+
+function Openers:SecureHideUIPanel(frame)
+    return SecureHideUIPanel(frame)
 end
 
 function Openers:OpenPlayerSpellsFrame(tabIndex)
