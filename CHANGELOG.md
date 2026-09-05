@@ -11,6 +11,8 @@ All notable changes to EasyFind will be documented in this file.
 - Pasting a copied result into chat brings back the live link whether or not Snippets is enabled
 
 ### Fixed
+- **Gathering professions are searchable again**: Herbalism, Mining and Skinning had lost nearly every entry (Lush Argentleaf, Mana Lily, Tranquility Bloom) to a data rule meant for world nodes; the rows their windows list are back, regenerated from the current game data
+- **Profession recipes no longer go missing after login**: the recipe list could be built before the game had delivered profession data and then never rebuilt, leaving only the profession's own row; it now retries until the data is in and rebuilds when a profession window opens
 - **Results no longer rearrange after you stop typing**: when a query pulled in a category that was still loading, the list painted once without it and again with it, so rows jumped around a moment after the last keystroke. The first paint now waits for that load
 - **Achievement rows no longer shuffle the list a frame after each keystroke**: the game answers an achievement search one frame later, and the list used to paint without those rows and again with them mixed in; the first paint now waits that frame
 - **Punctuation in what you type no longer hides rows**: a colon, hyphen or bracket in the query (`pattern:`, `raids (journal)`) made loot rows and multi-word names drop out the moment it was typed; the query is now cut into words the same way names are
