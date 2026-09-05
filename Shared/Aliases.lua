@@ -480,13 +480,32 @@ end
 -- so that result surfaces on top the next time the same query is typed (below
 -- explicit aliases, which are deliberate and must win). Same identity scheme
 -- as aliases/shortkeys/blacklist: one stable key per row via GetEntryKey.
--- Stored as db.queryLearn[query] = { key, n, at, snapshot? }. Last pick wins;
--- n and at are kept for the LRU cap and future weighting. Map rows carry a
--- snapshot like aliases do, so a learned map pick renders as captured.
+-- Stored as db.queryLearn[query] = { key, n, at, w, snapshot?, prev, last }:
+-- the top-level fields are the pick that ranks first for the query, prev
+-- holds up to two more picks in rank order, each { key, n, at, w,
+-- snapshot? }, and last is the time of the latest pick (LRU cap). Rank is
+-- frecency, the rule launchers use: every pick adds one to a weight w that
+-- halves for each week the row goes unpicked, so a row chosen often stays
+-- first through an occasional stray pick, while a row chosen once and then
+-- abandoned fades under newer choices. Between rows picked equally often
+-- the more recent one ranks first. Map rows carry a snapshot like aliases
+-- do, so a learned map pick renders as captured.
 local Learned = {}
 ns.Learned = Learned
 
 local LEARN_CAP = 200
+local LEARN_PICKS_MAX = 3
+local LEARN_HALF_LIFE = 7 * 86400
+
+-- The weight a pick carries now: what it had when last picked, halved for
+-- every week since. Exponential decay keeps the order between two picks
+-- the same no matter when it is read, so ranking once at write time is exact.
+local function PickScore(p, now)
+    local w = p.w or p.n or 1
+    local age = now - (p.at or now)
+    if age <= 0 then return w end
+    return w * 2 ^ (-age / LEARN_HALF_LIFE)
+end
 
 local function TrimLearned(store)
     local count = 0
@@ -494,7 +513,7 @@ local function TrimLearned(store)
     while count > LEARN_CAP do
         local oldestQuery, oldestAt
         for query, rec in pairs(store) do
-            local at = rec.at or 0
+            local at = rec.last or rec.at or 0
             if not oldestAt or at < oldestAt then
                 oldestAt = at
                 oldestQuery = query
@@ -516,25 +535,43 @@ function Learned:RecordPick(data, typedQuery)
         EasyFind.db.queryLearn = {}
     end
     local store = EasyFind.db.queryLearn
+    local now = time()
     local rec = store[query]
-    if rec and rec.key == key then
-        rec.n = (rec.n or 0) + 1
-        rec.at = time()
-        return
+    -- Every pick the query knows, then the one just made (bumped if it is
+    -- one of them), re-ranked by frecency and capped.
+    local picks = {}
+    if rec and rec.key then
+        picks[1] = { key = rec.key, n = rec.n, at = rec.at, w = rec.w, snapshot = rec.snapshot }
+        for i = 1, #(rec.prev or {}) do picks[#picks + 1] = rec.prev[i] end
     end
-    -- A different row picked for a query the store already knows: the
-    -- earlier picks stay behind it, newest first, two at most, so a query
-    -- that alternates between rows lists them all on top in the order
-    -- they were last used (recency, the same idea launchers rank by).
+    local made
+    for i = 1, #picks do
+        if picks[i].key == key then made = picks[i] break end
+    end
+    if made then
+        made.w = PickScore(made, now) + 1
+        made.n = (made.n or 0) + 1
+        made.at = now
+    else
+        made = { key = key, n = 1, at = now, w = 1, snapshot = Aliases:BuildSnapshot(data) }
+        picks[#picks + 1] = made
+    end
+    tsort(picks, function(a, b)
+        local sa, sb = PickScore(a, now), PickScore(b, now)
+        if sa ~= sb then return sa > sb end
+        if (a.at or 0) ~= (b.at or 0) then return (a.at or 0) > (b.at or 0) end
+        return a == made and b ~= made
+    end)
+    local lead = picks[1]
     local prev
-    if rec and rec.key ~= key then
-        prev = { { key = rec.key, snapshot = rec.snapshot } }
-        local older = rec.prev or {}
-        for i = 1, #older do
-            if older[i].key ~= key and #prev < 2 then prev[#prev + 1] = older[i] end
+    for i = 2, LEARN_PICKS_MAX do
+        if picks[i] then
+            prev = prev or {}
+            prev[#prev + 1] = picks[i]
         end
     end
-    store[query] = { key = key, n = 1, at = time(), snapshot = Aliases:BuildSnapshot(data), prev = prev }
+    store[query] = { key = lead.key, n = lead.n, at = lead.at, w = lead.w, snapshot = lead.snapshot,
+        prev = prev, last = now }
     TrimLearned(store)
 end
 
@@ -599,7 +636,7 @@ function Learned:GetBoost(queryLower)
     if entry and typedPast and not LearnedStillMatches(entry, queryLower) then
         return nil
     end
-    -- Earlier picks for the same query, newest first, still matching.
+    -- The query's other picks, in rank order, still matching what was typed.
     local extras
     if entry and rec.prev then
         for i = 1, #rec.prev do

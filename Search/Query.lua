@@ -524,9 +524,10 @@ function Search:OnSearchTextChangedNow(text, force)
         local learned, olderPicks = ns.Learned:GetBoost(slower(text))
         if learned then
             local promoted = SCRATCH.aliasSeen
-            -- Earlier picks for this query sit right under the newest one,
-            -- in the order they were last used; inserted first so the
-            -- newest lands above them.
+            -- The query's other remembered picks sit right under the
+            -- first-ranked one, in frecency order (how often and how
+            -- recently each was chosen); inserted first so the lead lands
+            -- above them.
             if olderPicks and not learned.mapSearchResult then
                 for i = #olderPicks, 1, -1 do
                     local e = olderPicks[i]

@@ -379,31 +379,62 @@ function tests.entryKey_catalogItem()
         "catalogitem:2077")
 end
 
-function tests.learned_recentPicksStackNewestFirst()
+function tests.learned_picksRankByFrecency()
     env.EasyFind.db.aliases = {}
     env.EasyFind.db.queryLearn = {}
     env.EasyFind.db.learnFromPicks = true
     local a = { toyItemID = 1, name = "Rated Battlegrounds" }
     local b = { toyItemID = 2, name = "Rated Arena" }
     local c = { toyItemID = 3, name = "Rated Solo Shuffle" }
+    local d = { toyItemID = 4, name = "Rated Blitz" }
     Aliases:InvalidateKeyIndex()
-    ns.Database.uiSearchData = { a, b, c }
+    ns.Database.uiSearchData = { a, b, c, d }
+    local clock = env._clock
+    -- Picked once each: the more recent one leads, the other follows.
     ns.Learned:RecordPick(a, "rated")
+    clock:advance(60)
     ns.Learned:RecordPick(b, "rated")
-    local first, older = ns.Learned:GetBoost("rated")
-    H.assertEq(first, b, "newest pick leads")
-    H.assertEq(older and older[1], a, "the earlier pick follows")
+    local first, others = ns.Learned:GetBoost("rated")
+    H.assertEq(first, b, "equal use: the more recent pick leads")
+    H.assertEq(others and others[1], a, "the earlier pick follows")
+    -- A third row: all three stack, most recent first.
+    clock:advance(60)
     ns.Learned:RecordPick(c, "rated")
-    first, older = ns.Learned:GetBoost("rated")
+    first, others = ns.Learned:GetBoost("rated")
     H.assertEq(first, c)
-    H.assertEq(older[1], b)
-    H.assertEq(older[2], a)
+    H.assertEq(others[1], b)
+    H.assertEq(others[2], a)
+    -- Frequency counts: a picked twice more outranks rows picked once.
+    clock:advance(60)
     ns.Learned:RecordPick(a, "rated")
-    first, older = ns.Learned:GetBoost("rated")
-    H.assertEq(first, a, "re-picking an older one makes it newest")
-    H.assertEq(older[1], c)
-    H.assertEq(older[2], b)
-    H.assertEq(older[3], nil, "two older picks at most, no duplicate of the newest")
+    clock:advance(60)
+    ns.Learned:RecordPick(a, "rated")
+    first, others = ns.Learned:GetBoost("rated")
+    H.assertEq(first, a, "the row picked most leads")
+    H.assertEq(others[1], c)
+    H.assertEq(others[2], b)
+    -- One stray pick does not unseat a habit of three.
+    clock:advance(60)
+    ns.Learned:RecordPick(c, "rated")
+    first, others = ns.Learned:GetBoost("rated")
+    H.assertEq(first, a, "a single stray pick does not flip the habit")
+    H.assertEq(others[1], c)
+    -- Weight fades: a month unused, the habit yields to a fresh pick.
+    clock:advance(30 * 86400)
+    ns.Learned:RecordPick(b, "rated")
+    first, others = ns.Learned:GetBoost("rated")
+    H.assertEq(first, b, "an old habit fades under a fresh pick")
+    H.assertEq(others[1], a)
+    H.assertEq(others[2], c)
+    -- A fourth row: three picks per query at most, the weakest dropped.
+    clock:advance(60)
+    ns.Learned:RecordPick(d, "rated")
+    first, others = ns.Learned:GetBoost("rated")
+    H.assertEq(first, b)
+    H.assertEq(others[1], d)
+    H.assertEq(others[2], a)
+    H.assertEq(others[3], nil, "three picks per query at most")
+    clock.now = 0
     ns.Database.uiSearchData = nil
 end
 
