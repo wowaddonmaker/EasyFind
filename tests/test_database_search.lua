@@ -342,6 +342,40 @@ function tests.searchUI_hyphenPrefixKeepsPrefixRank()
     end)
 end
 
+-- The one typo that hits the first letter: the first two swapped.
+local moduleControl = { name = "Module Control", nameLower = "module control", category = "AddOn Settings", keywordsLower = {} }
+local delverArmor = { name = "Delver's Leather Armor", nameLower = "delver's leather armor", category = "Appearance Set", keywordsLower = {} }
+
+function tests.fuzzy_swappedFirstPairCountsAsOneTypo()
+    H.assertEq(Database:ScoreFuzzy("module control", "ocntrol", 7), 85, "swapped first pair")
+    H.assertEq(Database:ScoreFuzzy("module control", "xontrol", 7), 0, "a wrong first letter is still not a match")
+    withEntries({ moduleControl, delverArmor }, function()
+        Database:PrimeSearchGate()
+        Database:ResetSearchCache()
+        H.assertTrue(findsEntry(Database:SearchUI("module ocntrol"), moduleControl), "module ocntrol")
+        Database:ResetSearchCache()
+        H.assertTrue(findsEntry(Database:SearchUI("ocntrol"), moduleControl), "ocntrol alone, through the gate")
+        Database:ResetSearchCache()
+        H.assertTrue(findsEntry(Database:SearchUI("delver's leather ramor"), delverArmor), "ramor")
+    end)
+end
+
+-- Same name, same score: talents lead, and the order does not depend on
+-- which row was added first.
+local swipeAbility = { name = "Swipe", nameLower = "swipe", category = "Ability", keywordsLower = {} }
+local swipeTalent = { name = "Swipe", nameLower = "swipe", category = "Talent", keywordsLower = {} }
+
+function tests.searchUI_sameNameTieTalentFirstEitherLoadOrder()
+    for _, order in ipairs({ { swipeAbility, swipeTalent }, { swipeTalent, swipeAbility } }) do
+        withEntries(order, function()
+            Database:ResetSearchCache()
+            local r = Database:SearchUI("swipe")
+            H.assertEq(r[1] and r[1].data, swipeTalent, "talent first")
+            H.assertEq(r[2] and r[2].data, swipeAbility, "ability second")
+        end)
+    end
+end
+
 function tests.searchUI_typoInOneWordOfBracketedName()
     withEntries({ bracketed }, function()
         Database:ResetSearchCache()

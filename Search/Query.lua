@@ -27,7 +27,11 @@ local function FlatNameLess(ra, rb)
     if sa ~= sb then return sa > sb end
     local na, nb = ra.data.name or "", rb.data.name or ""
     if #na ~= #nb then return #na < #nb end
-    return na < nb
+    if na ~= nb then return na < nb end
+    -- Same name: the Database's fixed category order (talents first), so
+    -- the pair never flips with load order.
+    local tie = ns.Database and ns.Database.TieCategoryLess
+    return tie and tie(ra.data, rb.data) or false
 end
 
 -- Alias boost band: far above any natural score so alias rows always sort

@@ -95,11 +95,25 @@ local scoreNameUsedWords = {}
 -- Ties break to the shorter name (standard field-length normalization: for
 -- equal match quality, "Eastern Kingdoms" beats "Eastern Kingdoms Map"),
 -- then alphabetically so equal-length ties stay stable across re-sorts.
+-- Same score, same name (Swipe the ability and Swipe the talent are two
+-- rows): a fixed order, or the pair flips between sessions with provider
+-- load order. Talents lead, then the category name.
+local TIE_CATEGORY_RANK = { Talent = 1, Talents = 1 }
+local function TieCategoryLess(a, b)
+    local ac, bc = a.category or "", b.category or ""
+    if ac == bc then return false end
+    local ar, br = TIE_CATEGORY_RANK[ac] or 9, TIE_CATEGORY_RANK[bc] or 9
+    if ar ~= br then return ar < br end
+    return ac < bc
+end
+Database.TieCategoryLess = TieCategoryLess
+
 local function scoreDescending(a, b)
     if a.score ~= b.score then return a.score > b.score end
     local an, bn = a.data.nameLower or "", b.data.nameLower or ""
     if #an ~= #bn then return #an < #bn end
-    return an < bn
+    if an ~= bn then return an < bn end
+    return TieCategoryLess(a.data, b.data)
 end
 
 -- Suppresses fuzzy/initials matches between word pairs that are close in
@@ -261,14 +275,17 @@ function Database:ScoreFuzzy(text, query, queryLen)
     else return 0
     end
 
-    local queryFirst = sbyte(query, 1)
+    local queryFirst, querySecond = sbyte(query, 1, 2)
     local bestScore = 0
     local blocked = FUZZY_BLOCKLIST[query]
     local textWords = GetWords(text)
     for wi = 1, #textWords do
         local word = textWords[wi]
-        -- First-letter must match: typos rarely hit the first char.
-        if sbyte(word, 1) == queryFirst
+        -- First letter must match (typos rarely hit it), except the one
+        -- typo that always does: the first two letters swapped
+        -- ("ocntrol", "ramor"). Two byte reads, no distance work.
+        local w1 = sbyte(word, 1)
+        if (w1 == queryFirst or (w1 == querySecond and sbyte(word, 2) == queryFirst))
            and not (blocked and blocked[word]) then
             local wordLen = #word
             local lenDiff = wordLen - queryLen
@@ -631,7 +648,16 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
         if initScore > score then score = initScore end
     end
 
-    if nameHasQueryInitial and score < 100 and queryLen >= FUZZY_EDIT1_LEN then
+    -- Fuzzy also accepts a swapped first pair, so the second letter may
+    -- be the word initial here; initials and abbreviations stay strict.
+    local fuzzyInitialOk = nameHasQueryInitial
+    if not fuzzyInitialOk and queryLen >= FUZZY_EDIT1_LEN then
+        local qSecond = sbyte(query, 2)
+        if qSecond and qSecond >= 97 and qSecond <= 122 then
+            fuzzyInitialOk = band(WordInitMask(nameLower), lshift(1, qSecond - 97)) ~= 0
+        end
+    end
+    if fuzzyInitialOk and score < 100 and queryLen >= FUZZY_EDIT1_LEN then
         local fuzzyScore = Database:ScoreFuzzy(nameLower, query, queryLen)
         if fuzzyScore > score then score = fuzzyScore end
     end
@@ -681,7 +707,9 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
                             ws = 90
                         elseif sfind(nw, qw, 1, true) then
                             ws = 50
-                        elseif qwLen >= FUZZY_EDIT1_LEN and sbyte(nw, 1) == sbyte(qw, 1) then
+                        elseif qwLen >= FUZZY_EDIT1_LEN
+                           and (sbyte(nw, 1) == sbyte(qw, 1)
+                                or (sbyte(nw, 1) == sbyte(qw, 2) and sbyte(nw, 2) == sbyte(qw, 1))) then
                             local nwLen = #nw
                             local maxEdits = qwLen >= FUZZY_EDIT2_LEN and 2 or 1
                             if nwLen >= qwLen - maxEdits and nwLen <= qwLen + maxEdits then
@@ -1326,8 +1354,14 @@ function Database:SearchUI(query, skipCategories)
                     local allow = qwLen >= FUZZY_EDIT2_LEN and 2 or qwLen >= FUZZY_EDIT1_LEN and 1 or 0
                     if allow == 0 and sbyte(qw, qwLen) == 115 then allow = 1 end
                     GATE.allows[gc] = allow
-                    local fb = sbyte(qw, 1)
-                    GATE.firstBits[gc] = fb >= 97 and fb <= 122 and lshift(1, fb - 97) or 0
+                    -- The initial the scorer will accept: the first letter,
+                    -- or the second when a swapped first pair is in budget.
+                    local fb, sb2 = sbyte(qw, 1, 2)
+                    local bits = fb >= 97 and fb <= 122 and lshift(1, fb - 97) or 0
+                    if allow > 0 and sb2 and sb2 >= 97 and sb2 <= 122 then
+                        bits = bor(bits, lshift(1, sb2 - 97))
+                    end
+                    GATE.firstBits[gc] = bits
                 end
             end
         end
