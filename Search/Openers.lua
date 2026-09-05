@@ -38,15 +38,16 @@ local hideHandler
 local function SecureHideUIPanel(frame)
     if not frame or not frame:IsShown() then return true end
     if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then return false end
-    if not (SecureHandlerExecute and SecureHandlerSetFrameRef) then
+    local execute, setRef = _G["SecureHandlerExecute"], _G["SecureHandlerSetFrameRef"]
+    if not (execute and setRef) then
         HideUIPanel(frame)
         return not frame:IsShown()
     end
     if not hideHandler then
         hideHandler = CreateFrame("Frame", "EasyFindSecureHideHandler", UIParent, "SecureHandlerBaseTemplate")
     end
-    SecureHandlerSetFrameRef(hideHandler, "target", frame)
-    SecureHandlerExecute(hideHandler, [[ self:GetFrameRef("target"):Hide() ]])
+    setRef(hideHandler, "target", frame)
+    execute(hideHandler, [[ self:GetFrameRef("target"):Hide() ]])
     return not frame:IsShown()
 end
 
