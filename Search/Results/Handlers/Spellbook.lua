@@ -480,6 +480,70 @@ end
 -- (Blizzard_PagedContent's ProcessElement mutates the provider's element
 -- tables in place, so viewDataList holds the same objects); page =
 -- ceil(viewIndex / viewsPerPage).
+-- The page a spell's slot sits on in the paged frame's current view data,
+-- or nil (no view data yet, no live slot, or the slot is not in it).
+local function FindTargetPage(paged, data)
+    local viewDataList = paged and paged.viewDataList
+    if not viewDataList then return nil, "no paging state" end
+    -- The spellbook's elementData carries ONLY slot identity (slotIndex
+    -- + spellBank + specID -- no spellID, no name; verified by live
+    -- frame inspect). The stored spellBookIndex goes stale after DB
+    -- build, so the slot must be resolved LIVE and matched exactly.
+    local liveSlot, liveBank = Handlers.ResolveLiveSpellBookSlot(data)
+    if not liveSlot then return nil, "no live spellbook slot for spell" end
+    local viewsPerPage = paged.viewsPerPage or 1
+    for viewIndex = 1, #viewDataList do
+        local viewData = viewDataList[viewIndex]
+        for i = 1, #viewData do
+            local elementData = viewData[i]
+            if not elementData.isSpacer and not elementData.isHeader
+               and elementData.slotIndex == liveSlot
+               and (liveBank == nil or elementData.spellBank == nil
+                    or elementData.spellBank == liveBank) then
+                return mceil(viewIndex / viewsPerPage)
+            end
+        end
+    end
+    return nil, "slot " .. liveSlot .. " not in view data"
+end
+
+-- Every render the spellbook does must happen inside the secure panel
+-- show (Openers.OpenPlayerSpellsFrame's rule: a switch on the SHOWN frame
+-- renders under EasyFind taint and the next hover plants the highlight-
+-- mark globals). So the frame tab, the category tab and the page are all
+-- set while the frame is hidden, then it is shown through the panel
+-- manager. A frame that is open is hidden first: one blink, then the
+-- spell's page. The page can only be set once the category has view
+-- data, so a first open lands the category and a second pass the page.
+local function OpenSpellbookHiddenAt(data)
+    local frame = _G["PlayerSpellsFrame"]
+    if not frame and C_AddOns and C_AddOns.LoadAddOn then
+        C_AddOns.LoadAddOn("Blizzard_PlayerSpells")
+        frame = _G["PlayerSpellsFrame"]
+    end
+    if not frame then return false end
+    if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then return false end
+    if frame:IsShown() then HideUIPanel(frame) end
+    local tab = ns.SecureOpeners and ns.SecureOpeners.TAB_SPELLBOOK or 3
+    if frame.SetTab then pcall(frame.SetTab, frame, tab) end
+    local book = frame.SpellBookFrame
+    local sys = book and book.CategoryTabSystem
+    local categoryTab = FindSpellbookCategoryTab(frame, data)
+    if categoryTab and sys and sys.SetTab and categoryTab.GetTabID
+       and not IsCategoryTabSelected(frame, categoryTab) then
+        local ok, id = pcall(categoryTab.GetTabID, categoryTab)
+        if ok and id then pcall(sys.SetTab, sys, id) end
+    end
+    local paged = GetSpellbookPagedFrame(frame)
+    local controls = paged and paged.PagingControls
+    if controls and controls.SetCurrentPage then
+        local targetPage = FindTargetPage(paged, data)
+        if targetPage then pcall(controls.SetCurrentPage, controls, targetPage) end
+    end
+    Openers:SecureShowUIPanel(frame)
+    return frame:IsShown()
+end
+
 function Handlers.GetSpellbookNavPlan(data)
     if not (data and data.spellID) then return nil, "no spell data" end
     if InCombatLockdown() then return nil, "in combat" end
@@ -492,33 +556,11 @@ function Handlers.GetSpellbookNavPlan(data)
     local viewDataList = paged and paged.viewDataList
     local pageReason = "no paging state"
     if controls and controls.GetCurrentPage and viewDataList then
-        -- The spellbook's elementData carries ONLY slot identity (slotIndex
-        -- + spellBank + specID -- no spellID, no name; verified by live
-        -- frame inspect). The stored spellBookIndex goes stale after DB
-        -- build, so the slot must be resolved LIVE and matched exactly.
-        local liveSlot, liveBank = Handlers.ResolveLiveSpellBookSlot(data)
-        if not liveSlot then
-            pageReason = "no live spellbook slot for spell"
+        local targetPage, reason = FindTargetPage(paged, data)
+        if not targetPage then
+            pageReason = reason or pageReason
         else
-            local viewsPerPage = paged.viewsPerPage or 1
-            local targetPage
-            for viewIndex = 1, #viewDataList do
-                local viewData = viewDataList[viewIndex]
-                for i = 1, #viewData do
-                    local elementData = viewData[i]
-                    if not elementData.isSpacer and not elementData.isHeader
-                       and elementData.slotIndex == liveSlot
-                       and (liveBank == nil or elementData.spellBank == nil
-                            or elementData.spellBank == liveBank) then
-                        targetPage = mceil(viewIndex / viewsPerPage)
-                        break
-                    end
-                end
-                if targetPage then break end
-            end
-            if not targetPage then
-                pageReason = "slot " .. liveSlot .. " not in view data"
-            else
+            do
                 local ok, currentPage = pcall(controls.GetCurrentPage, controls)
                 if not ok or type(currentPage) ~= "number" then
                     return nil, "no current page"
@@ -635,6 +677,17 @@ function Handlers:OpenAbilityInSpellbook(data, stepGuide)
     -- highlighted and we wait for the user's own click), "tab" (shown on
     -- the wrong tab; the highlighted tab waits for the user's hardware
     -- click), or nil (ready).
+    -- The hidden switch (OpenSpellbookHiddenAt) runs at most twice per
+    -- reveal: once to land the tab and category, once more for the page
+    -- when the category's view data only exists after that first show.
+    -- Never in guide mode, which teaches the clicks.
+    local hiddenSwitches = 0
+    local function hiddenSwitch()
+        if stepGuide or hiddenSwitches >= 2 then return false end
+        hiddenSwitches = hiddenSwitches + 1
+        return OpenSpellbookHiddenAt(data)
+    end
+
     local function openState()
         local frame = _G["PlayerSpellsFrame"]
         if frame and frame:IsShown() then
@@ -643,11 +696,9 @@ function Handlers:OpenAbilityInSpellbook(data, stepGuide)
                 return nil
             end
             if wasShown then return "tab" end
-            -- Open on another tab: Openers switches the tab with the frame
-            -- hidden and reshows it (the only tab switch that leaves the
-            -- highlight-mark globals secure); poll again next tick.
-            Openers:OpenPlayerSpellsFrame(spellbookTab)
-            return "opening"
+            if hiddenSwitch() then return "opening" end
+            Openers:EnsurePlayerSpellsTab(spellbookTab)
+            return "tab"
         end
         if wasShown then return "closed" end
         if stepGuide then
@@ -659,7 +710,7 @@ function Handlers:OpenAbilityInSpellbook(data, stepGuide)
             end
             return "menu"
         end
-        Openers:OpenPlayerSpellsFrame(spellbookTab)
+        if not hiddenSwitch() then Openers:OpenPlayerSpellsFrame(spellbookTab) end
         return "opening"
     end
 
@@ -717,6 +768,10 @@ function Handlers:OpenAbilityInSpellbook(data, stepGuide)
         -- only). The loop re-ticks until the tab is actually selected.
         local categoryTab = FindSpellbookCategoryTab(frame, data)
         if categoryTab and not IsCategoryTabSelected(frame, categoryTab) then
+            if hiddenSwitch() then
+                Utils.SafeAfter(0.05, function() reveal(attempt + 1) end)
+                return
+            end
             if highlight and highlight.HighlightFrame then
                 highlight:HighlightFrame(categoryTab, nil, nil, true)
             end
@@ -766,6 +821,10 @@ function Handlers:OpenAbilityInSpellbook(data, stepGuide)
         -- only sees the CURRENT page, so a miss here does not prove the
         -- spell is absent -- with the category right, steer paging
         -- whenever a page button is clickable.
+        if hiddenSwitch() then
+            Utils.SafeAfter(0.05, function() reveal(attempt + 1) end)
+            return
+        end
         local nextBtn = SpellbookPageButton(frame, "NextPageButton")
         local prevBtn = SpellbookPageButton(frame, "PrevPageButton")
         if pageSweepDir == "next" and not CanClickButton(nextBtn) then
