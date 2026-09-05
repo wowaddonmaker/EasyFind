@@ -146,37 +146,20 @@ end
 -- ==== activation ===========================================================
 
 -- Rows that open the spellbook or talents (panel openers, and spells,
--- which open where they live rather than cast) can only do so inside the
--- user's own click on a secure button, which is what a result row is.
--- Running that open from a chat-link click, insecure code
--- even inside a hardware event, drove the spellbook under EasyFind taint
--- and planted the highlight-mark globals; every action-button hover
--- afterwards tripped ADDON_ACTION_BLOCKED (the [BREAK] autopsy, Weapon
--- Skills link, 2026-09-04). The link now hands the click to the user's
--- own results (Search:ShowLinkedResult).
-local function NeedsHardwareClick(data)
+-- which open where they live rather than cast), and rows with a secure
+-- action (mounts, toys, macros, outfits), all take the Alt+click route
+-- the rows themselves take: SelectResult reads the flag through
+-- IsSourceModifierHeld and opens the row where it lives. The spellbook
+-- open behind that route is ShowUIPanel with no tab switch (see
+-- Openers), which is what keeps the highlight-mark globals secure.
+local function OpensWhereItLives(data)
     if ns.SecureOpeners and ns.SecureOpeners.OpenKeyForData
        and ns.SecureOpeners.OpenKeyForData(data) then
         return true
     end
-    return data.spellID ~= nil and data.category == "Ability"
-end
-
--- Mounts, toys, macros, outfits: no secure action from the link either;
--- they open where they live, the Alt+click route the rows take, which
--- touches none of the protected panels.
-local function OpensInPlace(data)
+    if data.spellID ~= nil and data.category == "Ability" then return true end
     return ns.ResultIcons and ns.ResultIcons.IsSecureActionResult
         and ns.ResultIcons:IsSecureActionResult(data) or false
-end
-
-local function SelectInPlace(data)
-    local Handlers = ns.ResultHandlers
-    if not (Handlers and Handlers.SelectResult) then return end
-    Handlers._openInPlace = true
-    local handler = _G["geterrorhandler"] and _G["geterrorhandler"]() or print
-    xpcall(Handlers.SelectResult, handler, Handlers, data)
-    Handlers._openInPlace = nil
 end
 
 local function Activate(data)
@@ -185,22 +168,19 @@ local function Activate(data)
        and ns.ResultRows:ActivateSettingResult(data) then
         return
     end
-    if NeedsHardwareClick(data) then
-        -- The receiver's own results, landed on this row: their click on it
-        -- is the ordinary result-row click, with no second copy of that
-        -- logic anywhere (Search:ShowLinkedResult).
-        if InCombatLockdown() then
-            if EasyFind and EasyFind.Print then EasyFind:Print(L["EFLINK_IN_COMBAT"]) end
-        elseif ns.Search and ns.Search.ShowLinkedResult then
-            ns.Search:ShowLinkedResult(data)
-        end
+    if not (Handlers and Handlers.SelectResult) then return end
+    if not OpensWhereItLives(data) then
+        Handlers:SelectResult(data)
         return
     end
-    if OpensInPlace(data) then
-        SelectInPlace(data)
+    if InCombatLockdown() then
+        if EasyFind and EasyFind.Print then EasyFind:Print(L["EFLINK_IN_COMBAT"]) end
         return
     end
-    if Handlers and Handlers.SelectResult then Handlers:SelectResult(data) end
+    Handlers._openInPlace = true
+    local handler = _G["geterrorhandler"] and _G["geterrorhandler"]() or print
+    xpcall(Handlers.SelectResult, handler, Handlers, data)
+    Handlers._openInPlace = nil
 end
 
 local function Resolve(key)

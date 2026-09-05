@@ -84,9 +84,24 @@ local function OpenPlayerSpellsFrame(tabIndex)
     -- ShowUIPanel/UIParent path. Call Blizzard's opener through
     -- securecallfunction so later protected panel work, including
     -- CharacterFrame status bars, does not inherit EasyFind taint.
-    local util = _G.PlayerSpellsUtil
-    if util and SecureCall(util.TogglePlayerSpellsFrame, tabIndex) then
-        return true
+    -- ShowUIPanel only. The show runs through UIParent's own panel
+    -- handler and leaves the highlight-mark globals secure (spellopen
+    -- probe, 2026-09-05), while TogglePlayerSpellsFrame(tab) switched
+    -- the tab from our execution and rendered the spellbook under
+    -- EasyFind taint: every action-button hover afterwards tripped
+    -- ADDON_ACTION_BLOCKED (the Weapon Skills link autopsy). The tab is
+    -- never switched from here; EnsurePlayerSpellsTab highlights it for
+    -- the user's own click, the same as when the frame was already open.
+    if not frame and C_AddOns and C_AddOns.LoadAddOn then
+        C_AddOns.LoadAddOn("Blizzard_PlayerSpells")
+        frame = _G["PlayerSpellsFrame"]
+    end
+    if frame then
+        SecureShowUIPanel(frame)
+        if frame:IsShown() then
+            EnsurePlayerSpellsTab(tabIndex)
+            return true
+        end
     end
 
     return ClickButton(_G["PlayerSpellsMicroButton"])
