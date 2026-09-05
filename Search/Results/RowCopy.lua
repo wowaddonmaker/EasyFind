@@ -25,7 +25,7 @@ local IsControlKeyDown = IsControlKeyDown
 local RowCopy = {}
 ns.RowCopy = RowCopy
 
-local flashHolder, flashFade
+local flashHolder, flashFade, flashText
 local armedRow
 -- Ctrl+Shift+C: the armed text is the row's EasyFind link instead of its
 -- chat link (Raycast's Copy Deeplink chord). Shift is read when arming
@@ -66,6 +66,7 @@ local function EnsureFlash()
     text:SetPoint("CENTER")
     text:SetText(L["COPIED"])
     text:SetTextColor(Utils.RGB(ns.COPIED_COLOR, 1))
+    flashText = text
     flashFade = flashHolder:CreateAnimationGroup()
     local alpha = flashFade:CreateAnimation("Alpha")
     alpha:SetFromAlpha(1)
@@ -76,6 +77,13 @@ local function EnsureFlash()
     return flashHolder
 end
 
+-- The confirmation names what was copied: the two chords differ by one
+-- key, and the wording is what tells the user which one landed. Same
+-- color either way; the color already means "done".
+local function CopiedText()
+    return armedEasy and L["COPIED_EASYFIND_LINK"] or L["COPIED"]
+end
+
 local function FlashCopied()
     if not (armedRow and armedRow:IsShown()) then return end
     -- A target wearing its own "Ctrl+C" hint text turns that into the
@@ -83,12 +91,14 @@ local function FlashCopied()
     -- it on the next hover).
     local hint = armedRow._efCopyHint
     if hint then
-        hint:SetText(L["COPIED"])
+        hint:SetText(CopiedText())
         hint:SetTextColor(Utils.RGB(ns.COPIED_COLOR, 1))
         return
     end
     local holder = EnsureFlash()
     flashFade:Stop()
+    flashText:SetText(CopiedText())
+    holder:SetSize(math.max(80, math.floor(flashText:GetStringWidth() + 0.5) + 12), 16)
     holder:ClearAllPoints()
     -- Grid cells are square and small: the flash sits over the cell.
     if armedRow._efCopyText then

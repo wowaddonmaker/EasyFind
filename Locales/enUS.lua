@@ -369,6 +369,7 @@ L["HEADER_PINNED"]                      = "Pinned"
 -- Core/Main.lua  --  slash help, login message, minimap tooltip
 -- =============================================================================
 L["COPIED"]                             = "Copied"
+L["COPIED_EASYFIND_LINK"]               = "EasyFind link copied"
 L["FILTER_SNIPPETS"]                    = "Snippets"
 L["SNIPPET_CREATE"]                     = "Create snippet"
 L["SNIPPET_CREATE_SUB"]                 = "Create a reusable text snippet"

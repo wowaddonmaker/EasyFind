@@ -340,6 +340,7 @@ L["HEADER_PINNED"]                      = "고정됨"
 
 -- Core: slash help, login, minimap tooltip
 L["COPIED"]                             = "복사됨"
+L["COPIED_EASYFIND_LINK"]               = "EasyFind 링크 복사됨"
 L["FILTER_SNIPPETS"]                    = "스니펫"
 L["SNIPPET_CREATE"]                     = "스니펫 만들기"
 L["SNIPPET_CREATE_SUB"]                 = "재사용할 수 있는 텍스트 스니펫을 만듭니다"

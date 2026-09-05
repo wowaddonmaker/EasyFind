@@ -342,6 +342,7 @@ L["HEADER_PINNED"]                      = "Angeheftet"
 
 -- Core: slash help, login, minimap tooltip
 L["COPIED"]                             = "Kopiert"
+L["COPIED_EASYFIND_LINK"]               = "EasyFind-Link kopiert"
 L["FILTER_SNIPPETS"]                    = "Textbausteine"
 L["SNIPPET_CREATE"]                     = "Textbaustein erstellen"
 L["SNIPPET_CREATE_SUB"]                 = "Einen wiederverwendbaren Textbaustein erstellen"

@@ -340,6 +340,7 @@ L["HEADER_PINNED"]                      = "已釘選"
 
 -- Core: slash help, login, minimap tooltip
 L["COPIED"]                             = "已複製"
+L["COPIED_EASYFIND_LINK"]               = "已複製 EasyFind 連結"
 L["FILTER_SNIPPETS"]                    = "文字片段"
 L["SNIPPET_CREATE"]                     = "建立文字片段"
 L["SNIPPET_CREATE_SUB"]                 = "建立可重複使用的文字片段"

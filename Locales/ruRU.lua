@@ -340,6 +340,7 @@ L["HEADER_PINNED"]                      = "Закреплено"
 
 -- Core: slash help, login, minimap tooltip
 L["COPIED"]                             = "Скопировано"
+L["COPIED_EASYFIND_LINK"]               = "Ссылка EasyFind скопирована"
 L["FILTER_SNIPPETS"]                    = "Заготовки"
 L["SNIPPET_CREATE"]                     = "Создать заготовку"
 L["SNIPPET_CREATE_SUB"]                 = "Создать многоразовую текстовую заготовку"

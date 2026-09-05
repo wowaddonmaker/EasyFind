@@ -340,6 +340,7 @@ L["HEADER_PINNED"]                      = "Fixados"
 
 -- Core: slash help, login, minimap tooltip
 L["COPIED"]                             = "Copiado"
+L["COPIED_EASYFIND_LINK"]               = "Link do EasyFind copiado"
 L["FILTER_SNIPPETS"]                    = "Fragmentos"
 L["SNIPPET_CREATE"]                     = "Criar fragmento"
 L["SNIPPET_CREATE_SUB"]                 = "Criar um fragmento de texto reutilizável"
