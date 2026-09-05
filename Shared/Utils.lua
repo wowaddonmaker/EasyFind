@@ -6511,7 +6511,12 @@ local function CursorMenuDriveRowHighlights(menu, mouseYields)
             local engaged = row._efWashFocused or (not mouseYields and row:IsMouseOver())
                 or menu._openSubmenuRow == row
             if engaged and row._copyText and not copyRow then copyRow = row end
-            if engaged and row._tooltip and not tipRow then tipRow = row end
+            -- The tip follows the pointer (or the keyboard cursor), not the
+            -- cascade link: a row keeps its open flyout attached while the
+            -- mouse browses the children, and its tooltip must not.
+            local hot = (not mouseYields and row:IsMouseOver())
+                or (mouseYields and menu.keyboardIndex == i)
+            if hot and row._tooltip and not tipRow then tipRow = row end
             if row._efWashActive then
                 Utils.UpdateRoundedRowWash(row, engaged)
             else
