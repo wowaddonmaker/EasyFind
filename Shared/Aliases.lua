@@ -522,7 +522,19 @@ function Learned:RecordPick(data, typedQuery)
         rec.at = time()
         return
     end
-    store[query] = { key = key, n = 1, at = time(), snapshot = Aliases:BuildSnapshot(data) }
+    -- A different row picked for a query the store already knows: the
+    -- earlier picks stay behind it, newest first, two at most, so a query
+    -- that alternates between rows lists them all on top in the order
+    -- they were last used (recency, the same idea launchers rank by).
+    local prev
+    if rec and rec.key ~= key then
+        prev = { { key = rec.key, snapshot = rec.snapshot } }
+        local older = rec.prev or {}
+        for i = 1, #older do
+            if older[i].key ~= key and #prev < 2 then prev[#prev + 1] = older[i] end
+        end
+    end
+    store[query] = { key = key, n = 1, at = time(), snapshot = Aliases:BuildSnapshot(data), prev = prev }
     TrimLearned(store)
 end
 
@@ -587,7 +599,19 @@ function Learned:GetBoost(queryLower)
     if entry and typedPast and not LearnedStillMatches(entry, queryLower) then
         return nil
     end
-    return entry
+    -- Earlier picks for the same query, newest first, still matching.
+    local extras
+    if entry and rec.prev then
+        for i = 1, #rec.prev do
+            local p = rec.prev[i]
+            local e = Aliases:FindEntryByKey(p.key) or p.snapshot
+            if e and e ~= entry and not (typedPast and not LearnedStillMatches(e, queryLower)) then
+                extras = extras or {}
+                extras[#extras + 1] = e
+            end
+        end
+    end
+    return entry, extras
 end
 
 function Learned:ClearAll()

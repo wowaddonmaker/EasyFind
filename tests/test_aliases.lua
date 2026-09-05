@@ -379,6 +379,34 @@ function tests.entryKey_catalogItem()
         "catalogitem:2077")
 end
 
+function tests.learned_recentPicksStackNewestFirst()
+    env.EasyFind.db.aliases = {}
+    env.EasyFind.db.queryLearn = {}
+    env.EasyFind.db.learnFromPicks = true
+    local a = { toyItemID = 1, name = "Rated Battlegrounds" }
+    local b = { toyItemID = 2, name = "Rated Arena" }
+    local c = { toyItemID = 3, name = "Rated Solo Shuffle" }
+    Aliases:InvalidateKeyIndex()
+    ns.Database.uiSearchData = { a, b, c }
+    ns.Learned:RecordPick(a, "rated")
+    ns.Learned:RecordPick(b, "rated")
+    local first, older = ns.Learned:GetBoost("rated")
+    H.assertEq(first, b, "newest pick leads")
+    H.assertEq(older and older[1], a, "the earlier pick follows")
+    ns.Learned:RecordPick(c, "rated")
+    first, older = ns.Learned:GetBoost("rated")
+    H.assertEq(first, c)
+    H.assertEq(older[1], b)
+    H.assertEq(older[2], a)
+    ns.Learned:RecordPick(a, "rated")
+    first, older = ns.Learned:GetBoost("rated")
+    H.assertEq(first, a, "re-picking an older one makes it newest")
+    H.assertEq(older[1], c)
+    H.assertEq(older[2], b)
+    H.assertEq(older[3], nil, "two older picks at most, no duplicate of the newest")
+    ns.Database.uiSearchData = nil
+end
+
 function tests.learned_catalogItemRoundTrip()
     -- Catalog rows never live in uiSearchData (rebuilt per query from the
     -- packed blob), so the learned pick must come back from the snapshot

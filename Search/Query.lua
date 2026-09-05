@@ -521,9 +521,22 @@ function Search:OnSearchTextChangedNow(text, force)
     -- registers in seenMapRows (2.4.2 machinery, newer than this feature's
     -- base) so the pooled natural copy is deduped like any other boost.
     if ns.Learned then
-        local learned = ns.Learned:GetBoost(slower(text))
+        local learned, olderPicks = ns.Learned:GetBoost(slower(text))
         if learned then
             local promoted = SCRATCH.aliasSeen
+            -- Earlier picks for this query sit right under the newest one,
+            -- in the order they were last used; inserted first so the
+            -- newest lands above them.
+            if olderPicks and not learned.mapSearchResult then
+                for i = #olderPicks, 1, -1 do
+                    local e = olderPicks[i]
+                    if not e.mapSearchResult and not IsPromoted(promoted, e) then
+                        MarkPromoted(promoted, e)
+                        if e.catalogItem and e.itemID then seenCatalogItems[e.itemID] = true end
+                        tinsert(results, 1, { data = e, score = LEARNED_SCORE - i, isAlias = true })
+                    end
+                end
+            end
             if learned.mapSearchResult then
                 local wrapped = {}
                 for k, v in pairs(learned) do wrapped[k] = v end
