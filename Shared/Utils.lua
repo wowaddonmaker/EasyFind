@@ -6170,22 +6170,38 @@ function MenuCopy.PaintHint(row, lit)
     end
 end
 
--- An engaged copy row explains itself after the standard hover delay:
--- the row's own text as the title, def.tooltip as the body, and
--- def.tooltipNote as a dim afterthought (the shortcut past the menu).
-function MenuCopy.ShowTip(row)
-    if not row._tooltip then return end
-    local token = (MenuCopy.tipToken or 0) + 1
-    MenuCopy.tipToken = token
+-- Any engaged menu row that carries a tooltip explains itself after the
+-- standard hover delay: the row's own text as the title, def.tooltip as
+-- the body, and def.tooltipNote as a dim afterthought. Copy rows and
+-- flyout rows alike (the EasyFind link row is a flyout); a flyout row
+-- anchors left so the cascade opening to its right is never covered.
+local MenuTip = { row = nil, token = 0 }
+
+function MenuTip.Sync(row)
+    if row == MenuTip.row then return end
+    local prev = MenuTip.row
+    MenuTip.row = row
+    MenuTip.token = MenuTip.token + 1
+    if prev then ns.HideHintTooltip(prev) end
+    if not row or not row._tooltip then return end
+    local token = MenuTip.token
     Utils.SafeAfter(ns.TOOLTIP_HOVER_DELAY, function()
-        if MenuCopy.tipToken ~= token or MenuCopy.row ~= row or not row:IsShown() then return end
-        ns.ShowHintTooltip(row, "ANCHOR_RIGHT", row.label:GetText(), row._tooltip, row._tooltipNote)
+        if MenuTip.token ~= token or MenuTip.row ~= row or not row:IsShown() then return end
+        ns.ShowHintTooltip(row, row._submenuRows and "ANCHOR_LEFT" or "ANCHOR_RIGHT",
+            row.label:GetText(), row._tooltip, row._tooltipNote)
     end)
 end
 
+function MenuTip.Release(menu)
+    if MenuTip.row and MenuTip.row:GetParent() == menu then MenuTip.Sync(nil) end
+end
+
+function MenuCopy.ShowTip(row)
+    MenuTip.Sync(row)
+end
+
 function MenuCopy.HideTip(row)
-    MenuCopy.tipToken = (MenuCopy.tipToken or 0) + 1
-    if row then ns.HideHintTooltip(row) end
+    if row and MenuTip.row == row then MenuTip.Sync(nil) end
 end
 
 function MenuCopy.Disarm(restoreFocus)
@@ -6435,6 +6451,7 @@ local function CursorMenuOnHide(self)
     self._lastCursorX, self._lastCursorY = nil, nil
     CursorMenuSetKeyboardIndex(self, nil)
     MenuCopy.Release(self)
+    MenuTip.Release(self)
     Utils.SafeCallMethod(self, "EnableKeyboard", false)
     self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
     self:UnregisterEvent("GLOBAL_MOUSE_UP")
@@ -6474,7 +6491,7 @@ end
 local function CursorMenuDriveRowHighlights(menu, mouseYields)
     local rows = menu.rows
     if not rows then return nil end
-    local copyRow
+    local copyRow, tipRow
     for i = 1, #rows do
         local row = rows[i]
         if row and row:IsShown() and row._efMenuRowHighlightInstalled and not row.isSeparator then
@@ -6488,6 +6505,7 @@ local function CursorMenuDriveRowHighlights(menu, mouseYields)
             local engaged = row._efWashFocused or (not mouseYields and row:IsMouseOver())
                 or menu._openSubmenuRow == row
             if engaged and row._copyText and not copyRow then copyRow = row end
+            if engaged and row._tooltip and not tipRow then tipRow = row end
             if row._efWashActive then
                 Utils.UpdateRoundedRowWash(row, engaged)
             else
@@ -6503,7 +6521,7 @@ local function CursorMenuDriveRowHighlights(menu, mouseYields)
             end
         end
     end
-    return copyRow
+    return copyRow, tipRow
 end
 
 local function CursorMenuOnUpdate(self)
@@ -6516,11 +6534,12 @@ local function CursorMenuOnUpdate(self)
     end
     self._lastCursorX, self._lastCursorY = cx, cy
     local node = self
-    local copyRow, copyMenu
+    local copyRow, copyMenu, tipRow
     while node do
         if node:IsShown() then
-            local engagedCopy = CursorMenuDriveRowHighlights(node, self._mouseYields)
+            local engagedCopy, engagedTip = CursorMenuDriveRowHighlights(node, self._mouseYields)
             if engagedCopy and not copyRow then copyRow, copyMenu = engagedCopy, node end
+            if engagedTip and not tipRow then tipRow = engagedTip end
         end
         node = node._openSubmenu
     end
@@ -6528,6 +6547,11 @@ local function CursorMenuOnUpdate(self)
         MenuCopy.Sync(copyRow, copyMenu)
     elseif MenuCopy.menu and CursorMenuRoot(MenuCopy.menu) == self then
         MenuCopy.Sync(nil)
+    end
+    if tipRow then
+        MenuTip.Sync(tipRow)
+    elseif MenuTip.row and CursorMenuRoot(MenuTip.row:GetParent()) == self then
+        MenuTip.Sync(nil)
     end
     -- stayOpen menus close only on click-outside (handled in OnEvent), never on
     -- mouse-leave, matching the search bar's filter menu.
