@@ -609,28 +609,36 @@ local function LearnedStillMatches(entry, queryLower)
     return false
 end
 
-function Learned:GetBoost(queryLower)
-    if not (EasyFind and EasyFind.db) then return nil end
-    if EasyFind.db.learnFromPicks == false then return nil end
-    local store = EasyFind.db.queryLearn
-    if type(store) ~= "table" then return nil end
-    local rec = store[queryLower]
-    local typedPast = false
+-- The record a query resolves to (exact, else the prefix relation above),
+-- the query it is stored under, and whether the typed text runs past it.
+local function ResolveRecord(store, queryLower)
+    local rec, learnedQuery, typedPast = store[queryLower], queryLower, false
     if not rec and #queryLower >= 2 then
         local bestLen = 0
-        for learnedQuery, learnedRec in pairs(store) do
-            local ll, ql = #learnedQuery, #queryLower
+        for storedQuery, storedRec in pairs(store) do
+            local ll, ql = #storedQuery, #queryLower
             if ll > bestLen and ll ~= ql and (ql > ll or ql >= LEARN_PREFIX_MIN) then
                 local shorter = ll < ql and ll or ql
-                if ssub(learnedQuery, 1, shorter) == ssub(queryLower, 1, shorter) then
+                if ssub(storedQuery, 1, shorter) == ssub(queryLower, 1, shorter) then
                     bestLen = ll
-                    rec = learnedRec
+                    rec = storedRec
+                    learnedQuery = storedQuery
                     typedPast = ql > ll
                 end
             end
         end
     end
     if not rec or not rec.key then return nil end
+    return rec, learnedQuery, typedPast
+end
+
+function Learned:GetBoost(queryLower)
+    if not (EasyFind and EasyFind.db) then return nil end
+    if EasyFind.db.learnFromPicks == false then return nil end
+    local store = EasyFind.db.queryLearn
+    if type(store) ~= "table" then return nil end
+    local rec, _, typedPast = ResolveRecord(store, queryLower)
+    if not rec then return nil end
     local entry = Aliases:FindEntryByKey(rec.key)
     if not entry then entry = rec.snapshot end
     if entry and typedPast and not LearnedStillMatches(entry, queryLower) then
@@ -649,6 +657,58 @@ function Learned:GetBoost(queryLower)
         end
     end
     return entry, extras
+end
+
+---The query this row is remembered under when the given text is typed
+---(resolved the way GetBoost resolves it), or nil when the row is not one
+---of that query's picks. The context menu's Forget this pick row shows
+---exactly when this answers.
+function Learned:FindPick(data, typedQuery)
+    if not (EasyFind and EasyFind.db) then return nil end
+    local store = EasyFind.db.queryLearn
+    if type(store) ~= "table" then return nil end
+    local key = Aliases:GetEntryKey(data)
+    local query = normalize(strtrim(typedQuery or ""))
+    if not key or query == "" then return nil end
+    local rec, learnedQuery = ResolveRecord(store, query)
+    if not rec then return nil end
+    if rec.key == key then return learnedQuery end
+    for i = 1, #(rec.prev or {}) do
+        if rec.prev[i].key == key then return learnedQuery end
+    end
+    return nil
+end
+
+---Drops one row from the picks remembered for the typed text (a misclick,
+---or a habit that changed), so it falls back to its natural rank at once.
+---The other picks keep their order; a record left with no picks goes away.
+---Returns true when something was forgotten.
+function Learned:Forget(data, typedQuery)
+    local learnedQuery = self:FindPick(data, typedQuery)
+    if not learnedQuery then return false end
+    local store = EasyFind.db.queryLearn
+    local rec = store[learnedQuery]
+    local key = Aliases:GetEntryKey(data)
+    local picks = {}
+    if rec.key ~= key then
+        picks[1] = { key = rec.key, n = rec.n, at = rec.at, w = rec.w, snapshot = rec.snapshot }
+    end
+    for i = 1, #(rec.prev or {}) do
+        if rec.prev[i].key ~= key then picks[#picks + 1] = rec.prev[i] end
+    end
+    local lead = picks[1]
+    if not lead then
+        store[learnedQuery] = nil
+        return true
+    end
+    local prev
+    for i = 2, #picks do
+        prev = prev or {}
+        prev[#prev + 1] = picks[i]
+    end
+    store[learnedQuery] = { key = lead.key, n = lead.n, at = lead.at, w = lead.w, snapshot = lead.snapshot,
+        prev = prev, last = rec.last }
+    return true
 end
 
 function Learned:ClearAll()

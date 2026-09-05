@@ -7210,6 +7210,13 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     if extra and extra.onBlacklist then
         rows[#rows + 1] = { text = L["CTX_BLACKLIST"], onClick = extra.onBlacklist }
     end
+    if extra and extra.onForgetPick then
+        -- Only on a row search put on top from a past pick for this text.
+        rows[#rows + 1] = {
+            text = L["CTX_FORGET_PICK"], tooltip = L["CTX_FORGET_PICK_TT"],
+            onClick = extra.onForgetPick,
+        }
+    end
 
     local extras = {}
     if extra and extra.onTrack then

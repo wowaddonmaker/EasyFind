@@ -23,6 +23,7 @@ All notable changes to EasyFind will be documented in this file.
 - **Exact and long keyword matches outrank typo matches**: a result that answers to the word you typed, or to five or more letters of it, now ranks above results whose name is merely one letter off (`brack` finds Brackenhide before the Black rows)
 - **Escape closes what is on top**: with a setting's dropdown or a right-click menu open, Escape closes that first instead of dismissing the results underneath it
 - **A remembered pick no longer appears twice**: the row you picked for a query showed at the top and again in its natural place; the copy is gone, achievements included
+- **Forget this pick**: right-click a row that search put on top from a past pick and choose Forget this pick to send it back to its natural place, for a misclick or a habit that changed
 - **Several picks per query**: picking different rows for the same query over time now keeps up to three of them on top, ranked by how often and how recently each was chosen, instead of remembering only the last one
 - **Learned picks stop following a query they no longer match**: typing past a remembered query keeps its pick on top only while the pick still matches what you typed
 - **Category words no longer bury name matches**: typing `dungeon` lists Dungeon Finder and the other rows named for it first, then the nearby dungeons, instead of the dungeons above everything

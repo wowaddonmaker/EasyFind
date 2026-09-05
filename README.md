@@ -48,6 +48,7 @@ Search from the world map with nested results built for location-first browsing:
     - **Shortkey**: Bind a key that opens or uses the result instantly, without opening the search bar or taking up action bar slots.
     - **Add Alias**: Add your own search terms. Aliases are shared between normal search and map search where applicable.
     - **Blacklist**: Keep a result out of every search. Restore it any time from the Blacklist tab in the options menu.
+    - **Forget this pick**: Only on a result search put on top because you picked it for that text before. Sends it back to its natural place.
   - On most results:
     - **Guide**: Walk to the result with step-by-step highlights.
     - **Send**: Share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, or a whisper), or copy it to your clipboard.

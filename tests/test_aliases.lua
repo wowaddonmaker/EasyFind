@@ -438,6 +438,46 @@ function tests.learned_picksRankByFrecency()
     ns.Database.uiSearchData = nil
 end
 
+function tests.learned_forgetOnePick()
+    env.EasyFind.db.aliases = {}
+    env.EasyFind.db.queryLearn = {}
+    env.EasyFind.db.learnFromPicks = true
+    local a = { toyItemID = 1, name = "Rated Battlegrounds" }
+    local b = { toyItemID = 2, name = "Rated Arena" }
+    local c = { toyItemID = 3, name = "Rated Solo Shuffle" }
+    Aliases:InvalidateKeyIndex()
+    ns.Database.uiSearchData = { a, b, c }
+    local clock = env._clock
+    ns.Learned:RecordPick(a, "rated")
+    clock:advance(60)
+    ns.Learned:RecordPick(b, "rated")
+    clock:advance(60)
+    ns.Learned:RecordPick(c, "rated")
+    H.assertEq(ns.Learned:FindPick(a, "rated"), "rated", "an older pick is still remembered")
+    H.assertEq(ns.Learned:FindPick(c, "Rated "), "rated", "typed text normalizes like the store")
+    H.assertEq(ns.Learned:FindPick(c, "rate"), "rated", "prefix typing resolves to the same record")
+    H.assertNil(ns.Learned:FindPick({ toyItemID = 9, name = "Other" }, "rated"), "not a pick")
+    H.assertNil(ns.Learned:FindPick(a, "arena"), "other queries do not remember it")
+    -- Forget the lead: the next pick takes over, the rest keep their order.
+    H.assertTrue(ns.Learned:Forget(c, "rated"))
+    local first, others = ns.Learned:GetBoost("rated")
+    H.assertEq(first, b)
+    H.assertEq(others[1], a)
+    H.assertNil(ns.Learned:FindPick(c, "rated"), "forgotten")
+    -- Forget an older one: the lead stays.
+    H.assertTrue(ns.Learned:Forget(a, "rated"))
+    first, others = ns.Learned:GetBoost("rated")
+    H.assertEq(first, b)
+    H.assertNil(others)
+    -- Forgetting the last pick removes the record; nothing left to forget.
+    H.assertTrue(ns.Learned:Forget(b, "rated"))
+    H.assertNil(env.EasyFind.db.queryLearn["rated"], "empty record goes away")
+    H.assertNil(ns.Learned:GetBoost("rated"))
+    H.assertFalse(ns.Learned:Forget(b, "rated"), "nothing to forget")
+    clock.now = 0
+    ns.Database.uiSearchData = nil
+end
+
 function tests.learned_catalogItemRoundTrip()
     -- Catalog rows never live in uiSearchData (rebuilt per query from the
     -- packed blob), so the learned pick must come back from the snapshot
