@@ -638,9 +638,16 @@ function Handlers:OpenAbilityInSpellbook(data, stepGuide)
     local function openState()
         local frame = _G["PlayerSpellsFrame"]
         if frame and frame:IsShown() then
-            wasShown = true
-            if Openers:EnsurePlayerSpellsTab(spellbookTab) then return nil end
-            return "tab"
+            if Openers:IsPlayerSpellsTabSelected(spellbookTab) then
+                wasShown = true
+                return nil
+            end
+            if wasShown then return "tab" end
+            -- Open on another tab: Openers switches the tab with the frame
+            -- hidden and reshows it (the only tab switch that leaves the
+            -- highlight-mark globals secure); poll again next tick.
+            Openers:OpenPlayerSpellsFrame(spellbookTab)
+            return "opening"
         end
         if wasShown then return "closed" end
         if stepGuide then

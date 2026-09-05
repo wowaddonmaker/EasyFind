@@ -18,9 +18,10 @@ function Handlers:OpenTalentInTalentsTab(data)
             end
             return
         end
-        if not Openers:EnsurePlayerSpellsTab(TALENTS_TAB) then
-            -- Wrong tab: highlighted for a hardware click (see
-            -- EnsurePlayerSpellsTab); retry until the user lands on it.
+        if not Openers:IsPlayerSpellsTabSelected(TALENTS_TAB) then
+            -- Wrong tab: Openers hides, switches, reshows (the secure
+            -- render); poll until it lands.
+            Openers:OpenPlayerSpellsFrame(TALENTS_TAB)
             if attempt < 30 then
                 Utils.SafeAfter(0.05, function() ensureFrameOnTab(attempt + 1) end)
             end

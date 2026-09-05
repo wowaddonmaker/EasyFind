@@ -67,43 +67,36 @@ end
 
 local function OpenPlayerSpellsFrame(tabIndex)
     local frame = _G["PlayerSpellsFrame"]
-    if frame and frame:IsShown() then
-        EnsurePlayerSpellsTab(tabIndex)
+    if not frame and C_AddOns and C_AddOns.LoadAddOn then
+        C_AddOns.LoadAddOn("Blizzard_PlayerSpells")
+        frame = _G["PlayerSpellsFrame"]
+    end
+    if not frame then return ClickButton(_G["PlayerSpellsMicroButton"]) end
+    if frame:IsShown() and (not tabIndex or IsPlayerSpellsTabSelected(tabIndex)) then
         return true
     end
 
     -- The Blizzard opener path below reaches TrySetTab -> SetShown, which is
     -- protected on this frame in combat even through securecallfunction
     -- (measured ADDON_ACTION_BLOCKED). Refuse by capability, not category.
-    if InCombatLockdown() and (not frame
-        or (frame.IsProtected and frame:IsProtected())) then
+    if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then
         return false
     end
 
-    -- Opening PlayerSpellsFrame through the microbutton taints Blizzard's
-    -- ShowUIPanel/UIParent path. Call Blizzard's opener through
-    -- securecallfunction so later protected panel work, including
-    -- CharacterFrame status bars, does not inherit EasyFind taint.
-    -- ShowUIPanel only. The show runs through UIParent's own panel
-    -- handler and leaves the highlight-mark globals secure (spellopen
-    -- probe, 2026-09-05), while TogglePlayerSpellsFrame(tab) switched
-    -- the tab from our execution and rendered the spellbook under
-    -- EasyFind taint: every action-button hover afterwards tripped
-    -- ADDON_ACTION_BLOCKED (the Weapon Skills link autopsy). The tab is
-    -- never switched from here; EnsurePlayerSpellsTab highlights it for
-    -- the user's own click, the same as when the frame was already open.
-    if not frame and C_AddOns and C_AddOns.LoadAddOn then
-        C_AddOns.LoadAddOn("Blizzard_PlayerSpells")
-        frame = _G["PlayerSpellsFrame"]
-    end
-    if frame then
-        SecureShowUIPanel(frame)
-        if frame:IsShown() then
-            EnsurePlayerSpellsTab(tabIndex)
-            return true
-        end
-    end
-
+    -- The tab is switched while the frame is HIDDEN, then the frame is
+    -- shown through UIParent's own panel handler, so the spellbook renders
+    -- inside the secure show and the highlight-mark globals stay secure
+    -- (spellopen probe mode 8, 2026-09-05). Switching the tab on the shown
+    -- frame, whether through TogglePlayerSpellsFrame(tab), SetTab or
+    -- OpenToSpellBookTab, renders the items under EasyFind taint, and the
+    -- next spellbook hover writes the globals from that state: every
+    -- action-button hover afterwards trips ADDON_ACTION_BLOCKED (the
+    -- Weapon Skills link autopsy). A frame open on another tab is hidden
+    -- and reshown, one blink, on the right tab.
+    if frame:IsShown() then HideUIPanel(frame) end
+    if tabIndex and frame.SetTab then pcall(frame.SetTab, frame, tabIndex) end
+    SecureShowUIPanel(frame)
+    if frame:IsShown() then return true end
     return ClickButton(_G["PlayerSpellsMicroButton"])
 end
 
@@ -178,6 +171,10 @@ end
 
 function Openers:EnsurePlayerSpellsTab(tabIndex)
     return EnsurePlayerSpellsTab(tabIndex)
+end
+
+function Openers:IsPlayerSpellsTabSelected(tabIndex)
+    return IsPlayerSpellsTabSelected(tabIndex)
 end
 
 function Openers:OpenPlayerSpellsFrame(tabIndex)
