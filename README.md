@@ -52,7 +52,7 @@ Search from the world map with nested results built for location-first browsing:
     - **Guide**: Walk to the result with step-by-step highlights.
     - **Send**: Share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, or a whisper), or copy it to your clipboard.
     - **Wowhead**: Copy the result's Wowhead URL to your clipboard.
-    - **EasyFind link**: Send the result to chat as a link other EasyFind users can click to open it; everyone else sees plain text.
+    - **EasyFind link**: For results with no chat link of their own (settings, menus, map spots, macros, outfits), send the result to chat as a link other EasyFind users can click to open it; everyone else sees plain text.
   - Row-specific extras, for example:
     - **Achievements**: objective tracking.
     - **Currencies**: backpack pinning and currency transfer.

@@ -194,6 +194,7 @@ local KEY_PREFIX_PROVIDER = {
     ["reputation:"]    = "reputations",
     ["currency:"]      = "currencies",
     ["loot:"]          = "loot",
+    ["catalogitem:"]   = "appearanceItems",
 }
 
 local function RebindAfterPopulate()
