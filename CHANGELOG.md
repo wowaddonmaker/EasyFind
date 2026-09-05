@@ -4,7 +4,7 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
-## [3.2.0] - 2026-09-04
+## [3.2.0] - 2026-09-05
 
 ### Added
 - **What's New remembers what you missed**: the update popup lists every release you skipped since you last logged in, newest first, instead of only the latest
