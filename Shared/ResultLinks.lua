@@ -145,17 +145,138 @@ end
 
 -- ==== activation ===========================================================
 
--- Rows whose action can only run from a secure button click: casts, uses,
--- summons, macros. Panel openers (talents, spellbook-only abilities, micro
--- button entries) are secure on the row but open fine from insecure code
--- inside a hardware event, exactly as a shortkey press does.
-local function NeedsSecureClick(data)
+-- Rows that open the spellbook or talents (panel openers, and spells,
+-- which open where they live rather than cast) can only do so inside the
+-- user's own click on a secure button: a result row, a shortkey, or the
+-- prompt below. Running that open from a chat-link click, insecure code
+-- even inside a hardware event, drove the spellbook under EasyFind taint
+-- and planted the highlight-mark globals; every action-button hover
+-- afterwards tripped ADDON_ACTION_BLOCKED (the [BREAK] autopsy, Weapon
+-- Skills link, 2026-09-04). The link now hands the click to the user.
+local function NeedsHardwareClick(data)
     if ns.SecureOpeners and ns.SecureOpeners.OpenKeyForData
        and ns.SecureOpeners.OpenKeyForData(data) then
-        return false
+        return true
     end
+    return data.spellID ~= nil and data.category == "Ability"
+end
+
+-- Mounts, toys, macros, outfits: no secure action from the link either;
+-- they open where they live, the Alt+click route the rows take, which
+-- touches none of the protected panels.
+local function OpensInPlace(data)
     return ns.ResultIcons and ns.ResultIcons.IsSecureActionResult
         and ns.ResultIcons:IsSecureActionResult(data) or false
+end
+
+local function SelectInPlace(data)
+    local Handlers = ns.ResultHandlers
+    if not (Handlers and Handlers.SelectResult) then return end
+    Handlers._openInPlace = true
+    local handler = _G["geterrorhandler"] and _G["geterrorhandler"]() or print
+    xpcall(Handlers.SelectResult, handler, Handlers, data)
+    Handlers._openInPlace = nil
+end
+
+-- ==== hardware-click prompt ================================================
+
+local prompt
+
+local function HidePrompt()
+    if prompt and prompt:IsShown() then prompt:Hide() end
+end
+
+local function PromptPreClick(self, _, down)
+    if not down or InCombatLockdown() then return end
+    local data = self.data
+    local Secure = ns.ResultSecureAttributes
+    if not (data and Secure) then return end
+    Secure.ApplyAtClick(self, data)
+    -- A castable spell swaps its cast for the spellbook open, as the
+    -- rows do under Alt.
+    if data.spellID and data.category == "Ability" and Secure.SwapToPanelOpen
+       and not (ns.ResultIcons and ns.ResultIcons.IsSpellbookOnlyAbility
+                and ns.ResultIcons:IsSpellbookOnlyAbility(data)) then
+        Secure.SwapToPanelOpen(self)
+    end
+end
+
+local function PromptPostClick(self, _, down)
+    if InCombatLockdown() then return end
+    local data = self.data
+    if not data then return end
+    -- Panel openers act on release, so the secure macro has run by now;
+    -- the reveal inside the panel (reads and highlights only) follows.
+    local Secure = ns.ResultSecureAttributes
+    local opensPanel = Secure and Secure.ActsOnRelease(self, data)
+    if opensPanel then
+        if down then return end
+    elseif not down then
+        return
+    end
+    HidePrompt()
+    SelectInPlace(data)
+end
+
+local function EnsurePrompt()
+    if prompt then return prompt end
+    local f = CreateFrame("Frame", "EasyFindLinkPrompt", UIParent, "BackdropTemplate")
+    f:SetFrameStrata("DIALOG")
+    f:SetClampedToScreen(true)
+    f:EnableMouse(true)
+    if ns.StyleMenuPanel then ns.StyleMenuPanel(f) end
+    local btn = CreateFrame("Button", "EasyFindLinkPromptButton", f, "SecureActionButtonTemplate")
+    btn:SetPoint("TOPLEFT", f, "TOPLEFT", 4, -4)
+    btn:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -4, 4)
+    btn:RegisterForClicks("LeftButtonDown", "LeftButtonUp")
+    btn:SetScript("PreClick", PromptPreClick)
+    btn:SetScript("PostClick", PromptPostClick)
+    local wash = btn:CreateTexture(nil, "HIGHLIGHT")
+    wash:SetAllPoints()
+    wash:SetColorTexture(1, 1, 1, 0.08)
+    btn.label = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    btn.label:SetPoint("TOPLEFT", btn, "TOPLEFT", 10, -8)
+    btn.label:SetJustifyH("LEFT")
+    btn.hint = btn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    btn.hint:SetPoint("TOPLEFT", btn.label, "BOTTOMLEFT", 0, -3)
+    btn.hint:SetJustifyH("LEFT")
+    f.button = btn
+    -- Click-away and combat dismiss it; the frame is a plain container,
+    -- so hiding it is allowed even though the button inside is secure.
+    f:SetScript("OnEvent", function(self, event)
+        if event == "GLOBAL_MOUSE_DOWN" then
+            if not self:IsMouseOver() then HidePrompt() end
+        else
+            HidePrompt()
+        end
+    end)
+    f:SetScript("OnShow", function(self)
+        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+        self:RegisterEvent("PLAYER_REGEN_DISABLED")
+    end)
+    f:SetScript("OnHide", function(self)
+        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+        self:UnregisterEvent("PLAYER_REGEN_DISABLED")
+        self.button.data = nil
+    end)
+    table.insert(UISpecialFrames, "EasyFindLinkPrompt")
+    prompt = f
+    return f
+end
+
+local function ShowPrompt(data)
+    local f = EnsurePrompt()
+    local btn = f.button
+    btn.data = data
+    btn.label:SetText(PlainName(data) or data.name or "")
+    btn.hint:SetText(L["EFLINK_PROMPT_HINT"])
+    local w = math.max(btn.label:GetStringWidth() or 0, btn.hint:GetStringWidth() or 0) + 28
+    f:SetSize(math.max(150, math.floor(w + 0.5)), 46)
+    local x, y = GetCursorPosition()
+    local scale = UIParent:GetEffectiveScale()
+    f:ClearAllPoints()
+    f:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + 10, y / scale + 10)
+    f:Show()
 end
 
 local function Activate(data)
@@ -164,17 +285,19 @@ local function Activate(data)
        and ns.ResultRows:ActivateSettingResult(data) then
         return
     end
-    if not (Handlers and Handlers.SelectResult) then return end
-    if not NeedsSecureClick(data) then
-        Handlers:SelectResult(data)
+    if NeedsHardwareClick(data) then
+        if InCombatLockdown() then
+            if EasyFind and EasyFind.Print then EasyFind:Print(L["EFLINK_IN_COMBAT"]) end
+        else
+            ShowPrompt(data)
+        end
         return
     end
-    -- Secure kinds take the Alt+click route: SelectResult reads the flag
-    -- through IsSourceModifierHeld and opens the row where it lives.
-    Handlers._openInPlace = true
-    local handler = _G["geterrorhandler"] and _G["geterrorhandler"]() or print
-    xpcall(Handlers.SelectResult, handler, Handlers, data)
-    Handlers._openInPlace = nil
+    if OpensInPlace(data) then
+        SelectInPlace(data)
+        return
+    end
+    if Handlers and Handlers.SelectResult then Handlers:SelectResult(data) end
 end
 
 local function Resolve(key)
