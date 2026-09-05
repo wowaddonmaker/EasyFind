@@ -7200,7 +7200,9 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
         -- the same idea (share this row), so they sit together.
         rows[#rows + 1] = {
             text = L["CTX_EASYFIND_LINK"],
-            sortKey = L["CTX_SEND_LINK"] .. "",
+            sortKey = L["CTX_SEND_LINK"] .. "\1",
+            tooltip = L["EFLINK_ROW_TT"],
+            tooltipNote = L["EFLINK_ROW_TT_NOTE"],
             submenu = extra.easyFindLinkRows,
         }
     end
