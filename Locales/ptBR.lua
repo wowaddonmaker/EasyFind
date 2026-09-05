@@ -259,7 +259,7 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "Cancelar"
 L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r! Veja o resumo da atualização %s."
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
-L["WHATSNEW_BODY_3_1_0"]                =
+L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffFragmentos|r\n" ..
     "    |cff999999-|r Salve um texto reutilizável uma vez e digite \\palavrachave para expandi-lo no bate-papo enquanto digita, ou direto em um macro\n" ..
     "|cffFFD100\226\128\162|r |cffffffffBusca na janela de macros|r\n" ..

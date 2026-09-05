@@ -560,10 +560,10 @@ local SUGGESTED_KEYBINDS = {
 -- Chat-hello hyperlink. Clicking the link in the welcome message opens the
 -- restyled What's New popup. SetItemRef receives any |H...|h chat link, so
 -- our custom prefix is detected before falling through to Blizzard's handler.
--- What's New content is one locale entry per announced release
--- (ns.WhatsNewEntries); the newest entry's version is the announcement gate,
--- and the link carries the version the user upgraded FROM so the popup can
--- show everything they missed.
+-- The version whose features the What's New popup currently describes. Bump
+-- ONLY when the popup content is rewritten; patch releases that keep the same
+-- content must not re-announce it to users who already saw it.
+local WHATSNEW_CONTENT_VERSION = "3.1.0"
 
 local WHATSNEW_LINK_PREFIX = "easyfind:whatsnew:"
 local whatsNewHookInstalled = false
@@ -578,10 +578,9 @@ local function InstallWhatsNewHyperlinkHook()
     -- types, so observing after it is sufficient for our custom prefix.
     hooksecurefunc("SetItemRef", function(link, text, button, chatFrame)
         if link and link:sub(1, #WHATSNEW_LINK_PREFIX) == WHATSNEW_LINK_PREFIX then
-            local since = link:sub(#WHATSNEW_LINK_PREFIX + 1)
-            if since == "" then since = nil end
+            local version = link:sub(#WHATSNEW_LINK_PREFIX + 1)
             if ns.RequestOnboarding() and ns.Onboarding.ShowWhatsNew then
-                xpcall(ns.Onboarding.ShowWhatsNew, ErrorHandler, ns.Onboarding, since)
+                xpcall(ns.Onboarding.ShowWhatsNew, ErrorHandler, ns.Onboarding, version)
             end
         end
     end)
@@ -595,9 +594,9 @@ local function BlueChatLink(target, label)
         LC[1] * 255, LC[2] * 255, LC[3] * 255, target, label)
 end
 
-local function ShowWhatsNewChatMessage(version, since)
+local function ShowWhatsNewChatMessage(version)
     local v = version or "?"
-    local link = BlueChatLink(WHATSNEW_LINK_PREFIX .. (since or ""), L["WHATSNEW_CHAT_HERE"])
+    local link = BlueChatLink(WHATSNEW_LINK_PREFIX .. v, L["WHATSNEW_CHAT_HERE"])
     local msg = sformat(L["WHATSNEW_CHAT_HELLO"], v, link)
     -- Plain print: the hello already carries the green brand, so the
     -- usual "EasyFind:" Print prefix would say the name twice.
@@ -692,7 +691,7 @@ local function OnInitialize()
                 EasyFind.db.tutorialDone = false
                 ns.Wizard:Show()
             elseif ns.Onboarding.ShowWhatsNew then
-                ns.Onboarding:ShowWhatsNew(nil)
+                ns.Onboarding:ShowWhatsNew(ns.version)
             end
         elseif msg == "help" or msg == "h" or msg == "?" then
             EasyFind:Print(L["CMD_HEADER"])
@@ -1035,7 +1034,7 @@ local function OnPlayerLogin()
                 -- the new-player tutorial rather than a What's New notice.
                 EasyFind.db.tutorialDone = false
             elseif EasyFind.db.tutorialDone
-                and CompareVersion(lastSeen, ns.WhatsNewLatestVersion() or "0") < 0 then
+                and CompareVersion(lastSeen, WHATSNEW_CONTENT_VERSION) < 0 then
                 -- Existing user already past the tutorial, upgrading across the
                 -- release the What's New content describes: point them at it
                 -- with a clickable chat link. Users who already saw this
@@ -1045,7 +1044,7 @@ local function OnPlayerLogin()
                 -- exclusive: anyone who still has the tutorial pending gets the
                 -- tutorial only, never the chat line.
                 SafeAfter(2.0, function()
-                    ShowWhatsNewChatMessage(currentVersion, lastSeen)
+                    ShowWhatsNewChatMessage(currentVersion)
                 end)
             end
         end

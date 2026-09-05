@@ -259,7 +259,7 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "Cancelar"
 L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a |cFF00FF00EasyFind v%s|r! Mira el resumen de novedades %s."
 L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver el registro de cambios completo"
-L["WHATSNEW_BODY_3_1_0"]                =
+L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffFragmentos|r\n" ..
     "    |cff999999-|r Guarda texto reutilizable una vez y escribe \\palabraclave para expandirlo en el chat mientras escribes, o directamente en un macro\n" ..
     "|cffFFD100\226\128\162|r |cffffffffBúsqueda en la ventana de macros|r\n" ..

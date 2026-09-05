@@ -280,9 +280,9 @@ L["POPUP_UNAPPLIED_APPLY"]              = "Apply and Exit"
 L["POPUP_UNAPPLIED_CANCEL"]             = "Cancel"
 L["WHATSNEW_CHAT_HELLO"]                = "Welcome to |cFF00FF00EasyFind v%s|r! See update summary %s."
 L["WHATSNEW_CHAT_HERE"]                 = "here"
--- One entry per announced release (WHATSNEW_BODY_<x>_<y>_<z>), newest first; never rewrite an old one.
+-- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
-L["WHATSNEW_BODY_3_1_0"]                =
+L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffSnippets|r\n" ..
     "    |cff999999-|r Save reusable text once, then type \\keyword to expand it in chat as you type, or straight into a macro\n" ..
     "|cffFFD100\226\128\162|r |cffffffffMacro window search|r\n" ..

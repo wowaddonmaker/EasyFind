@@ -259,7 +259,7 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "取消"
 L["WHATSNEW_CHAT_HELLO"]                = "歡迎使用|cFF00FF00EasyFind v%s|r！點擊%s查看更新摘要。"
 L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日誌"
-L["WHATSNEW_BODY_3_1_0"]                =
+L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffff文字片段|r\n" ..
     "    |cff999999-|r 保存一次可重複使用的文字，輸入 \\關鍵字 即可在聊天中邊打邊展開，或直接寫入巨集\n" ..
     "|cffFFD100\226\128\162|r |cffffffff巨集視窗搜尋|r\n" ..
