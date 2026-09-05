@@ -282,11 +282,6 @@ L["WHATSNEW_CHAT_HELLO"]                = "Welcome to |cFF00FF00EasyFind v%s|r! 
 L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- One entry per announced release (WHATSNEW_BODY_<x>_<y>_<z>), newest first; never rewrite an old one.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
-L["WHATSNEW_BODY_3_2_0"] =
-    "|cffFFD100\226\128\162|r |cffffffffSnippets is its own addon|r\n" ..
-    "    |cff999999-|r Snippets now lives in EasyFind [Snippets], which you can disable in the AddOns list like any companion\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSharper search|r\n" ..
-    "    |cff999999-|r Results no longer reshuffle after you stop typing, dungeon nicknames rank like everything else, and typos, punctuation and colored addon names all find their rows"
 L["WHATSNEW_BODY_3_1_0"]                =
     "|cffFFD100\226\128\162|r |cffffffffSnippets|r\n" ..
     "    |cff999999-|r Save reusable text once, then type \\keyword to expand it in chat as you type, or straight into a macro\n" ..

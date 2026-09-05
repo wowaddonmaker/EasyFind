@@ -2,7 +2,7 @@
 ## Title: EasyFind [Snippets]
 ## Notes: Reusable text snippets companion for EasyFind
 ## Author: justawower
-## Version: 3.2.0
+## Version: 3.1.2
 ## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
 ## Group: EasyFind
 ## Category: UI

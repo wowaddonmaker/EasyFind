@@ -259,11 +259,6 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "Annuler"
 L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans |cFF00FF00EasyFind v%s|r ! Consultez le résumé des nouveautés %s."
 L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
-L["WHATSNEW_BODY_3_2_0"] =
-    "|cffFFD100\226\128\162|r |cffffffffSnippets est un addon à part|r\n" ..
-    "    |cff999999-|r Snippets vit désormais dans EasyFind [Snippets] et se désactive dans la liste des addons comme tout compagnon\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffRecherche plus précise|r\n" ..
-    "    |cff999999-|r Les résultats ne se réorganisent plus après la saisie, les surnoms de donjons sont classés comme le reste, et les fautes de frappe, la ponctuation et les noms d'addon colorés trouvent leurs lignes"
 L["WHATSNEW_BODY_3_1_0"]                =
     "|cffFFD100\226\128\162|r |cffffffffFragments|r\n" ..
     "    |cff999999-|r Enregistrez un texte réutilisable une fois, puis tapez \\motclé pour le déployer dans le chat pendant la frappe, ou directement dans une macro\n" ..
