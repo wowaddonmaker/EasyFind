@@ -543,7 +543,9 @@ local function OpenSpellbookHiddenAt(data)
         local targetPage = FindTargetPage(paged, data)
         if targetPage then pcall(controls.SetCurrentPage, controls, targetPage) end
     end
-    Openers:SecureShowUIPanel(frame)
+    -- Shown as secure code (see Openers): the frame's OnShow writes the
+    -- action bars' grid state, and under our taint that blocked hovers.
+    Openers:SecureShowPanel(frame)
     return frame:IsShown()
 end
 

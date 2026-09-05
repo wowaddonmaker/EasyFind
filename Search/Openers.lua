@@ -34,21 +34,46 @@ end
 -- restricted-environment snippet hides the frame as secure code, so the
 -- hide handler's writes stay secure. The following ShowUIPanel finds the
 -- frame hidden and places it as usual.
-local hideHandler
+-- Showing the spellbook is the same story: PlayerSpellsFrame's OnShow
+-- tells the action bars to show every button (MultiActionBar_ShowAllGrids
+-- with the spell-collection reason), and ActionBarMixin:SetShowGrid
+-- writes bar.showAllButtons whether or not the caller is secure. Shown
+-- from addon code, ShowUIPanel included, that write carries our taint and
+-- UpdateShownButtons trips ADDON_ACTION_BLOCKED on the next hover. So
+-- the frame is shown and hidden through a restricted-environment
+-- snippet, which runs as secure code whoever triggers it; the panel
+-- manager is then asked to place the frame.
+local secureHandler
+local function SecureFrameCall(frame, body)
+    local execute, setRef = _G["SecureHandlerExecute"], _G["SecureHandlerSetFrameRef"]
+    if not (execute and setRef) then return false end
+    if not secureHandler then
+        secureHandler = CreateFrame("Frame", "EasyFindSecurePanelHandler", UIParent, "SecureHandlerBaseTemplate")
+    end
+    setRef(secureHandler, "target", frame)
+    execute(secureHandler, body)
+    return true
+end
+
 local function SecureHideUIPanel(frame)
     if not frame or not frame:IsShown() then return true end
     if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then return false end
-    local execute, setRef = _G["SecureHandlerExecute"], _G["SecureHandlerSetFrameRef"]
-    if not (execute and setRef) then
+    if not SecureFrameCall(frame, [[ self:GetFrameRef("target"):Hide() ]]) then
         HideUIPanel(frame)
-        return not frame:IsShown()
     end
-    if not hideHandler then
-        hideHandler = CreateFrame("Frame", "EasyFindSecureHideHandler", UIParent, "SecureHandlerBaseTemplate")
-    end
-    setRef(hideHandler, "target", frame)
-    execute(hideHandler, [[ self:GetFrameRef("target"):Hide() ]])
     return not frame:IsShown()
+end
+
+local function SecureShowPanel(frame)
+    if not frame then return false end
+    if frame:IsShown() then return true end
+    if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then return false end
+    if not SecureFrameCall(frame, [[ self:GetFrameRef("target"):Show() ]]) then
+        return SecureShowUIPanel(frame)
+    end
+    local place = _G["UpdateUIPanelPositions"]
+    if place and frame:IsShown() then pcall(place, frame) end
+    return frame:IsShown()
 end
 
 local function IsPlayerSpellsTabSelected(tabIndex)
@@ -119,7 +144,7 @@ local function OpenPlayerSpellsFrame(tabIndex)
     -- and reshown, one blink, on the right tab.
     if not SecureHideUIPanel(frame) then return false end
     if tabIndex and frame.SetTab then pcall(frame.SetTab, frame, tabIndex) end
-    SecureShowUIPanel(frame)
+    SecureShowPanel(frame)
     if frame:IsShown() then return true end
     return ClickButton(_G["PlayerSpellsMicroButton"])
 end
@@ -203,6 +228,10 @@ end
 
 function Openers:SecureHideUIPanel(frame)
     return SecureHideUIPanel(frame)
+end
+
+function Openers:SecureShowPanel(frame)
+    return SecureShowPanel(frame)
 end
 
 function Openers:OpenPlayerSpellsFrame(tabIndex)
