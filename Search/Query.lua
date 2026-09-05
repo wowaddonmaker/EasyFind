@@ -411,6 +411,24 @@ function Search:OnSearchTextChangedNow(text, force)
     -- dropped when `combined` is built, keyed by data identity in
     -- SCRATCH.aliasSeen, which must stay populated until then.
     wipe(SCRATCH.aliasSeen)
+    SCRATCH.aliasSeenKeys = SCRATCH.aliasSeenKeys or {}
+    wipe(SCRATCH.aliasSeenKeys)
+    -- A promoted row (alias or learned pick) is remembered by object AND
+    -- by row key: a pick resolved through the key index or a snapshot can
+    -- be a different table than the natural row for the same thing, and
+    -- identity alone then let the natural copy through (the pick at the
+    -- top and the row again in its place, zip test 2026-09-05).
+    local function MarkPromoted(promoted, data)
+        promoted[data] = true
+        local key = ns.Aliases and ns.Aliases.GetEntryKey and ns.Aliases:GetEntryKey(data)
+        if key then SCRATCH.aliasSeenKeys[key] = true end
+    end
+    local function IsPromoted(promoted, data)
+        if promoted[data] then return true end
+        if next(SCRATCH.aliasSeenKeys) == nil then return false end
+        local key = ns.Aliases and ns.Aliases.GetEntryKey and ns.Aliases:GetEntryKey(data)
+        return key and SCRATCH.aliasSeenKeys[key] or false
+    end
     wipe(SCRATCH.mapBoostSeen)
     wipe(SCRATCH.catalogBoostSeen)
     local seenMapRows = SCRATCH.mapBoostSeen
@@ -449,8 +467,8 @@ function Search:OnSearchTextChangedNow(text, force)
                     wrapped.query = (hit.alias and hit.alias.text) or text
                     seenMapRows[MapRowKey(wrapped)] = true
                     tinsert(results, 1, { data = wrapped, score = aliasScore, isAlias = true })
-                elseif data and not promoted[data] then
-                    promoted[data] = true
+                elseif data and not IsPromoted(promoted, data) then
+                    MarkPromoted(promoted, data)
                     if data.catalogItem and data.itemID then
                         seenCatalogItems[data.itemID] = true
                     end
@@ -512,8 +530,8 @@ function Search:OnSearchTextChangedNow(text, force)
                 wrapped.query = text
                 seenMapRows[MapRowKey(wrapped)] = true
                 tinsert(results, 1, { data = wrapped, score = LEARNED_SCORE, isAlias = true })
-            elseif not promoted[learned] then
-                promoted[learned] = true
+            elseif not IsPromoted(promoted, learned) then
+                MarkPromoted(promoted, learned)
                 if learned.catalogItem and learned.itemID then
                     seenCatalogItems[learned.itemID] = true
                 end
@@ -707,7 +725,7 @@ function Search:OnSearchTextChangedNow(text, force)
     local promoted = SCRATCH.aliasSeen
     for ri = 1, #results do
         local r = results[ri]
-        if r.isAlias or not promoted[r.data] then
+        if r.isAlias or not IsPromoted(promoted, r.data) then
             combined[#combined + 1] = r
         end
     end
@@ -805,6 +823,7 @@ function Search:OnSearchTextChangedNow(text, force)
                 local entry = achHits[ai]
                 local score = ns.Database:ScoreName(entry.nameLower, lowerQ, qLen)
                 if score and score > 0
+                   and not IsPromoted(SCRATCH.aliasSeen, entry)
                    and not (hideGuildAchievements and self:IsGuildAchievementData(entry))
                    and not (statisticsOff and entry.achievementID
                             and ns.Database:IsStatisticAchievement(entry.achievementID)) then
