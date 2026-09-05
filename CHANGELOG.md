@@ -7,7 +7,6 @@ All notable changes to EasyFind will be documented in this file.
 ## [3.2.0] - 2026-09-04
 
 ### Added
-- **EasyFind links**: right-click a result and choose EasyFind link to send it to a chat channel, a whisper, or your clipboard. Anyone running EasyFind sees a clickable link that opens that result on their side, the same as clicking it in their own search; everyone else sees plain text. Abilities, talents, mounts, toys, outfits, and macros open where they live (spellbook, talent window, journal, toy box, transmog, macro window), since a chat link cannot cast or use. Catalog items, where the item link already shows everything, keep their normal link. Ctrl+Shift+C on a row copies its EasyFind link the way Ctrl+C copies its chat link
 - **What's New remembers what you missed**: the update popup lists every release you skipped since you last logged in, newest first, instead of only the latest
 
 ### Changed

@@ -27,55 +27,6 @@ local function SecureShowUIPanel(frame)
     return SecureCall(ShowUIPanel, frame)
 end
 
--- Hiding a UI panel from addon code runs its OnHide under our taint: the
--- spellbook's hide handler tells the action bars to stop showing every
--- button, and that written flag then blocks the next action-button hover
--- (MultiBarBottomLeftButton1:SetShown, the Weapon Skills link). A
--- restricted-environment snippet hides the frame as secure code, so the
--- hide handler's writes stay secure. The following ShowUIPanel finds the
--- frame hidden and places it as usual.
--- Showing the spellbook is the same story: PlayerSpellsFrame's OnShow
--- tells the action bars to show every button (MultiActionBar_ShowAllGrids
--- with the spell-collection reason), and ActionBarMixin:SetShowGrid
--- writes bar.showAllButtons whether or not the caller is secure. Shown
--- from addon code, ShowUIPanel included, that write carries our taint and
--- UpdateShownButtons trips ADDON_ACTION_BLOCKED on the next hover. So
--- the frame is shown and hidden through a restricted-environment
--- snippet, which runs as secure code whoever triggers it; the panel
--- manager is then asked to place the frame.
-local secureHandler
-local function SecureFrameCall(frame, body)
-    local execute, setRef = _G["SecureHandlerExecute"], _G["SecureHandlerSetFrameRef"]
-    if not (execute and setRef) then return false end
-    if not secureHandler then
-        secureHandler = CreateFrame("Frame", "EasyFindSecurePanelHandler", UIParent, "SecureHandlerBaseTemplate")
-    end
-    setRef(secureHandler, "target", frame)
-    execute(secureHandler, body)
-    return true
-end
-
-local function SecureHideUIPanel(frame)
-    if not frame or not frame:IsShown() then return true end
-    if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then return false end
-    if not SecureFrameCall(frame, [[ self:GetFrameRef("target"):Hide() ]]) then
-        HideUIPanel(frame)
-    end
-    return not frame:IsShown()
-end
-
-local function SecureShowPanel(frame)
-    if not frame then return false end
-    if frame:IsShown() then return true end
-    if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then return false end
-    if not SecureFrameCall(frame, [[ self:GetFrameRef("target"):Show() ]]) then
-        return SecureShowUIPanel(frame)
-    end
-    local place = _G["UpdateUIPanelPositions"]
-    if place and frame:IsShown() then pcall(place, frame) end
-    return frame:IsShown()
-end
-
 local function IsPlayerSpellsTabSelected(tabIndex)
     local frame = _G["PlayerSpellsFrame"]
     if not frame then return false end
@@ -116,36 +67,28 @@ end
 
 local function OpenPlayerSpellsFrame(tabIndex)
     local frame = _G["PlayerSpellsFrame"]
-    if not frame and C_AddOns and C_AddOns.LoadAddOn then
-        C_AddOns.LoadAddOn("Blizzard_PlayerSpells")
-        frame = _G["PlayerSpellsFrame"]
-    end
-    if not frame then return ClickButton(_G["PlayerSpellsMicroButton"]) end
-    if frame:IsShown() and (not tabIndex or IsPlayerSpellsTabSelected(tabIndex)) then
+    if frame and frame:IsShown() then
+        EnsurePlayerSpellsTab(tabIndex)
         return true
     end
 
     -- The Blizzard opener path below reaches TrySetTab -> SetShown, which is
     -- protected on this frame in combat even through securecallfunction
     -- (measured ADDON_ACTION_BLOCKED). Refuse by capability, not category.
-    if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then
+    if InCombatLockdown() and (not frame
+        or (frame.IsProtected and frame:IsProtected())) then
         return false
     end
 
-    -- The tab is switched while the frame is HIDDEN, then the frame is
-    -- shown through UIParent's own panel handler, so the spellbook renders
-    -- inside the secure show and the highlight-mark globals stay secure
-    -- (spellopen probe mode 8, 2026-09-05). Switching the tab on the shown
-    -- frame, whether through TogglePlayerSpellsFrame(tab), SetTab or
-    -- OpenToSpellBookTab, renders the items under EasyFind taint, and the
-    -- next spellbook hover writes the globals from that state: every
-    -- action-button hover afterwards trips ADDON_ACTION_BLOCKED (the
-    -- Weapon Skills link autopsy). A frame open on another tab is hidden
-    -- and reshown, one blink, on the right tab.
-    if not SecureHideUIPanel(frame) then return false end
-    if tabIndex and frame.SetTab then pcall(frame.SetTab, frame, tabIndex) end
-    SecureShowPanel(frame)
-    if frame:IsShown() then return true end
+    -- Opening PlayerSpellsFrame through the microbutton taints Blizzard's
+    -- ShowUIPanel/UIParent path. Call Blizzard's opener through
+    -- securecallfunction so later protected panel work, including
+    -- CharacterFrame status bars, does not inherit EasyFind taint.
+    local util = _G.PlayerSpellsUtil
+    if util and SecureCall(util.TogglePlayerSpellsFrame, tabIndex) then
+        return true
+    end
+
     return ClickButton(_G["PlayerSpellsMicroButton"])
 end
 
@@ -220,18 +163,6 @@ end
 
 function Openers:EnsurePlayerSpellsTab(tabIndex)
     return EnsurePlayerSpellsTab(tabIndex)
-end
-
-function Openers:IsPlayerSpellsTabSelected(tabIndex)
-    return IsPlayerSpellsTabSelected(tabIndex)
-end
-
-function Openers:SecureHideUIPanel(frame)
-    return SecureHideUIPanel(frame)
-end
-
-function Openers:SecureShowPanel(frame)
-    return SecureShowPanel(frame)
 end
 
 function Openers:OpenPlayerSpellsFrame(tabIndex)

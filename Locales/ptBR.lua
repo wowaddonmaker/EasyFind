@@ -259,9 +259,11 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "Cancelar"
 L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r! Veja o resumo da atualização %s."
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
-L["WHATSNEW_BODY_3_2_0"]                =
-    "|cffFFD100\226\128\162|r |cffffffffLinks do EasyFind|r\n" ..
-    "    |cff999999-|r Clique com o botão direito em um resultado, escolha Link do EasyFind e envie no bate-papo: quem tem o EasyFind clica para abrir esse resultado, os demais veem texto comum"
+L["WHATSNEW_BODY_3_2_0"] =
+    "|cffFFD100\226\128\162|r |cffffffffSnippets é um addon próprio|r\n" ..
+    "    |cff999999-|r Snippets agora fica em EasyFind [Snippets] e pode ser desativado na lista de addons como qualquer companheiro\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffBusca mais precisa|r\n" ..
+    "    |cff999999-|r Os resultados não se reorganizam mais depois que você para de digitar, apelidos de masmorras são classificados como tudo o mais, e erros de digitação, pontuação e nomes de addon coloridos encontram suas linhas"
 L["WHATSNEW_BODY_3_1_0"]                =
     "|cffFFD100\226\128\162|r |cffffffffFragmentos|r\n" ..
     "    |cff999999-|r Salve um texto reutilizável uma vez e digite \\palavrachave para expandi-lo no bate-papo enquanto digita, ou direto em um macro\n" ..

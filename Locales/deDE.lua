@@ -261,9 +261,11 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "Abbrechen"
 L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s|r! Die Neuerungen findest du %s."
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
-L["WHATSNEW_BODY_3_2_0"]                =
-    "|cffFFD100\226\128\162|r |cffffffffEasyFind-Links|r\n" ..
-    "    |cff999999-|r Rechtsklick auf ein Ergebnis, EasyFind-Link wählen und in den Chat senden: Wer EasyFind hat, klickt darauf und öffnet das Ergebnis, alle anderen sehen normalen Text"
+L["WHATSNEW_BODY_3_2_0"] =
+    "|cffFFD100\226\128\162|r |cffffffffSnippets ist ein eigenes Addon|r\n" ..
+    "    |cff999999-|r Snippets liegt jetzt in EasyFind [Snippets] und lässt sich in der AddOn-Liste wie jeder Begleiter deaktivieren\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffSchärfere Suche|r\n" ..
+    "    |cff999999-|r Ergebnisse springen nach dem Tippen nicht mehr um, Dungeon-Spitznamen werden wie alles andere gereiht, und Tippfehler, Satzzeichen und farbige Addon-Namen finden ihre Zeilen"
 L["WHATSNEW_BODY_3_1_0"]                =
     "|cffFFD100\226\128\162|r |cffffffffTextbausteine|r\n" ..
     "    |cff999999-|r Speichere wiederverwendbaren Text einmal und tippe \\Schlüsselwort, um ihn im Chat beim Tippen zu erweitern, oder direkt in ein Makro\n" ..

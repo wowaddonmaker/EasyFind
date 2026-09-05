@@ -259,9 +259,11 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "취소"
 L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 것을 환영합니다! 업데이트 요약은 %s에서 확인하세요."
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
-L["WHATSNEW_BODY_3_2_0"]                =
-    "|cffFFD100\226\128\162|r |cffffffffEasyFind 링크|r\n" ..
-    "    |cff999999-|r 결과를 우클릭해 EasyFind 링크를 선택하고 대화창으로 보내세요: EasyFind가 있는 사람은 클릭해 그 결과를 열고, 나머지는 일반 텍스트로 봅니다"
+L["WHATSNEW_BODY_3_2_0"] =
+    "|cffFFD100\226\128\162|r |cffffffffSnippets는 이제 별도 애드온입니다|r\n" ..
+    "    |cff999999-|r Snippets는 이제 EasyFind [Snippets]에 있으며 다른 동반 애드온처럼 애드온 목록에서 끌 수 있습니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff더 정확한 검색|r\n" ..
+    "    |cff999999-|r 입력을 멈춘 뒤 결과가 뒤섞이지 않고, 던전 별칭도 다른 항목처럼 정렬되며, 오타와 문장부호, 색이 들어간 애드온 이름도 해당 행을 찾습니다"
 L["WHATSNEW_BODY_3_1_0"]                =
     "|cffFFD100\226\128\162|r |cffffffff스니펫|r\n" ..
     "    |cff999999-|r 재사용할 텍스트를 한 번 저장하고 \\키워드를 입력하면 대화창에서 입력 중에 확장되거나 매크로에 바로 들어갑니다\n" ..

@@ -259,9 +259,11 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "取消"
 L["WHATSNEW_CHAT_HELLO"]                = "歡迎使用|cFF00FF00EasyFind v%s|r！點擊%s查看更新摘要。"
 L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日誌"
-L["WHATSNEW_BODY_3_2_0"]                =
-    "|cffFFD100\226\128\162|r |cffffffffEasyFind 連結|r\n" ..
-    "    |cff999999-|r 右鍵點擊結果，選擇 EasyFind 連結並傳送到聊天：裝有 EasyFind 的人點擊即可開啟該結果，其他人看到的是一般文字"
+L["WHATSNEW_BODY_3_2_0"] =
+    "|cffFFD100\226\128\162|r |cffffffffSnippets 成為獨立插件|r\n" ..
+    "    |cff999999-|r Snippets 現在位於 EasyFind [Snippets]，可像其他配套插件一樣在插件清單中停用\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff更精準的搜尋|r\n" ..
+    "    |cff999999-|r 停止輸入後結果不再重新排序，地城暱稱與其他項目一樣排序，拼字錯誤、標點和帶顏色的插件名稱都能找到對應列"
 L["WHATSNEW_BODY_3_1_0"]                =
     "|cffFFD100\226\128\162|r |cffffffff文字片段|r\n" ..
     "    |cff999999-|r 保存一次可重複使用的文字，輸入 \\關鍵字 即可在聊天中邊打邊展開，或直接寫入巨集\n" ..
