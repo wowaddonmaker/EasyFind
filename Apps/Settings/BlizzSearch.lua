@@ -1844,7 +1844,7 @@ local function CollectCuratedGameEntries(resolveCategoryIDs, useApiNames)
             -- category ID); catName stays English as the stable nav key. Add
             -- the localized name as a keyword so it stays searchable too.
             local displayCat = (catID and localizedNameByCategoryID[catID]) or catName
-            if displayCat ~= catName then kw[#kw + 1] = slower(displayCat) end
+            if displayCat ~= catName then kw[#kw + 1] = SearchLower(displayCat) end
             local mt = GetSettingsCatMT("Game Settings", catName, catID,
                 { "Game Settings", displayCat })
             tinsert(entries, setmetatable({
@@ -2362,7 +2362,7 @@ local function CollectKeybindings()
             -- on every one of ~250 bindings and flooded results. "keybind" /
             -- "binding" (intentional queries) and the action's own name/header
             -- still match; the Keybindings panel is found by its name.
-            local kw = { "keybind", "binding", nameLower, slower(header) }
+            local kw = { "keybind", "binding", nameLower, SearchLower(header) }
             local extraKw = TOGGLE_BINDING_KEYWORDS[action]
             if extraKw then
                 for j = 1, #extraKw do
@@ -2504,8 +2504,8 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix, entryCatego
         local label = d.cbLabel or d.name
         if cvok and dvok and cvar and dvar and label and label ~= "" then
             local settingOptions = GetInitializerOptions(init, dd)
-            local nameLower = slower(label)
-            local kw = { "setting", "option", "config", nameLower, slower(catName or "") }
+            local nameLower = SearchLower(label)
+            local kw = { "setting", "option", "config", nameLower, SearchLower(catName or "") }
             AddOptionLabelKeywords(kw, settingOptions)
             tinsert(out, setmetatable({
                 name = label,
@@ -2542,8 +2542,8 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix, entryCatego
             if not (nok and settingName and settingName ~= "") then return end
             local displayName = settingName
             if isRaid then displayName = settingName .. " (" .. (_G["RAID"] or "Raid") .. ")" end
-            local nameLower = slower(displayName)
-            local kw = { "setting", "option", "config", nameLower, slower(catName or "") }
+            local nameLower = SearchLower(displayName)
+            local kw = { "setting", "option", "config", nameLower, SearchLower(catName or "") }
             tinsert(out, setmetatable({
                 name = displayName,
                 nameLower = nameLower,
@@ -2626,10 +2626,10 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix, entryCatego
                     settingOptions = GetInitializerOptions(init, setting)
                 end
 
-                local nameLower = slower(settingName)
+                local nameLower = SearchLower(settingName)
                 local kw = {
                     "addon", "setting", "option",
-                    nameLower, slower(catName or ""),
+                    nameLower, SearchLower(catName or ""),
                 }
                 AddOptionLabelKeywords(kw, settingOptions)
                 tinsert(out, setmetatable({
@@ -2685,7 +2685,7 @@ local function CollectAddonCategories()
         seenCatIDs[catID] = true
         local catName = cat:GetName()
         if not catName or catName == "" then return end
-        local catNameLower = slower(catName)
+        local catNameLower = SearchLower(catName)
         local rootName = (parentName or catName) .. " " .. (_G["SETTINGS"] or "Settings")
         local pathPrefix = parentName and { rootName, catName } or { rootName }
 
@@ -2905,8 +2905,8 @@ local function CollectGameSettings()
                             emittedVars[variable] = true
                         else
                         local catID = cat.GetID and cat:GetID()
-                        local nameLower = slower(displayName)
-                        local kw = { "setting", "option", "config", nameLower, slower(catName) }
+                        local nameLower = SearchLower(displayName)
+                        local kw = { "setting", "option", "config", nameLower, SearchLower(catName) }
                         -- Resolve render type: slider override first (graphics
                         -- quality sliders inside BaseQualityControls), then
                         -- hardcoded dropdown, then boolean checkbox, else

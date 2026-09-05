@@ -306,6 +306,7 @@ local ampersand = {
 local outfit2 = {
     name = "Outfit (2)", nameLower = "outfit (2)", category = "Outfit", keywordsLower = { "outfit" },
 }
+local bareGuild = { name = "Guild", nameLower = "guild", category = "Menu Bar", keywordsLower = { "guild" } }
 local hyphenA = { name = "Proto-Drake Rusted", nameLower = "proto-drake rusted", category = "Mount", keywordsLower = {} }
 local hyphenB = { name = "Red Proto-Drake", nameLower = "red proto-drake", category = "Mount", keywordsLower = {} }
 
@@ -318,6 +319,18 @@ function tests.searchUI_stray_punctuation_tokens_do_not_hide_rows()
         Database:ResetSearchCache()
         H.assertTrue(findsEntry(Database:SearchUI("outfti ("), outfit2),
             "a typo followed by a stray bracket must still match")
+    end)
+    -- The second pass sits under the raw tiers: typing the "&" of "Guild &
+    -- Communities" must not lift a row named exactly "Guild" over it.
+    withEntries({ bareGuild, ampersand }, function()
+        for _, q in ipairs({ "guild &", "guild & " }) do
+            Database:ResetSearchCache()
+            local r = Database:SearchUI(q)
+            H.assertEq(r[1] and r[1].data, ampersand, "raw prefix keeps the lead at: " .. q)
+        end
+        Database:ResetSearchCache()
+        local r = Database:SearchUI("& guild")
+        H.assertEq(r[1] and r[1].data, bareGuild, "with no raw match at all, the exact cut match leads")
     end)
 end
 

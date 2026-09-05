@@ -1640,9 +1640,15 @@ function Database:SearchUI(query, skipCategories)
                         kwScore
                     )
                     if queryNorm and score < 100 and entryQuery == query then
-                        score = mmax(score,
+                        -- Mapped onto 30..99, under every raw tier: a row named
+                        -- exactly "guild" must not jump over "Guild & Communities"
+                        -- the moment the "&" is typed, and the weakest cut match
+                        -- still clears the 30-point floor below. Among the rows
+                        -- only the cut form reaches, their own order holds.
+                        local alt = mmax(
                             Database:ScoreName(nameLower, queryNorm, queryNormLen, entryQueryWords),
                             kws and Database:ScoreKeywords(kws, queryNorm, queryNormLen, entryQueryWords) or 0)
+                        if alt > 0 then score = mmax(score, 30 + mmin(alt, 1000) * 0.069) end
                     end
                     if #entryQueryWords >= 2 then
                         score = mmax(score, Database:ScoreEntryFields(data, entryQueryWords))
