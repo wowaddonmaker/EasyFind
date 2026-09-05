@@ -1528,7 +1528,7 @@ function Search:CreateSearchFrame()
         -- are jump keys and a focused box would take them first.
         if ctrl and key == "C" then
             if selectedIndex > 0 and ns.RowCopy then
-                ns.RowCopy:ArmFor(resultButtons[selectedIndex])
+                ns.RowCopy:ArmFor(resultButtons[selectedIndex], IsShiftKeyDown())
                 return
             end
             if Results.ArmIconGridFocusCopy and Results:ArmIconGridFocusCopy() then

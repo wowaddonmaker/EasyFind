@@ -4044,6 +4044,10 @@ local function EnsureClipboardBox()
         if (key == "C" or key == "c") and IsControlKeyDown() then
             Utils.StashClipboardLink(self:GetText(), clientLink)
             if client.OnCopied then client.OnCopied() end
+        elseif (key == "LSHIFT" or key == "RSHIFT") and client.OnShift then
+            -- Focus sits here while armed, so Shift edges arrive here and
+            -- not as MODIFIER_STATE_CHANGED; the client swaps its text.
+            client.OnShift(true)
         elseif client.OnKey and not Utils.IsModifierKey(key) then
             -- The focused box takes every key ahead of the client's own
             -- keyboard (a menu, the nav frame); hand navigation keys back
@@ -4065,6 +4069,8 @@ local function EnsureClipboardBox()
     box:SetScript("OnKeyUp", function(_, key)
         if (key == "LCTRL" or key == "RCTRL") and client and client.OnCtrlUp then
             client.OnCtrlUp()
+        elseif (key == "LSHIFT" or key == "RSHIFT") and client and client.OnShift then
+            client.OnShift(false)
         end
     end)
     box:SetScript("OnChar", function() Utils.DisarmClipboardBox(true) end)

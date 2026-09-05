@@ -27,6 +27,10 @@ ns.RowCopy = RowCopy
 
 local flashHolder, flashFade
 local armedRow
+-- Ctrl+Shift+C: the armed text is the row's EasyFind link instead of its
+-- chat link (Raycast's Copy Deeplink chord). Shift is read when arming
+-- and re-read on every Shift edge while armed, so either order works.
+local armedEasy = false
 local hoverTarget
 -- Extra copy surfaces (icon grid cells, the What's New link) register a
 -- function returning their frame under the mouse, or nil.
@@ -36,11 +40,15 @@ local hoverScanners = {}
 -- answer rows carry their text outright; everything else copies its send
 -- payload as clipboard-safe text (the live link is kept for the chat
 -- paste swap).
-local function RowPayload(row)
+local function RowPayload(row, easy)
     if not row then return nil end
     if row._efCopyText then return row._efCopyText, nil end
     local data = row.data
     if not data or data.calculatorResult or data.calculatorExpression then return nil end
+    if easy and ns.ResultLinks and ns.ResultLinks.BuildShareText then
+        local text = ns.ResultLinks:BuildShareText(data)
+        if text then return text, nil, true end
+    end
     if data.copyText then return data.copyText, nil end
     local link = ns.GetResultLink and ns.GetResultLink(data)
     if not link or link == "" then return nil end
@@ -104,6 +112,9 @@ local client = {
     -- The focused box swallows MODIFIER_STATE_CHANGED; the release
     -- arrives through the box's own key-up instead.
     OnCtrlUp = function() RowCopy:Disarm(true) end,
+    OnShift = function(down)
+        if armedRow and (down or armedEasy) then RowCopy:ArmFor(armedRow, down) end
+    end,
     OnKey = function(key)
         local navFrame = Search.GetNavFrame and Search:GetNavFrame()
         if navFrame and navFrame:IsKeyboardEnabled() then
@@ -126,14 +137,14 @@ function RowCopy:CanCopy(row)
     return RowPayload(row) ~= nil
 end
 
-function RowCopy:ArmFor(row)
-    local payload, link = RowPayload(row)
+function RowCopy:ArmFor(row, easy)
+    local payload, link, isEasy = RowPayload(row, easy)
     if not payload then return false end
     -- A menu copy row or one-shot prompt owns the box until it is used
     -- or dismissed; a Ctrl-hover never hijacks it.
     local owner = Utils.ClipboardBoxClient()
     if owner and owner ~= client then return false end
-    armedRow = row
+    armedRow, armedEasy = row, isEasy or false
     Utils.ArmClipboardBox(payload, link, client)
     return true
 end
@@ -146,7 +157,7 @@ function RowCopy:ArmForData(data)
     for i = 1, #buttons do
         local row = buttons[i]
         if row and row:IsShown() and row.data == data then
-            return self:ArmFor(row)
+            return self:ArmFor(row, IsShiftKeyDown())
         end
     end
     return false
@@ -165,7 +176,7 @@ function RowCopy:OnRowHover(row)
     hoverTarget = row
     if row then
         if IsControlKeyDown() then
-            self:ArmFor(row)
+            self:ArmFor(row, IsShiftKeyDown())
         end
     elseif armedRow and not IsControlKeyDown() then
         self:Disarm(true)
@@ -204,7 +215,7 @@ local function ArmHovered()
     local target = ResolveHovered()
     if not target then return end
     hoverTarget = target
-    RowCopy:ArmFor(target)
+    RowCopy:ArmFor(target, IsShiftKeyDown())
 end
 
 function RowCopy:Initialize()
@@ -214,6 +225,10 @@ function RowCopy:Initialize()
     local watcher = CreateFrame("Frame")
     watcher:RegisterEvent("MODIFIER_STATE_CHANGED")
     watcher:SetScript("OnEvent", function(_, _, key, state)
+        if key == "LSHIFT" or key == "RSHIFT" then
+            client.OnShift(state == 1)
+            return
+        end
         if key ~= "LCTRL" and key ~= "RCTRL" then return end
         if state == 1 then
             ArmHovered()
