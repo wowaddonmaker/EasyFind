@@ -1175,6 +1175,7 @@ local DIRTY_EVENT_CATEGORY = {
     -- Professions is eager, so it can populate before skill data has arrived
     -- and nothing else marks it dirty; this is "skill data changed".
     SKILL_LINES_CHANGED = "professions",
+    TRADE_SKILL_SHOW = "professions",
 }
 for dirtyEvent in pairs(DIRTY_EVENT_CATEGORY) do
     -- pcall: event names vary across client builds, and this runs at file

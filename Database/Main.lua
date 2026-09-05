@@ -3954,8 +3954,11 @@ end
 -- primaries plus archaeology, fishing, cooking). Selecting a row opens that
 -- profession's window; the 12.0 crawl verified OpenProfessionUIToSkillLine and
 -- GetProfessionInfo's skillLine return live.
+local professionPageRetries = 0
+
 function Database:PopulateDynamicProfessions()
     if not (GetProfessions and GetProfessionInfo) then return false end
+    local pagesUnresolved = false
 
     RemoveEntriesByCategory("Profession")
     if self.ResetSearchCache then self:ResetSearchCache() end
@@ -4033,6 +4036,7 @@ function Database:PopulateDynamicProfessions()
                     -- character has that expansion), so it degrades safely.
                     local ownedPages = ns.KnownExpansionPages and ns.KnownExpansionPages(skillLine)
                     local fallbackLearnedOnly = not (ownedPages and #ownedPages > 0)
+                    if fallbackLearnedOnly then pagesUnresolved = true end
                     local pageIDsToScan = {}
                     if fallbackLearnedOnly then
                         for pageID in pairs(profData.recipesByPage) do
@@ -4095,6 +4099,18 @@ function Database:PopulateDynamicProfessions()
                 end
             end
         end
+    end
+    -- Pages unknown yet (the trade-skill data is not in right after
+    -- login), so only learned recipes were listed, usually none. Retry a
+    -- few times so the recipe rows land once the page list resolves; a
+    -- fresh profile otherwise never got its recipes (zip test, 2026-09-05).
+    if pagesUnresolved and professionPageRetries < 6 then
+        professionPageRetries = professionPageRetries + 1
+        Utils.SafeAfter(3, function()
+            if self.RefreshDynamicCategory then self:RefreshDynamicCategory("professions") end
+        end)
+    elseif not pagesUnresolved then
+        professionPageRetries = 0
     end
     return added
 end

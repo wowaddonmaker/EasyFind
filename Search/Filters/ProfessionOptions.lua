@@ -94,7 +94,11 @@ local function KnownExpansionPages(parentSkillLine)
     -- session and the recipes never appear until a reload. A genuine empty
     -- result from a populated list IS cached -- otherwise every call redoes a
     -- ~100-entry pcall scan.
-    if #out > 0 or #allLines > 0 then
+    -- Only a resolved page list is cached. Right after login the client
+    -- can answer the line list with every skill level still 0; caching
+    -- that empty answer froze the recipe loop on its learned-only
+    -- fallback for the whole session (fresh-profile zip test, 2026-09-05).
+    if #out > 0 then
         expansionCache[parentSkillLine] = out
     end
     return out
