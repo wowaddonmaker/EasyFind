@@ -7,8 +7,7 @@ All notable changes to EasyFind will be documented in this file.
 ## [3.1.2] - 2026-09-05
 
 ### Changed
-- **Snippets is its own addon**: it appears in the AddOns list as "EasyFind [Snippets]" and can be disabled there. Saved snippets stay in the core, and the Snippets row, filter, options tab, and tutorial slide hide while it is off
-- Pasting a copied result into chat brings back the live link whether or not Snippets is enabled
+- **Snippets can be turned off**: it is listed under EasyFind in the AddOns list as "EasyFind [Snippets]"
 
 ### Fixed
 - **Gathering professions are searchable again**: Herbalism, Mining and Skinning had lost nearly every entry (Lush Argentleaf, Mana Lily, Tranquility Bloom) to a data rule meant for world nodes; the rows their windows list are back, regenerated from the current game data
