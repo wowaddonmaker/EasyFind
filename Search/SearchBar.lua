@@ -96,6 +96,43 @@ function Search:SetSelectedIndex(index)
     selectedIndex = index or 0
 end
 
+-- An EasyFind link to a row the receiver must click themselves (the
+-- spellbook and talent window open only from a secure button click):
+-- show their own results for the row's name and land the selection on
+-- that exact row, so the click that opens it is the ordinary result-row
+-- click. The paint can trail by a frame (a held paint), so the landing
+-- retries briefly.
+function Search:ShowLinkedResult(data)
+    if not searchFrame or inCombat or not data then return false end
+    local name = Utils.StripMarkup and Utils.StripMarkup(data.name) or data.name
+    if not name or name == "" then return false end
+    local key = ns.Aliases and ns.Aliases.GetEntryKey and ns.Aliases:GetEntryKey(data)
+    self:Show(true)
+    local eb = searchFrame.editBox
+    if not eb then return false end
+    if eb.ResetPendingSearch then eb:ResetPendingSearch() end
+    eb:SetText(name)
+    if eb.placeholder then eb.placeholder:Hide() end
+    self:OnSearchTextChangedNow(name, true)
+    local tries = 0
+    local function land()
+        tries = tries + 1
+        for i = 1, #resultButtons do
+            local row = resultButtons[i]
+            local d = row and row:IsShown() and row.data
+            if d and (d == data or (key and ns.Aliases:GetEntryKey(d) == key)) then
+                selectedIndex = i
+                toggleFocused = false
+                Results:UpdateSelectionHighlight()
+                return
+            end
+        end
+        if tries < 8 then Utils.SafeAfter(0.05, land) end
+    end
+    Utils.SafeAfter(0, land)
+    return true
+end
+
 function Search:SetToggleFocused(focused)
     toggleFocused = focused and true or false
 end
