@@ -44,6 +44,10 @@ local function BodyText(since)
     local name = GetItemInfo and GetItemInfo(HEARTHSTONE_ITEM_ID)
     local entries = ns.WhatsNewEntries and ns.WhatsNewEntries(since) or {}
     if not since and entries[2] then entries = { entries[1] } end
+    -- Never more than the two newest: a long absence would otherwise
+    -- stack every skipped release into one popup. The changelog link
+    -- below the text covers the rest.
+    if entries[3] then entries = { entries[1], entries[2] } end
     local parts = {}
     for i = 1, #entries do
         local body = Utils.sformat(entries[i].body, name or "Hearthstone")

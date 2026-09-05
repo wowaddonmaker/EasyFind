@@ -7,7 +7,7 @@ All notable changes to EasyFind will be documented in this file.
 ## [3.1.2] - 2026-09-05
 
 ### Added
-- **What's New remembers what you missed**: the update popup lists every release you skipped since you last logged in, newest first, instead of only the latest
+- **What's New remembers what you missed**: the update popup shows what changed since the version you last ran, the two newest releases at most with the changelog link for the rest, instead of only the latest
 
 ### Changed
 - **Snippets is its own addon**: it appears in the AddOns list as "EasyFind [Snippets]" and can be disabled there. Saved snippets stay in the core, and the Snippets row, filter, options tab, and tutorial slide hide while it is off
