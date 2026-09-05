@@ -7142,8 +7142,10 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
     return menu
 end
 
+-- Rows sort by label; a row may carry a sortKey instead to sit somewhere
+-- specific (EasyFind link pairs with Send).
 local function MenuRowLess(a, b)
-    return slower(a.text or "") < slower(b.text or "")
+    return slower(a.sortKey or a.text or "") < slower(b.sortKey or b.text or "")
 end
 
 function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opts, extra)
@@ -7194,8 +7196,11 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     if extra and extra.easyFindLinkRows then
         -- Plain text another EasyFind user's chat turns into a clickable
         -- link to this very row (Shared/ResultLinks.lua).
+        -- Sorted directly after Send, in every locale: the two rows are
+        -- the same idea (share this row), so they sit together.
         rows[#rows + 1] = {
             text = L["CTX_EASYFIND_LINK"],
+            sortKey = L["CTX_SEND_LINK"] .. "",
             submenu = extra.easyFindLinkRows,
         }
     end
