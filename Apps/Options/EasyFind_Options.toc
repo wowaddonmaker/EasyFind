@@ -2,7 +2,7 @@
 ## Title: EasyFind [Options]
 ## Notes: Settings panel companion for EasyFind, loaded when you open the options
 ## Author: justawower
-## Version: 3.1.2
+## Version: 3.1.3
 ## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
 ## Group: EasyFind
 ## Category: UI

@@ -4,6 +4,13 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [3.1.3] - 2026-09-06
+
+### Fixed
+- **No more stutter right after login**: searching in the first seconds of a session could freeze the game for a moment several times over while your professions finished loading. The profession list now waits for that data to arrive instead of rebuilding the search index on every attempt
+
+---
+
 ## [3.1.2] - 2026-09-05
 
 ### Added
