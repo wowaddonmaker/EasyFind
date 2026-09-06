@@ -4101,19 +4101,30 @@ function Database:PopulateDynamicProfessions()
                                     show = (learned and showLearned) or (not learned and showUnlearned)
                                 end
                                 if show then
+                                    -- Name/icon from the SPELL system first,
+                                    -- never the trade-skill window: recipe IDs
+                                    -- are spell IDs, and C_Spell.GetSpellInfo
+                                    -- answers without touching C_TradeSkillUI.
+                                    -- GetRecipeInfo is window-scoped, and poking
+                                    -- it per recipe made the game do a ~370ms
+                                    -- trade-skill refresh the next frame, six
+                                    -- times over the populate retry loop (the
+                                    -- startup stutter, measured 2026-09-06). It
+                                    -- stays only as the fallback for a recipe
+                                    -- the spell system does not name.
                                     local rName, rIcon
-                                    if getRecipeInfo then
-                                        local ok, info = pcall(getRecipeInfo, recipeID)
-                                        if ok and type(info) == "table" then
-                                            rName = info.name
-                                            rIcon = info.icon
-                                        end
-                                    end
-                                    if (not rName) and getSpell then
+                                    if getSpell then
                                         local ok, spellInfo = pcall(getSpell, recipeID)
                                         if ok and type(spellInfo) == "table" then
                                             rName = spellInfo.name
-                                            rIcon = rIcon or spellInfo.iconID
+                                            rIcon = spellInfo.iconID
+                                        end
+                                    end
+                                    if (not rName) and getRecipeInfo then
+                                        local ok, info = pcall(getRecipeInfo, recipeID)
+                                        if ok and type(info) == "table" then
+                                            rName = info.name
+                                            rIcon = rIcon or info.icon
                                         end
                                     end
                                     if rName and rName ~= "" then
