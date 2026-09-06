@@ -2277,6 +2277,9 @@ function Database:PopulateDynamicPets()
         for i = 1, numTypes do savedTypes[i] = C_PetJournal.IsPetTypeChecked(i) end
     end
     local dbSources, dbTypes = db.petSourceFilters, db.petTypeFilters
+    -- Which filters we actually flipped, so the restore touches only those.
+    local changedColl, changedNot, changedSearch
+    local changedSources, changedTypes
 
     -- Each SetPet*Checked re-filters the whole journal, so flipping all ~22
     -- source/type filters (then restoring all) was a login-frame stall.
@@ -2317,9 +2320,6 @@ function Database:PopulateDynamicPets()
         C_PetJournal.SetSearchFilter(""); changedSearch = true
     end
 
-    -- Which filters we actually flipped, so the restore touches only those.
-    local changedColl, changedNot, changedSearch
-    local changedSources, changedTypes
     local function restoreFilters()
         if C_PetJournal.SetFilterChecked then
             if changedColl and savedCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, savedCollected) end
