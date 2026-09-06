@@ -2276,32 +2276,70 @@ function Database:PopulateDynamicPets()
         savedTypes = {}
         for i = 1, numTypes do savedTypes[i] = C_PetJournal.IsPetTypeChecked(i) end
     end
-
     local dbSources, dbTypes = db.petSourceFilters, db.petTypeFilters
+
+    -- Each SetPet*Checked re-filters the whole journal, so flipping all ~22
+    -- source/type filters (then restoring all) was a login-frame stall.
+    -- Only flip the ones that actually differ from the current state (a
+    -- no-op set still costs a refilter), record which, and yield between
+    -- them so any real storm spreads across frames instead of one hitch.
     if C_PetJournal.SetFilterChecked then
-        C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, db.petFilterCollected ~= false)
-        C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, db.petFilterNotCollected == true)
+        local wantColl = db.petFilterCollected ~= false
+        local wantNot = db.petFilterNotCollected == true
+        if savedCollected == nil or savedCollected ~= wantColl then
+            C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, wantColl); changedColl = true
+        end
+        if savedNotCollected == nil or savedNotCollected ~= wantNot then
+            C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, wantNot); changedNot = true
+        end
     end
     if C_PetJournal.SetPetSourceChecked then
-        for i = 1, numSources do C_PetJournal.SetPetSourceChecked(i, not (dbSources and dbSources[i] == false)) end
+        for i = 1, numSources do
+            local want = not (dbSources and dbSources[i] == false)
+            if not savedSources or savedSources[i] ~= want then
+                C_PetJournal.SetPetSourceChecked(i, want)
+                if savedSources then changedSources = changedSources or {}; changedSources[i] = true end
+                Utils.SliceCheckpoint()
+            end
+        end
     end
     if C_PetJournal.SetPetTypeFilter then
-        for i = 1, numTypes do C_PetJournal.SetPetTypeFilter(i, not (dbTypes and dbTypes[i] == false)) end
+        for i = 1, numTypes do
+            local want = not (dbTypes and dbTypes[i] == false)
+            if not savedTypes or savedTypes[i] ~= want then
+                C_PetJournal.SetPetTypeFilter(i, want)
+                if savedTypes then changedTypes = changedTypes or {}; changedTypes[i] = true end
+                Utils.SliceCheckpoint()
+            end
+        end
     end
-    if C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter("") end
+    if C_PetJournal.SetSearchFilter and savedString ~= "" then
+        C_PetJournal.SetSearchFilter(""); changedSearch = true
+    end
 
+    -- Which filters we actually flipped, so the restore touches only those.
+    local changedColl, changedNot, changedSearch
+    local changedSources, changedTypes
     local function restoreFilters()
         if C_PetJournal.SetFilterChecked then
-            if savedCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, savedCollected) end
-            if savedNotCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, savedNotCollected) end
+            if changedColl and savedCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, savedCollected) end
+            if changedNot and savedNotCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, savedNotCollected) end
         end
         if savedSources and C_PetJournal.SetPetSourceChecked then
-            for i = 1, numSources do C_PetJournal.SetPetSourceChecked(i, savedSources[i]) end
+            if changedSources then
+                for i in pairs(changedSources) do C_PetJournal.SetPetSourceChecked(i, savedSources[i]); Utils.SliceCheckpoint() end
+            end
+        elseif C_PetJournal.SetPetSourceChecked then
+            for i = 1, numSources do C_PetJournal.SetPetSourceChecked(i, not (dbSources and dbSources[i] == false)) end
         end
         if savedTypes and C_PetJournal.SetPetTypeFilter then
-            for i = 1, numTypes do C_PetJournal.SetPetTypeFilter(i, savedTypes[i]) end
+            if changedTypes then
+                for i in pairs(changedTypes) do C_PetJournal.SetPetTypeFilter(i, savedTypes[i]); Utils.SliceCheckpoint() end
+            end
+        elseif C_PetJournal.SetPetTypeFilter then
+            for i = 1, numTypes do C_PetJournal.SetPetTypeFilter(i, not (dbTypes and dbTypes[i] == false)) end
         end
-        if C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter(savedString) end
+        if changedSearch and C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter(savedString) end
     end
 
     local numPets, numOwned = C_PetJournal.GetNumPets()
