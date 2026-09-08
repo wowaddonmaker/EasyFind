@@ -51,8 +51,14 @@ local function RowPayload(row, easy)
     end
     if data.copyText then return data.copyText, nil end
     local link = ns.GetResultLink and ns.GetResultLink(data)
-    if not link or link == "" then return nil end
-    return Utils.ClipboardSafeText(link), link
+    if link and link ~= "" then return Utils.ClipboardSafeText(link), link end
+    -- No chat link (a panel, a setting, a zone): the name is the text, so
+    -- Ctrl+C means the same on every row and the hover scan below never
+    -- skips a row for want of a link.
+    local name = data.name
+    if name and Utils.StripMarkup then name = Utils.StripMarkup(name) end
+    if not name or name == "" then return nil end
+    return Utils.ClipboardSafeText(name), nil
 end
 
 local function EnsureFlash()
@@ -143,8 +149,8 @@ function RowCopy:Disarm(restoreFocus)
     Utils.DisarmClipboardBox(restoreFocus, client)
 end
 
-function RowCopy:CanCopy(row)
-    return RowPayload(row) ~= nil
+function RowCopy:CanCopy(row, easy)
+    return RowPayload(row, easy) ~= nil
 end
 
 function RowCopy:ArmFor(row, easy)
@@ -202,7 +208,9 @@ end
 -- cursor (every keystroke, every autocomplete settle) and fire OnLeave
 -- with no matching OnEnter, so hoverTarget was nil when Ctrl went down
 -- and the first chords did nothing but strip the suffix and unfocus.
-local function ResolveHovered()
+-- `easy` is the chord being pressed (Shift held: the EasyFind link), so a
+-- row is judged by the payload that chord would copy.
+local function ResolveHovered(easy)
     if hoverTarget and hoverTarget:IsShown() and hoverTarget:IsMouseOver() then
         return hoverTarget
     end
@@ -211,21 +219,22 @@ local function ResolveHovered()
         for i = 1, #buttons do
             local row = buttons[i]
             if not row or not row:IsShown() then break end
-            if row:IsMouseOver() and RowPayload(row) then return row end
+            if row:IsMouseOver() and RowPayload(row, easy) then return row end
         end
     end
     for i = 1, #hoverScanners do
         local target = hoverScanners[i]()
-        if target and RowPayload(target) then return target end
+        if target and RowPayload(target, easy) then return target end
     end
     return nil
 end
 
 local function ArmHovered()
-    local target = ResolveHovered()
+    local easy = IsShiftKeyDown()
+    local target = ResolveHovered(easy)
     if not target then return end
     hoverTarget = target
-    RowCopy:ArmFor(target, IsShiftKeyDown())
+    RowCopy:ArmFor(target, easy)
 end
 
 function RowCopy:Initialize()
@@ -259,6 +268,10 @@ function RowCopy:Initialize()
         searchFrame.editBox:HookScript("OnKeyDown", function(self, key)
             if not self:HasFocus() then return end
             if key == "LCTRL" or key == "RCTRL" or (key == "C" and IsControlKeyDown()) then
+                ArmHovered()
+            elseif (key == "LSHIFT" or key == "RSHIFT") and IsControlKeyDown() then
+                -- Shift after Ctrl, nothing armed yet (or armed for the
+                -- plain chord): re-arm for the EasyFind link.
                 ArmHovered()
             end
         end)

@@ -1814,7 +1814,7 @@ function Search:CreateSearchFrame()
         elseif Calculator:IsCalculatorCopyKey(key) then
             consume = true
         elseif key == "C" and IsControlKeyDown() and ns.RowCopy
-            and ((selectedIndex > 0 and ns.RowCopy:CanCopy(resultButtons[selectedIndex]))
+            and ((selectedIndex > 0 and ns.RowCopy:CanCopy(resultButtons[selectedIndex], IsShiftKeyDown()))
                 or (Results.IsIconGridNavActive and Results:IsIconGridNavActive())) then
             consume = true
         elseif IsAltKeyDown() and (key == "J" or key == "K" or key == "L" or key == "H") then
