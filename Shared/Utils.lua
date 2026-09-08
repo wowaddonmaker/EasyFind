@@ -6130,9 +6130,17 @@ function MenuCopy.PaintHint(row, lit)
     if row._efCopyDone then
         row.hint:SetText(L["COPIED"])
         row.hint:SetTextColor(Utils.RGB(ns.COPIED_COLOR, 1))
+        row.hint:SetAlpha(1)
     else
-        row.hint:SetText("Ctrl+C")
+        -- The label reads like a shortcut column, so it names the chord
+        -- that does this from the RESULT ROW when there is one (Send's
+        -- clipboard: Ctrl+C; EasyFind link: Ctrl+Shift+C). A copy row with
+        -- no row-level chord (Wowhead) shows its Ctrl+C only while
+        -- engaged: a prompt for this menu row, not a claim about the
+        -- result row, which copies something else on Ctrl+C.
+        row.hint:SetText(row._copyKey or "Ctrl+C")
         row.hint:SetTextColor(Utils.RGB(lit and row._efLabelColor or ns.TEXT_DIM, 1))
+        row.hint:SetAlpha((row._copyKey or lit) and 1 or 0)
     end
 end
 
@@ -6888,6 +6896,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 -- that turns into "Copied" when the chord lands. The label
                 -- hangs off the hint so a wider confirmation never overlaps.
                 row._copyText, row._copyLink = def.copy, def.copyLink
+                row._copyKey = def.copyKey
                 row._tooltip, row._tooltipNote = def.tooltip, def.tooltipNote
                 row._efLabelColor = labelColor
                 row._efCopyDone = nil
@@ -6900,7 +6909,12 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                     local ff, fs, ffl = row.label:GetFont()
                     if ff then row.hint:SetFont(ff, fs, ffl or "") end
                     row.hint:ClearAllPoints()
-                    row.hint:SetPoint("RIGHT", row, "RIGHT", def.icon and -26 or -8, 0)
+                    if def.submenu and row.chevron then
+                        -- A flyout row's shortcut sits just left of its chevron.
+                        row.hint:SetPoint("RIGHT", row.chevron, "LEFT", -6, 0)
+                    else
+                        row.hint:SetPoint("RIGHT", row, "RIGHT", def.icon and -26 or -8, 0)
+                    end
                     row.hint:Show()
                     MenuCopy.PaintHint(row, false)
                     row.label:SetPoint("RIGHT", row.hint, "LEFT", -8, 0)
@@ -7049,6 +7063,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             row.onClick = nil
             row._submenuRows = nil
             row._copyText, row._copyLink = nil, nil
+            row._copyKey = nil
             row._tooltip, row._tooltipNote = nil, nil
             row:SetScript("OnClick", nil)
             row:SetScript("OnMouseDown", nil)
@@ -7095,6 +7110,9 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                     hintW = mmax(hintW, row.hint:GetStringWidth())
                     MenuCopy.PaintHint(row, false)
                     rightPad = rightPad + mfloor(hintW + 0.5) + 8
+                    -- Beside a chevron the hint sits 6px left of it, 4px
+                    -- more than the chevron pad alone accounts for.
+                    if row.chevron and row.chevron:IsShown() then rightPad = rightPad + 4 end
                 end
                 -- Rows are inset MENU_ROW_INSET on BOTH sides of the menu, so
                 -- a width measured in row space is that much short in menu
@@ -7182,8 +7200,15 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
         if sendRows then
             -- No bespoke arrow: rows with a submenu get the shared chevron
             -- from the menu module; adding one here doubled the arrows.
+            -- Also a copy row: the chord the label names works right here,
+            -- on the flyout's parent, as well as on the result row.
             rows[#rows + 1] = {
                 text = L["CTX_SEND_LINK"],
+                copy = Utils.ClipboardSafeText(extra.sendLink.link),
+                copyLink = extra.sendLink.link,
+                copyKey = "Ctrl+C",
+                tooltip = L["COPY_ROW_TT"],
+                tooltipNote = L["COPY_ROW_TT_RESULT"],
                 submenu = sendRows,
             }
         end
@@ -7196,6 +7221,11 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
         rows[#rows + 1] = {
             text = L["CTX_EASYFIND_LINK"],
             sortKey = L["CTX_SEND_LINK"] .. "\1",
+            -- A copy row too: Ctrl+Shift+C (the chord the label names,
+            -- the result row's own) copies the link from this very row.
+            copy = extra.easyFindLinkText and Utils.ClipboardSafeText(extra.easyFindLinkText),
+            copyLink = extra.easyFindLinkText,
+            copyKey = "Ctrl+Shift+C",
             tooltip = L["EFLINK_ROW_TT"],
             tooltipNote = L["EFLINK_ROW_TT_NOTE"],
             submenu = extra.easyFindLinkRows,
@@ -7316,7 +7346,9 @@ end
 -- the clipboard copy row (WoW has no silent set-clipboard API, so a
 -- hardware Ctrl+C on the row is the copy). Returned as a submenu spec for
 -- the context menu.
-function ns.BuildSendLinkRows(link)
+-- `copyKey` names the chord that copies the same text from the result row
+-- (default Ctrl+C); `copyNote` is the clipboard row's tooltip afterthought.
+function ns.BuildSendLinkRows(link, copyKey, copyNote)
     if not link then return nil end
     local rows = {}
     for i = 1, #SEND_LINK_CHANNELS do
@@ -7360,8 +7392,9 @@ function ns.BuildSendLinkRows(link)
         text = L["CTX_SEND_LINK_CLIPBOARD"],
         copy = Utils.ClipboardSafeText(link),
         copyLink = link,
+        copyKey = copyKey or "Ctrl+C",
         tooltip = L["COPY_ROW_TT"],
-        tooltipNote = L["COPY_ROW_TT_RESULT"],
+        tooltipNote = copyNote or L["COPY_ROW_TT_RESULT"],
     }
     return rows
 end
