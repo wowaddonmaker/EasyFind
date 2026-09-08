@@ -980,7 +980,26 @@ local function OnPlayerLogin()
         pcall(ns.ControlSync.ArmAllAtLogin)
     end
 
-    -- Keep PLAYER_LOGIN light. Search data is loaded by query intent.
+    -- Pre-warm the search dataset in the background a couple seconds after
+    -- login, at the idle frame budget (the warm chain and the live settings
+    -- walk are built to run "while nobody is waiting"). This makes the FIRST
+    -- search instant and free of the reshuffle that happened when the warm
+    -- loaded providers mid-search -- options and commands landing after the
+    -- first paint ("mount": Game Settings and /mountspecial jumping in). It is
+    -- idempotent with the first-focus warm: whichever runs first, the other is
+    -- a cheap no-op over already-loaded providers.
+    if ns.Database and ns.Utils and ns.Utils.SafeAfter then
+        ns.Utils.SafeAfter(2, function()
+            local db = ns.Database
+            if db.LoadDeferredSyncProvidersStaggered then
+                db:LoadDeferredSyncProvidersStaggered()
+            elseif db.WarmSearchHotPath then
+                db:WarmSearchHotPath()
+            end
+            local f = ns.Search and ns.Search.GetSearchFrame and ns.Search:GetSearchFrame()
+            if f then f._efProvidersWarmed = true end
+        end)
+    end
 
 
     -- Drop the persisted loot-stat cache if the stat keyword map changed since it
