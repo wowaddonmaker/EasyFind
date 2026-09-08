@@ -298,3 +298,109 @@ function Tooltips:ClearResultTooltips()
         ns.MapSearch:ClearUIPreview()
     end
 end
+
+-- Put a result's OWN game tooltip on `tooltip`, the way Blizzard's chat
+-- links do: the mount, toy, pet, spell, item, macro target, currency, or
+-- achievement itself. The caller has already set the owner and anchor,
+-- and adds its own lines and shows afterwards. Returns true when the
+-- result had a tooltip of its own; false for results that are only a name
+-- (settings, panels, zones, outfits), which the caller titles itself.
+-- Field priority mirrors the row hover in Rows/Tooltips.lua (mounts carry
+-- both mountID and spellID and take the mount tooltip).
+function Tooltips:SetGameTooltipForResult(tooltip, data)
+    if not (tooltip and data) then return false end
+    if data.mountID and data.spellID and tooltip.SetMountBySpellID then
+        tooltip:SetMountBySpellID(data.spellID)
+        return true
+    end
+    if data.toyItemID and tooltip.SetToyByItemID then
+        tooltip:SetToyByItemID(data.toyItemID)
+        return true
+    end
+    if data.petID then
+        if tooltip.SetCompanionPet then
+            tooltip:SetCompanionPet(data.petID)
+            return true
+        end
+        local link = C_PetJournal and C_PetJournal.GetBattlePetLink
+            and C_PetJournal.GetBattlePetLink(data.petID)
+        if link then
+            tooltip:SetHyperlink(link)
+            return true
+        end
+        return false
+    end
+    if data.itemID then
+        local isItemRow = data.catalogItem or data.category == "Bag" or data.category == "Bank"
+            or data.category == "Warband" or data.category == "Loot"
+            or (data.storedHolders and #data.storedHolders > 0)
+        if isItemRow then
+            local link = data.bagItemLink
+            if not link and data.category == "Loot" and ns.Database and ns.Database.GetLootItemLink then
+                link = ns.Database:GetLootItemLink(data)
+            end
+            if link then
+                tooltip:SetHyperlink(link)
+            else
+                tooltip:SetItemByID(data.itemID)
+            end
+            return true
+        end
+    end
+    if data.heirloomItemID then
+        tooltip:SetItemByID(data.heirloomItemID)
+        return true
+    end
+    if data.appearanceItemID then
+        local srcInfo = C_TransmogCollection and C_TransmogCollection.GetSourceInfo
+            and C_TransmogCollection.GetSourceInfo(data.appearanceItemID)
+        if srcInfo and srcInfo.itemID then
+            tooltip:SetItemByID(srcInfo.itemID)
+            return true
+        end
+        return false
+    end
+    if data.macroIndex and data.category == "Macro" then
+        local spellID
+        if GetMacroSpell then
+            local _, _, sid = GetMacroSpell(data.macroIndex)
+            spellID = sid
+        end
+        if spellID and tooltip.SetSpellByID then
+            tooltip:SetSpellByID(spellID)
+            return true
+        end
+        local itemName, itemLink
+        if GetMacroItem then itemName, itemLink = GetMacroItem(data.macroIndex) end
+        if not itemLink and itemName and GetItemInfo then
+            itemLink = select(2, GetItemInfo(itemName))
+        end
+        if itemLink then
+            tooltip:SetHyperlink(itemLink)
+            return true
+        end
+        return false
+    end
+    local spellID = data.spellID or data.professionRecipeID
+    if spellID then
+        if tooltip.SetSpellByID then
+            tooltip:SetSpellByID(spellID)
+        else
+            tooltip:SetHyperlink("spell:" .. spellID)
+        end
+        return true
+    end
+    if data.category == "Currency" and data.currencyID and tooltip.SetCurrencyByID then
+        tooltip:SetCurrencyByID(data.currencyID)
+        return true
+    end
+    local achID = data.achievementID
+    if not achID and data.titleID and ns.Database and ns.Database.GetTitleSourceAchievement then
+        achID = ns.Database:GetTitleSourceAchievement(data.titleID)
+    end
+    if achID and tooltip.SetAchievementByID then
+        tooltip:SetAchievementByID(achID)
+        return true
+    end
+    return false
+end

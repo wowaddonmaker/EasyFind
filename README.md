@@ -52,6 +52,7 @@ Search from the world map with nested results built for location-first browsing:
   - On most results:
     - **Guide**: Walk to the result with step-by-step highlights.
     - **Send**: Share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, or a whisper), or copy it to your clipboard.
+    - **EasyFind link**: Send the result to chat as a link other EasyFind users can click to open it exactly as you would from your own results; everyone else sees plain text. Fastest: press Ctrl+Shift+C on the row and paste into chat with Ctrl+V. Ctrl+click a received link to see where the result lives, Shift+click to pass it on. Not offered for catalog items, where the item link already shows everything.
     - **Wowhead**: Copy the result's Wowhead URL to your clipboard.
   - Row-specific extras, for example:
     - **Achievements**: objective tracking.

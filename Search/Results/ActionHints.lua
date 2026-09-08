@@ -214,6 +214,45 @@ function Handlers:GetActionHint(data)
     return nil
 end
 
+-- The hint for an EasyFind LINK hovered in chat. Same localized verbs as
+-- the row hints, but the gestures are the link's: a click does the action
+-- (via the secure pad), Ctrl+click shows it where it lives, Shift+click
+-- relinks it into chat. A macro link opens the macro (its index is the
+-- receiver's own list), openers open their panel.
+function Handlers:GetLinkHint(data)
+    if not data then return nil end
+    local click, ctrlWhere
+    local opener = ns.SecureOpeners and ns.SecureOpeners.OpenKeyForData
+        and ns.SecureOpeners.OpenKeyForData(data)
+    if data.spellID and data.category == "Ability"
+       and not Icons:IsSpellbookOnlyAbility(data) then
+        click, ctrlWhere = V.cast, V.spellbook
+    elseif data.mountID then
+        if Icons:IsMountSummonable(data) then click, ctrlWhere = V.summon, V.journal
+        else click = V.journal end
+    elseif data.toyItemID then
+        click, ctrlWhere = V.use, V.toybox
+    elseif data.outfitID then
+        click, ctrlWhere = V.wear, V.appearances
+    elseif data.macroIndex then
+        click = V.open
+    elseif data.itemID and (data.category == "Bag" or data.catalogItem) then
+        local kind = Handlers:GetBagItemActionKind(data)
+        if kind == "equip" then click, ctrlWhere = V.equip, V.dressroom else click = V.use end
+    elseif opener or (data.spellID and (data.category == "Talent"
+           or Icons:IsSpellbookOnlyAbility(data))) then
+        click = V.open
+    elseif data.settingVariable or data.bindingAction then
+        click = V.toggle
+    else
+        click = V.open
+    end
+    local s = V.click .. ": " .. click
+    if ctrlWhere then s = s .. " | Ctrl: " .. ctrlWhere end
+    s = s .. " | Shift: " .. V.sendLink
+    return s
+end
+
 -- Tracks the row currently displaying an action hint so we can restore
 -- its normal subtext when selection moves away.
 local actionHintRow
