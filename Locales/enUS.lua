@@ -283,12 +283,10 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffSnippets|r\n" ..
-    "    |cff999999-|r Save reusable text once, then type \\keyword to expand it in chat as you type, or straight into a macro\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffMacro window search|r\n" ..
-    "    |cff999999-|r The macro window gains a search bar that filters your macros by name or text\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffCopy results with Ctrl+C|r\n" ..
-    "    |cff999999-|r Ctrl+C on a row copies a snippet's entire message or a link that you can then paste wherever you want with Ctrl+V"
+    "|cffFFD100\226\128\162|r |cffffffffEasyFind links|r\n" ..
+    "    |cff999999-|r Send a friend straight to any result: a setting buried three menus deep, an achievement, a profession window, a mount\n" ..
+    "    |cff999999-|r Press Ctrl+Shift+C on the row and paste it into chat with Ctrl+V (right-click the row for a channel list)\n" ..
+    "    |cff999999-|r Anyone with EasyFind clicks it and lands on that exact result; a link to a spell or mount casts or summons on click, like the row does"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels
@@ -345,7 +343,7 @@ L["CTX_FORGET_PICK"]                    = "Forget this pick"
 L["CTX_FORGET_PICK_TT"]                 = "Search put this row on top because you picked it for this text before. Forget that, and it goes back to its natural place."
 L["EFLINK_NOT_FOUND"]                   = "EasyFind could not find that result on this character."
 L["EFLINK_ROW_TT"]                      = "Send this result as a link. Anyone with EasyFind can click it to open this exact result."
-L["EFLINK_ROW_TT_NOTE"]                 = "Without EasyFind, they see it as plain text. Ctrl+Shift+C on the row copies this link."
+L["EFLINK_ROW_TT_NOTE"]                 = "Without EasyFind, they see it as plain text. |cff70d6ffCtrl+Shift+C on the row copies this link.|r"
 L["EFLINK_IN_COMBAT"]                   = "EasyFind can open that after combat."
 L["CTX_DESTROY_ITEM"]                   = "Destroy"
 L["CTX_TRACK"]                          = "Track"
@@ -496,7 +494,7 @@ L["TOOLTIP_RESULT_LOCKED"]              = "Unlocks at a higher level"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "That section isn't available to this character yet."
 L["COPY_HINT"]                          = "Ctrl+C to copy"
 L["COPY_ROW_TT"]                        = "Hold Ctrl and press C while this row is highlighted to copy to your clipboard, then paste anywhere with Ctrl+V."
-L["COPY_ROW_TT_RESULT"]                 = "Also works on the result itself: hover it and press Ctrl+C."
+L["COPY_ROW_TT_RESULT"]                 = "|cff70d6ffAlso works on the result itself: hover it and press Ctrl+C.|r"
 L["COPY_ROW_TT_CELL"]                   = "Also works on the icon itself: hover it and press Ctrl+C."
 
 -- =============================================================================

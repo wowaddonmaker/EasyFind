@@ -260,12 +260,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "欢迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "这里"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日志"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff文本片段|r\n" ..
-    "    |cff999999-|r 保存一次可复用的文字，输入 \\关键词 即可在聊天中边打边展开，或直接写入宏\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff宏窗口搜索|r\n" ..
-    "    |cff999999-|r 宏窗口新增搜索栏，可按名称或内容筛选你的宏\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffCtrl+C 复制结果|r\n" ..
-    "    |cff999999-|r 在结果行上按 Ctrl+C 可复制片段的完整内容或链接，然后用 Ctrl+V 粘贴到任意位置"
+    "|cffFFD100\226\128\162|r |cffffffffEasyFind 链接|r\n" ..
+    "    |cff999999-|r 把朋友直接带到任意结果：藏在三层菜单下的设置、一项成就、一个专业窗口、一个坐骑\n" ..
+    "    |cff999999-|r 在结果行上按 Ctrl+Shift+C，再用 Ctrl+V 粘贴到聊天中（右键该行可查看频道列表）\n" ..
+    "    |cff999999-|r 任何安装了 EasyFind 的人点击后都会直达该结果；指向法术或坐骑的链接点击即施放或召唤，与结果行相同"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "添加别名"
@@ -320,7 +318,7 @@ L["CTX_FORGET_PICK"]                    = "忘记此选择"
 L["CTX_FORGET_PICK_TT"]                 = "因为你之前为这段文字选过此行，搜索把它放在了最上面。忘记后它会回到原来的位置。"
 L["EFLINK_NOT_FOUND"]                   = "EasyFind 在此角色上找不到该结果。"
 L["EFLINK_ROW_TT"]                      = "将此结果作为链接发送。任何安装了 EasyFind 的人都可以点击它打开完全相同的结果。"
-L["EFLINK_ROW_TT_NOTE"]                 = "没有 EasyFind 的人只会看到纯文本。在该行上按 Ctrl+Shift+C 可复制此链接。"
+L["EFLINK_ROW_TT_NOTE"]                 = "没有 EasyFind 的人只会看到纯文本。|cff70d6ff在该行上按 Ctrl+Shift+C 可复制此链接。|r"
 L["EFLINK_IN_COMBAT"]                   = "EasyFind 可以在脱离战斗后打开。"
 L["CTX_DESTROY_ITEM"]                   = "摧毁"
 L["CTX_TRACK"]                          = "追踪"
@@ -455,7 +453,7 @@ L["TOOLTIP_RESULT_LOCKED"]              = "达到更高等级后解锁"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "该角色尚未解锁此栏目。"
 L["COPY_HINT"]                          = "Ctrl+C 复制"
 L["COPY_ROW_TT"]                        = "此行高亮时按住 Ctrl 再按 C 即可复制到剪贴板，然后用 Ctrl+V 粘贴到任意位置。"
-L["COPY_ROW_TT_RESULT"]                 = "在结果本身上同样可行：悬停并按 Ctrl+C。"
+L["COPY_ROW_TT_RESULT"]                 = "|cff70d6ff在结果本身上同样可行：悬停并按 Ctrl+C。|r"
 L["COPY_ROW_TT_CELL"]                   = "在图标本身上同样可行：悬停并按 Ctrl+C。"
 
 -- =============================================================================

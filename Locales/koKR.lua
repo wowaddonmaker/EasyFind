@@ -260,12 +260,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff스니펫|r\n" ..
-    "    |cff999999-|r 재사용할 텍스트를 한 번 저장하고 \\키워드를 입력하면 대화창에서 입력 중에 확장되거나 매크로에 바로 들어갑니다\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff매크로 창 검색|r\n" ..
-    "    |cff999999-|r 매크로 창에 이름이나 내용으로 매크로를 걸러 주는 검색창이 추가되었습니다\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffCtrl+C로 결과 복사|r\n" ..
-    "    |cff999999-|r 결과 줄에서 Ctrl+C를 누르면 스니펫 전체 내용이나 링크가 복사되어 Ctrl+V로 원하는 곳에 붙여넣을 수 있습니다"
+    "|cffFFD100\226\128\162|r |cffffffffEasyFind 링크|r\n" ..
+    "    |cff999999-|r 친구를 어떤 결과로든 바로 안내하세요: 메뉴 세 단계 아래의 설정, 업적, 전문 기술 창, 탈것\n" ..
+    "    |cff999999-|r 행에서 Ctrl+Shift+C를 누르고 대화창에 Ctrl+V로 붙여넣으세요 (행을 우클릭하면 채널 목록이 나옵니다)\n" ..
+    "    |cff999999-|r EasyFind가 있는 사람은 누구나 클릭해 똑같은 결과로 이동합니다. 주문이나 탈것 링크는 행처럼 클릭 시 시전하거나 소환합니다"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"
@@ -320,7 +318,7 @@ L["CTX_FORGET_PICK"]                    = "이 선택 잊기"
 L["CTX_FORGET_PICK_TT"]                 = "이 텍스트에 대해 이 항목을 이전에 선택했기 때문에 검색이 맨 위에 올렸습니다. 잊으면 원래 자리로 돌아갑니다."
 L["EFLINK_NOT_FOUND"]                   = "EasyFind가 이 캐릭터에서 해당 결과를 찾지 못했습니다."
 L["EFLINK_ROW_TT"]                      = "이 결과를 링크로 보냅니다. EasyFind가 있는 사람은 누구나 클릭해 똑같은 결과를 열 수 있습니다."
-L["EFLINK_ROW_TT_NOTE"]                 = "EasyFind가 없으면 일반 텍스트로 보입니다. 행에서 Ctrl+Shift+C를 누르면 링크가 복사됩니다."
+L["EFLINK_ROW_TT_NOTE"]                 = "EasyFind가 없으면 일반 텍스트로 보입니다. |cff70d6ff행에서 Ctrl+Shift+C를 누르면 링크가 복사됩니다.|r"
 L["EFLINK_IN_COMBAT"]                   = "EasyFind는 전투가 끝난 뒤에 열 수 있습니다."
 L["CTX_DESTROY_ITEM"]                   = "파괴"
 L["CTX_TRACK"]                          = "추적"
@@ -455,7 +453,7 @@ L["TOOLTIP_RESULT_LOCKED"]              = "더 높은 레벨에서 잠금 해제
 L["MSG_GUIDE_TARGET_LOCKED"]            = "이 캐릭터는 아직 해당 항목을 이용할 수 없습니다."
 L["COPY_HINT"]                          = "Ctrl+C로 복사"
 L["COPY_ROW_TT"]                        = "이 행이 강조된 상태에서 Ctrl을 누른 채 C를 누르면 클립보드에 복사되며, Ctrl+V로 어디에나 붙여넣을 수 있습니다."
-L["COPY_ROW_TT_RESULT"]                 = "결과 자체에서도 됩니다: 마우스를 올리고 Ctrl+C를 누르세요."
+L["COPY_ROW_TT_RESULT"]                 = "|cff70d6ff결과 자체에서도 됩니다: 마우스를 올리고 Ctrl+C를 누르세요.|r"
 L["COPY_ROW_TT_CELL"]                   = "아이콘 자체에서도 됩니다: 마우스를 올리고 Ctrl+C를 누르세요."
 
 -- =============================================================================

@@ -260,12 +260,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffFragmentos|r\n" ..
-    "    |cff999999-|r Salve um texto reutilizável uma vez e digite \\palavrachave para expandi-lo no bate-papo enquanto digita, ou direto em um macro\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffBusca na janela de macros|r\n" ..
-    "    |cff999999-|r A janela de macros ganha uma barra de busca que filtra seus macros por nome ou texto\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffCopie resultados com Ctrl+C|r\n" ..
-    "    |cff999999-|r Ctrl+C em uma linha copia a mensagem inteira de um fragmento ou um link, que você pode colar onde quiser com Ctrl+V"
+    "|cffFFD100\226\128\162|r |cffffffffLinks do EasyFind|r\n" ..
+    "    |cff999999-|r Leve um amigo direto a qualquer resultado: uma configuração escondida três menus adentro, uma conquista, uma janela de profissão, uma montaria\n" ..
+    "    |cff999999-|r Pressione Ctrl+Shift+C na linha e cole no bate-papo com Ctrl+V (clique direito na linha para a lista de canais)\n" ..
+    "    |cff999999-|r Qualquer pessoa com EasyFind clica e chega exatamente nesse resultado; um link para um feitiço ou montaria conjura ou invoca ao clicar, como a linha"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"
@@ -320,7 +318,7 @@ L["CTX_FORGET_PICK"]                    = "Esquecer esta escolha"
 L["CTX_FORGET_PICK_TT"]                 = "A busca colocou esta linha no topo porque você já a escolheu para este texto. Esqueça isso e ela volta ao lugar natural."
 L["EFLINK_NOT_FOUND"]                   = "O EasyFind não encontrou esse resultado neste personagem."
 L["EFLINK_ROW_TT"]                      = "Envia este resultado como link. Qualquer pessoa com EasyFind pode clicar nele para abrir exatamente este resultado."
-L["EFLINK_ROW_TT_NOTE"]                 = "Sem EasyFind, aparece como texto simples. Ctrl+Shift+C na linha copia o link."
+L["EFLINK_ROW_TT_NOTE"]                 = "Sem EasyFind, aparece como texto simples. |cff70d6ffCtrl+Shift+C na linha copia o link.|r"
 L["EFLINK_IN_COMBAT"]                   = "O EasyFind pode abrir isso depois do combate."
 L["CTX_DESTROY_ITEM"]                   = "Destruir"
 L["CTX_TRACK"]                          = "Rastrear"
@@ -455,7 +453,7 @@ L["TOOLTIP_RESULT_LOCKED"]              = "Desbloqueia em um nível mais alto"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "Essa seção ainda não está disponível para este personagem."
 L["COPY_HINT"]                          = "Ctrl+C para copiar"
 L["COPY_ROW_TT"]                        = "Segure Ctrl e pressione C enquanto esta linha está destacada para copiar para a área de transferência; depois cole em qualquer lugar com Ctrl+V."
-L["COPY_ROW_TT_RESULT"]                 = "Também funciona no próprio resultado: passe o mouse sobre ele e pressione Ctrl+C."
+L["COPY_ROW_TT_RESULT"]                 = "|cff70d6ffTambém funciona no próprio resultado: passe o mouse sobre ele e pressione Ctrl+C.|r"
 L["COPY_ROW_TT_CELL"]                   = "Também funciona no próprio ícone: passe o mouse sobre ele e pressione Ctrl+C."
 
 -- =============================================================================

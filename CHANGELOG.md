@@ -4,6 +4,21 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [3.2.0] - 2026-09-08
+
+### Added
+- **EasyFind links**: send a friend straight to any result, whether a setting buried three menus deep, an achievement, a profession window, or a mount. Press Ctrl+Shift+C on the row and paste it into chat with Ctrl+V, or right-click the row for a channel list. Anyone with EasyFind clicks the link and lands on that exact result, and where a click acts on the row it acts from the link too: it casts the spell, summons the mount, uses or equips their own copy of the item. Ctrl+click shows where the result lives, Shift+click passes the link on, and hovering shows the game's own tooltip with what a click does. Anyone without EasyFind sees plain text
+
+### Changed
+- **The right-click menu shows its shortcuts**: Send shows Ctrl+C and EasyFind link shows Ctrl+Shift+C, the same chords that copy from the result row, and both work while that menu row is highlighted. The Wowhead row shows its Ctrl+C prompt only while highlighted, since it has no row shortcut
+- **Ctrl+C on any row**: a row with no chat link (a panel, a setting, a zone) copies its name instead of doing nothing
+
+### Fixed
+- **Ability icons no longer stay gray**: a row could keep a gray icon from an earlier result it had shown (Cat Form looked unusable while it was not)
+- **The first search after login no longer reshuffles**: categories that load in the background are warmed shortly after login, so the first search paints once instead of rearranging a moment later
+
+---
+
 ## [3.1.3] - 2026-09-06
 
 ### Fixed

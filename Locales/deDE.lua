@@ -262,12 +262,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffTextbausteine|r\n" ..
-    "    |cff999999-|r Speichere wiederverwendbaren Text einmal und tippe \\Schlüsselwort, um ihn im Chat beim Tippen zu erweitern, oder direkt in ein Makro\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSuche im Makrofenster|r\n" ..
-    "    |cff999999-|r Das Makrofenster erhält eine Suchleiste, die deine Makros nach Name oder Text filtert\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffErgebnisse mit Strg+C kopieren|r\n" ..
-    "    |cff999999-|r Strg+C auf einer Zeile kopiert die ganze Baustein-Nachricht oder einen Link, den du dann überall mit Strg+V einfügen kannst"
+    "|cffFFD100\226\128\162|r |cffffffffEasyFind-Links|r\n" ..
+    "    |cff999999-|r Schicke einen Freund direkt zu jedem Ergebnis: eine Einstellung drei Menüs tief, ein Erfolg, ein Berufsfenster, ein Reittier\n" ..
+    "    |cff999999-|r Drücke Strg+Umschalt+C auf der Zeile und füge es mit Strg+V im Chat ein (Rechtsklick auf die Zeile zeigt die Kanäle)\n" ..
+    "    |cff999999-|r Jeder mit EasyFind klickt darauf und landet genau bei diesem Ergebnis; ein Link zu einem Zauber oder Reittier wirkt oder beschwört beim Klick, wie die Zeile selbst"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"
@@ -322,7 +320,7 @@ L["CTX_FORGET_PICK"]                    = "Diese Wahl vergessen"
 L["CTX_FORGET_PICK_TT"]                 = "Die Suche hat diese Zeile nach oben gestellt, weil du sie für diesen Text schon einmal gewählt hast. Vergiss das, und sie kehrt an ihren natürlichen Platz zurück."
 L["EFLINK_NOT_FOUND"]                   = "EasyFind konnte dieses Ergebnis auf diesem Charakter nicht finden."
 L["EFLINK_ROW_TT"]                      = "Sendet dieses Ergebnis als Link. Jeder mit EasyFind kann ihn anklicken und genau dieses Ergebnis öffnen."
-L["EFLINK_ROW_TT_NOTE"]                 = "Ohne EasyFind erscheint er als einfacher Text. Strg+Umschalt+C auf der Zeile kopiert den Link."
+L["EFLINK_ROW_TT_NOTE"]                 = "Ohne EasyFind erscheint er als einfacher Text. |cff70d6ffStrg+Umschalt+C auf der Zeile kopiert den Link.|r"
 L["EFLINK_IN_COMBAT"]                   = "EasyFind kann das nach dem Kampf öffnen."
 L["CTX_DESTROY_ITEM"]                   = "Zerstören"
 L["CTX_TRACK"]                          = "Verfolgen"
@@ -457,7 +455,7 @@ L["TOOLTIP_RESULT_LOCKED"]              = "Wird auf einer höheren Stufe freiges
 L["MSG_GUIDE_TARGET_LOCKED"]            = "Dieser Bereich ist für diesen Charakter noch nicht verfügbar."
 L["COPY_HINT"]                          = "Strg+C zum Kopieren"
 L["COPY_ROW_TT"]                        = "Halte Strg und drücke C, während diese Zeile hervorgehoben ist, um in die Zwischenablage zu kopieren; füge es dann überall mit Strg+V ein."
-L["COPY_ROW_TT_RESULT"]                 = "Geht auch am Ergebnis selbst: darüber fahren und Strg+C drücken."
+L["COPY_ROW_TT_RESULT"]                 = "|cff70d6ffGeht auch am Ergebnis selbst: darüber fahren und Strg+C drücken.|r"
 L["COPY_ROW_TT_CELL"]                   = "Geht auch am Symbol selbst: darüber fahren und Strg+C drücken."
 
 -- =============================================================================
