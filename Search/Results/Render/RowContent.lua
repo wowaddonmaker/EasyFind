@@ -383,6 +383,13 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
             resultRow.icon:ClearAllPoints()
             resultRow.icon:SetPoint("RIGHT", resultRow, "RIGHT", rightOffset, 0)
             resultRow.icon:Show()
+            -- Rows are pooled: this branch sets the texture directly (not
+            -- through Icons:SetRowIcon, which is the only place that resets
+            -- desaturation), so a frame last used for a desaturated icon (an
+            -- app-launcher glyph, an inert row) stayed gray when reused here.
+            -- The gray tint some rows want is applied by vertex color below,
+            -- never by desaturation, so clear it unconditionally.
+            resultRow.icon:SetDesaturated(false)
             resultRow.icon.mountID = data.mountID
             resultRow.icon.toyItemID = data.toyItemID
             resultRow.icon.petID = data.petID
