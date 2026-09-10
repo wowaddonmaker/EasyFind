@@ -68,7 +68,7 @@ local editorFrame
 local TRIGGER_CHOICES = { "\\", "!", "#", "~", "&", "+", "=" }
 Snippets.TRIGGER_CHOICES = TRIGGER_CHOICES
 local triggerChar, triggerByte = "\\", 92
-local expandCallPattern, callContextPattern, helpPattern
+local expandCallPattern, expandCallEndPattern, callContextPattern, helpPattern
 
 function Snippets.TriggerChar()
     return triggerChar
@@ -85,13 +85,15 @@ function Snippets.RefreshTrigger()
     triggerByte = sbyte(c)
     local esc = "%" .. c
     expandCallPattern = "(" .. esc .. "[^%s" .. esc .. "%(]+)(%b())%s$"
+    expandCallEndPattern = "(" .. esc .. "[^%s" .. esc .. "%(]+)(%b())$"
     callContextPattern = esc .. "([^%s" .. esc .. "%(%)%?]+)(%([^%)]*)$"
     helpPattern = esc .. "([^%s" .. esc .. "%(%)%?]+)%?$"
 end
 Snippets.RefreshTrigger()
 
 local function FormattedKeywordHint()
-    return sformat(L["SNIPPET_KEYWORD_HINT"], triggerChar)
+    -- The chat rule, then the shortcut that skips the space step.
+    return sformat(L["SNIPPET_KEYWORD_HINT"], triggerChar) .. " " .. L["SNIP_HELP_CTRL_ENTER"]
 end
 Snippets.FormattedKeywordHint = FormattedKeywordHint
 
@@ -366,6 +368,7 @@ local function UpdateSnippetHelp(editBox, text, caret)
     -- collapsing newlines (StripMarkup is the one-line normalizer).
     GameTooltip:AddLine(TrimToCharBoundary(Utils.ClipboardSafeText(PlainText(snippet, true)) or "", 220),
         1, 1, 1, true)
+    GameTooltip:AddLine(ns.L["SNIP_HELP_CTRL_ENTER"], 0.7, 0.7, 0.7)
     GameTooltip:Show()
     editBox._efSnipHelp = true
 end
@@ -449,6 +452,8 @@ function Snippets:InsertIntoNote(name)
     end
 end
 
+local ExpandTokenAt
+
 -- Chat expansion: a keyword followed by the just-typed space becomes the
 -- snippet text. userInput gates recursion (our SetText re-fires with false).
 local function OnChatTextChanged(editBox, userInput)
@@ -484,6 +489,13 @@ local function OnChatTextChanged(editBox, userInput)
         token = smatch(slice, "(%S+)%s$")
     end
     if not token then return end
+    ExpandTokenAt(editBox, text, caret - 1, token, callWord, argText, " ")
+end
+
+-- Expands the "\keyword" or "\kw(args)" token whose last byte is `last`;
+-- `tail` is what follows it in the box (the typed space, or nothing for
+-- Ctrl+Enter).
+ExpandTokenAt = function(editBox, text, last, token, callWord, argText, tail)
     -- ONLY the explicit "\keyword " form expands (with "\" being the
     -- user-selectable trigger character). A bare keyword is too often a
     -- real word, and a silent mid-sentence replacement is a worse
@@ -502,8 +514,8 @@ local function OnChatTextChanged(editBox, userInput)
     local keepLines = editBox.IsMultiLine and editBox:IsMultiLine() or false
     local expanded = ChatText(snippet, args, keepLines)
     if expanded == "" then return end
-    local wordStart = caret - #token - 1
-    local newText = ssub(text, 1, wordStart) .. expanded .. " " .. ssub(text, caret + 1)
+    local wordStart = last - #token
+    local newText = ssub(text, 1, wordStart) .. expanded .. tail .. ssub(text, last + #tail + 1)
     -- Macro BODY editor: an addon-written pending value is session-tainted,
     -- and Blizzard's dirty-gated SaveMacro (tab change, OnShow's
     -- ChangeTab(1), the combat auto-commit) would later feed it to the
@@ -523,7 +535,7 @@ local function OnChatTextChanged(editBox, userInput)
             -- safe, nothing feeds these values to a protected API's
             -- pending-save path.
             editBox:SetText(newText)
-            editBox:SetCursorPosition(wordStart + #expanded + 1)
+            editBox:SetCursorPosition(wordStart + #expanded + #tail)
             return
         end
         if InCombatLockdown and InCombatLockdown() then
@@ -547,7 +559,7 @@ local function OnChatTextChanged(editBox, userInput)
             return
         end
         editBox:SetText(newText)
-        editBox:SetCursorPosition(wordStart + #expanded + 1)
+        editBox:SetCursorPosition(wordStart + #expanded + #tail)
         macroFrame.textChanged = nil
         -- OnTextChanged lands one frame late and re-dirties the frame; as
         -- long as the box still holds exactly what was committed, the
@@ -561,7 +573,34 @@ local function OnChatTextChanged(editBox, userInput)
         return
     end
     editBox:SetText(newText)
-    editBox:SetCursorPosition(wordStart + #expanded + 1)
+    editBox:SetCursorPosition(wordStart + #expanded + #tail)
+end
+
+-- Ctrl+Enter in a chat box: the "\keyword" (or "\kw(args)") ending at the
+-- caret expands in place with no space step, and the Enter that follows
+-- sends it. OnKeyDown runs before the box's own Enter handling, so the
+-- send sees the expanded text. Never on macro boxes.
+local function OnChatKeyDown(editBox, key)
+    if key ~= "ENTER" or not IsControlKeyDown() then return end
+    if editBox._efSnippetMacroBox then return end
+    if EasyFind and EasyFind.db and EasyFind.db.snippetChatExpansion == false then return end
+    local text = editBox:GetText()
+    local textLen = text and #text or 0
+    if textLen < 2 then return end
+    local caret = editBox:GetCursorPosition() or textLen
+    if caret < 2 or caret > textLen then return end
+    local slice = ssub(text, 1, caret)
+    local token, argText
+    local callWord, parens = smatch(slice, expandCallEndPattern)
+    if callWord then
+        token = callWord .. parens
+        argText = ssub(parens, 2, -2)
+    else
+        token = smatch(slice, "(%S+)$")
+    end
+    if not token then return end
+    HideSnippetHelp(editBox)
+    ExpandTokenAt(editBox, text, caret, token, callWord, argText, "")
 end
 
 -- Public: companions (EasyChat) attach their own message editboxes. This is
@@ -574,6 +613,7 @@ function Snippets.AttachExpansion(editBox)
     editBox:HookScript("OnEditFocusLost", HideSnippetHelp)
     if not editBox._efSnippetMacroBox then
         Utils.AttachPasteLinkSwap(editBox)
+        editBox:HookScript("OnKeyDown", OnChatKeyDown)
     end
     -- Arg-name ghost inside "\kw(": the same engine as the search bar's
     -- autocomplete, end-of-text only (rendering rebuilds the box text).
@@ -780,6 +820,31 @@ local BODY_H = 120
 -- what a single chat line carries.
 local CHAT_MAX = ns.CHAT_MESSAGE_MAX_CHARS or 255
 
+-- The existing snippet a name or keyword would collide with, if any:
+-- names are matched without case, keywords too, and keywords are unique.
+-- `except` skips one index (the snippet being edited).
+function Snippets:FindConflict(name, keyword, except)
+    local list = SnippetList()
+    if not list then return nil end
+    local nameLower = type(name) == "string" and slower(strtrim(name)) or ""
+    local keyLower = type(keyword) == "string" and slower(strtrim(keyword)) or ""
+    for i = 1, #list do
+        local s = list[i]
+        if i ~= except and type(s) == "table" then
+            if nameLower ~= "" and type(s.name) == "string" and slower(s.name) == nameLower then return s, i end
+            if keyLower ~= "" and type(s.keyword) == "string" and slower(s.keyword) == keyLower then return s, i end
+        end
+    end
+    return nil
+end
+
+function Snippets:ClearAll()
+    local list = SnippetList()
+    if not list then return end
+    for i = #list, 1, -1 do list[i] = nil end
+    RefreshSnippetRows()
+end
+
 local function UpdateCharCounter(f)
     f.charCounter:SetText(f.bodyBox:GetNumLetters() .. "/" .. CHAT_MAX)
 end
@@ -863,6 +928,20 @@ local function SaveEditor()
         return
     end
     local keyword = sgsub(strtrim(f.keywordBox:GetText() or ""), "%s+", "")
+    -- One keyword, one snippet: a keyword another snippet already has is
+    -- refused here, with the editor left open to change it.
+    if keyword ~= "" then
+        local other = Snippets:FindConflict(nil, keyword, f._editIndex)
+        if other then
+            ns.ShowThemedDialog({
+                text = sformat(L["SNIPPET_KEYWORD_TAKEN_FMT"], keyword, other.name or "?"),
+                messageColor = ns.GOLD_COLOR,
+                acceptText = _G["OKAY"] or "Okay",
+            })
+            f.keywordBox:SetFocus()
+            return
+        end
+    end
     local snippet = f._editIndex and list[f._editIndex]
     if not snippet then
         snippet = {}
@@ -1037,9 +1116,15 @@ local function EnsureEditor()
 
     -- Trigger-character cog, top right: the same picker as the options
     -- tab's cog. The choice is GLOBAL; the tooltip says so.
+    -- The trigger cog sits right after the title; the top-right corner
+    -- holds the close X every other EasyFind window has.
     local trigBtn = ns.CreateCogButton(f)
-    trigBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -DIALOG_PAD + 4, -9)
+    trigBtn:SetPoint("LEFT", f.title, "RIGHT", 6, 0)
     trigBtn:SetScript("OnClick", Snippets.ToggleTriggerMenu)
+    local closeBtn = ns.CreateCloseX(f)
+    closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -10)
+    closeBtn:SetScript("OnClick", function() f:Hide() end)
+    f.closeBtn = closeBtn
     Utils.AttachDelayedTooltip(trigBtn, "ANCHOR_RIGHT", function()
         return sformat(L["SNIPPET_TRIGGER"], Snippets.TriggerChar()), L["SNIPPET_TRIGGER_NOTE"]
     end)
@@ -1229,6 +1314,22 @@ function Snippets:OpenEditor(index)
     f.deleteBtn:SetShown(snippet ~= nil)
     f:Show()
     f.nameBox:SetFocus()
+end
+
+-- A new snippet from given text (the clipboard history's "Save as
+-- snippet"): the empty editor, then the body and a name, with the
+-- keyword box focused since that is what is left to write.
+function Snippets:OpenEditorPrefilled(body, name)
+    self:OpenEditor(nil)
+    local f = EnsureEditor()
+    if f._notesHost then
+        f._notesHost:SetDocument({ body = body or "", decorations = {} })
+    else
+        f.bodyBox:SetText(body or "")
+    end
+    f.nameBox:SetText(name or "")
+    UpdateCharCounter(f)
+    f.keywordBox:SetFocus()
 end
 
 return Snippets

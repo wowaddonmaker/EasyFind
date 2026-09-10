@@ -4,6 +4,27 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [3.3.0] - 2026-09-09
+
+### Added
+- **Extension buttons**: drag any extension out of the extensions menu and it becomes a round button on screen. Drop it on the minimap to park it on the ring, where it takes the minimap border, or on the micro menu to make it a micro button with the game's own art. Click the button to open the extension and again to close it; right-click for lock, borders, shortkey and size; drag it to the remove target at the top of the screen to delete it. Escape cancels a drag in progress
+- **Show me**: What's New can play a short demonstration of a new feature, with a cursor that does the steps for you. Escape stops it, and the popup comes back when it ends
+- **Snippets: Ctrl+Enter**: type `\keyword` and press Ctrl+Enter to send the full expansion at once, no space needed. The snippet editor's hint says so
+- **Settings search**: a search box above the options tabs finds any setting by its label, on any tab and any extension page. Enter or a click jumps to it and pulses the control
+- **Clear All for snippets**: one button on the Snippets settings page, with a confirm, empties the list
+
+### Changed
+- **Hover help reads as help**: the addon's own tooltips wear a notch, a raised surface and a small gap from what you hover, so they no longer look like menus to click, and they never open by repeating the label the cursor is already on
+- **One keyword, one snippet**: saving a snippet with a keyword another snippet already uses is refused and names the other, so a keyword never expands to the wrong text
+
+### Fixed
+- **Learned picks respect filters**: a result search put on top from a past pick no longer appears when its category is filtered out
+- **Tooltips after scrolling**: the row under the cursor shows its tooltip once scrolling stops, without moving the mouse
+- **Escape and the game's own windows**: Escape handling for drags and demonstrations no longer goes through the game's special-frame list, which could taint the game's window closing for the rest of the session
+- **List scrollbars**: the scrollbar of the aliases, blacklist and snippets tables sits in the table's margin instead of over the remove buttons
+
+---
+
 ## [3.2.0] - 2026-09-08
 
 ### Added

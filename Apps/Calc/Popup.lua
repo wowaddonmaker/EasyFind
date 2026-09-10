@@ -605,7 +605,7 @@ function Calculator:CloseSearchForCalculator()
     end
 end
 
-function Calculator:OpenCalculator(expression, deferFocus)
+function Calculator:OpenCalculator(expression)
     expression = tostring(expression or "")
     self:CloseSearchForCalculator()
 
@@ -622,9 +622,11 @@ function Calculator:OpenCalculator(expression, deferFocus)
     frame:SetPoint("CENTER")
     frame:Show()
     frame:Raise()
-    if editBox and not deferFocus then
-        editBox:SetFocus()
-    elseif editBox then
+    -- Focus always waits a frame: an open that came from a keybind (a
+    -- shortkey, an extension button's binding) would otherwise deliver
+    -- the bound key's character into the box that just took focus. A
+    -- click loses nothing by the wait.
+    if editBox then
         Utils.SafeAfter(0, function()
             if frame and frame:IsShown() and editBox:IsVisible() then
                 editBox:SetFocus()

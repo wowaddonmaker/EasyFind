@@ -55,6 +55,19 @@ local DB_DEFAULTS = {
     updateNotify = true,
     snippets = {},
     snippetChatExpansion = true,
+    -- Clipboard history sources (the clipboard companion reads these).
+    clipboardCopied = true,
+    clipboardPasted = true,
+    -- Off by default: trade and city chat carry far more junk than links
+    -- worth keeping. Copies and pastes are the player's own doing.
+    clipboardChat = false,
+    clipboardWhispers = false,
+    -- Clipboard History's own view, from the filter menu's Clipboard
+    -- History flyout: which kinds show, and the order.
+    clipboardKindLink = true, clipboardKindEflink = true, clipboardKindMappin = true,
+    clipboardKindUrl = true, clipboardKindCommand = true, clipboardKindNumber = true,
+    clipboardKindText = true,
+    clipboardOldestFirst = false,
     snippetTriggerChar = "\\",
     accountKeybinds = {},
     resultsTheme = "Modern",
@@ -563,7 +576,7 @@ local SUGGESTED_KEYBINDS = {
 -- The version whose features the What's New popup currently describes. Bump
 -- ONLY when the popup content is rewritten; patch releases that keep the same
 -- content must not re-announce it to users who already saw it.
-local WHATSNEW_CONTENT_VERSION = "3.2.0"
+local WHATSNEW_CONTENT_VERSION = "3.3.0"
 
 local WHATSNEW_LINK_PREFIX = "easyfind:whatsnew:"
 local whatsNewHookInstalled = false
@@ -621,22 +634,30 @@ end
 -- way; one implementation, shared.
 ns.CompareVersion = CompareVersion
 
+-- Fills in every DB_DEFAULTS key the table lacks (and every sub-key of a
+-- table default), each a copy so no two profiles ever share a default
+-- table. Runs at load and after a profile switch.
+local function ApplyDBDefaults(db)
+    for k, v in pairs(DB_DEFAULTS) do
+        if db[k] == nil then
+            db[k] = CloneDefaultValue(v)
+        elseif type(v) == "table" and type(db[k]) == "table" then
+            for sk, sv in pairs(v) do
+                if db[k][sk] == nil then
+                    db[k][sk] = CloneDefaultValue(sv)
+                end
+            end
+        end
+    end
+end
+ns.ApplyDBDefaults = ApplyDBDefaults
+
 local function OnInitialize()
     if not EasyFindDB then
         EasyFindDB = { firstInstall = true }
     end
     local savedVersion = EasyFindDB.dbVersion or 0
-    for k, v in pairs(DB_DEFAULTS) do
-        if EasyFindDB[k] == nil then
-            EasyFindDB[k] = v
-        elseif type(v) == "table" and type(EasyFindDB[k]) == "table" then
-            for sk, sv in pairs(v) do
-                if EasyFindDB[k][sk] == nil then
-                    EasyFindDB[k][sk] = sv
-                end
-            end
-        end
-    end
+    ApplyDBDefaults(EasyFindDB)
 
     for v = savedVersion + 1, DB_VERSION do
         if DB_MIGRATIONS[v] then
@@ -653,6 +674,9 @@ local function OnInitialize()
     end
 
     EasyFind.db = EasyFindDB
+    -- The profile this character (or class) picked goes live before any
+    -- module reads the db. A per-spec pick waits for login.
+    if ns.Profiles then ns.Profiles:OnInitialize() end
 
     ns.version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version")
 
@@ -854,6 +878,52 @@ end)
 
 -- Called by EasyFind's keybind UI when the user binds (key) or clears (nil) a
 -- shortcut. Stores it account-wide and re-applies the override immediately.
+-- Re-binds every account keybind from the db (a profile switch swaps them).
+function EasyFind:ApplyAccountKeybinds()
+    ApplyAccountKeybinds()
+end
+
+-- The search bar, results and map re-read their settings from the db. The
+-- options panel's reset buttons and a profile switch both end here.
+-- resetPosition true forgets the saved bar position (a reset); false puts
+-- the bar where the db says (a switch).
+function ns.ApplyUISettings(resetPosition)
+    if ns.Highlight and ns.Highlight.ClearAll then pcall(ns.Highlight.ClearAll, ns.Highlight) end
+    local Search = ns.Search
+    if not (_G["EasyFindSearchFrame"] and Search) then return end
+    if resetPosition then
+        if Search.ResetPosition then Search:ResetPosition() end
+    elseif Search.ApplySavedPosition then
+        Search:ApplySavedPosition()
+    end
+    if Search.UpdateScale then Search:UpdateScale() end
+    if Search.UpdateWidth then Search:UpdateWidth() end
+    if Search.UpdateOpacity then Search:UpdateOpacity() end
+    if Search.UpdateSearchBarHeight then Search:UpdateSearchBarHeight() end
+    if Search.UpdateSmartShow then Search:UpdateSmartShow(false) end
+    if Search.UpdateFontSize then Search:UpdateFontSize() end
+    if Search.RefreshResults then Search:RefreshResults() end
+end
+
+function ns.ClearMapRuntime()
+    local MapSearch = ns.MapSearch
+    if not MapSearch then return end
+    pcall(MapSearch.ClearAll, MapSearch)
+    pcall(MapSearch.ClearZoneHighlight, MapSearch)
+    MapSearch.pendingWaypoint = nil
+end
+
+function ns.ApplyMapSettings()
+    ns.ClearMapRuntime()
+    local MapSearch = ns.MapSearch
+    if MapSearch then
+        if MapSearch.UpdateIconScales then MapSearch:UpdateIconScales() end
+        if MapSearch.RefreshIndicators then MapSearch:RefreshIndicators() end
+    end
+    local uiInd = _G["EasyFindIndicatorFrame"]
+    if uiInd then uiInd:SetScale(EasyFind.db.iconScale or 0.8) end
+end
+
 function EasyFind:SetAccountKeybind(action, key)
     if not (action and EASYFIND_BINDING_LOOKUP[action] and EasyFindDB) then return end
     EasyFindDB.accountKeybinds = EasyFindDB.accountKeybinds or {}
@@ -933,6 +1003,10 @@ local function OnPlayerLogin()
         ns.Scheduler:SetBudgetMs(2)
         ns.Scheduler:StartPump(CreateFrame("Frame"))
     end
+
+    -- The spec is known now: a per-spec profile goes live before the
+    -- theme seed and the module Initialize loop read the db.
+    if ns.Profiles then ns.Profiles:OnLogin() end
 
     -- Seed the live theme slots BEFORE the module Initialize loop below:
     -- the search UI is created (and painted) inside it, and a seed after
@@ -1490,6 +1564,27 @@ local minimapShapes = {
     ["TRICORNER-BOTTOMLEFT"]  = {true, true, false, true},
     ["TRICORNER-BOTTOMRIGHT"] = {true, true, true, false},
 }
+
+-- The x, y offset from the minimap's center for a button on its ring at
+-- `angle` degrees, honoring the minimap shape. Shared with the extension
+-- buttons that snap onto the ring (Search/ExtensionButtons.lua).
+function ns.MinimapEdgeOffset(angle)
+    local rad = mrad(angle)
+    local cx, cy = mcos(rad), msin(rad)
+    local q = 1
+    if cx < 0 then q = q + 1 end
+    if cy > 0 then q = q + 2 end
+    local w = (Minimap:GetWidth()  / 2) + 5
+    local h = (Minimap:GetHeight() / 2) + 5
+    local shape = GetMinimapShape and GetMinimapShape() or "ROUND"
+    local quadTable = minimapShapes[shape] or minimapShapes["ROUND"]
+    if quadTable[q] then
+        return cx * w, cy * h
+    end
+    local dw = msqrt(2 * w * w) - 10
+    local dh = msqrt(2 * h * h) - 10
+    return mmax(-w, mmin(cx * dw, w)), mmax(-h, mmin(cy * dh, h))
+end
 
 local function PositionMinimapButton(angle)
     if not minimapButton then return end

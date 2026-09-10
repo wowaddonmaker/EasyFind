@@ -177,6 +177,7 @@ local FLAT_CATEGORY_ICONS = {
     settingAddon  = { atlas = "QuestLog-icon-setting", color = { 1.0, 0.78, 0.35 } },
     title         = { tex = 514608, coords = { 0.016, 0.531, 0.324, 0.461 } },
     snippet       = { tex = ns.SNIPPET_ICON_TEX, coords = ns.SNIPPET_ICON_COORDS },
+    clipboard     = { tex = ns.CLIPBOARD_ICON_TEX, coords = ns.CLIPBOARD_ICON_COORDS },
     -- chromeTint: white line art tinted with the theme's chrome-glyph color
     -- at render time, so this icon matches the apps menu and popup glyphs.
     calculator    = { tex = CALCULATOR_ICON_TEX, chromeTint = true },
@@ -200,6 +201,7 @@ function Icons:GetAppGlyphIcon(data)
     if not data then return nil end
     if data.calculatorLauncher or data.calculatorResult then return FLAT_CATEGORY_ICONS.calculator end
     if data.iconSearchLauncher then return FLAT_CATEGORY_ICONS.iconSearch end
+    if data.clipboardLauncher then return FLAT_CATEGORY_ICONS.clipboard end
     return nil
 end
 
@@ -222,7 +224,9 @@ function Icons:GetFlatCategoryIcon(data)
     if data.calculatorResult then return FLAT_CATEGORY_ICONS.calculator end
     -- App launcher rows wear the apps-button waffle as their general glyph;
     -- the app's own glyph renders on the row's right via GetAppGlyphIcon.
-    if data.calculatorLauncher or data.iconSearchLauncher then return FLAT_CATEGORY_ICONS.apps end
+    if data.calculatorLauncher or data.iconSearchLauncher or data.clipboardLauncher then
+        return FLAT_CATEGORY_ICONS.apps
+    end
     -- Category, not nativeRun: nativeRun rows that belong to a real
     -- category (the snippet create row, the snippets app) must fall
     -- through to their own category glyph below.
@@ -287,6 +291,9 @@ function Icons:GetFlatCategoryIcon(data)
         return REP_FACTION_ICONS[data.factionSide or "either"]
     end
     if data.category == "Snippet" then return FLAT_CATEGORY_ICONS.snippet end
+    -- Clipboard rows: the app glyph on the left; each row's own icon (the
+    -- copied row's face, the linked item's) sits on the right.
+    if data.category == "Clipboard" then return FLAT_CATEGORY_ICONS.clipboard end
     if data.mapSearchResult then return FLAT_CATEGORY_ICONS.map end
     -- Action rows without a better category: nativeRun is the run mechanism,
     -- not a category, so it only decides as a last resort -- the snippet

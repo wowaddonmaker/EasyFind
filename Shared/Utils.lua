@@ -1676,6 +1676,37 @@ ns.TOOLTIP_HOVER_DELAY = 0.4
 -- returns title, body and an optional dim third line; returning nothing
 -- shows nothing. Hooks (never sets) OnEnter/OnLeave so it composes with a
 -- control's own hover visuals.
+-- A tooltip must not open by repeating the label the cursor is already
+-- on. When the resolved title is text the owner itself shows (its label
+-- font string, a child region, a parent row's label), the title is
+-- dropped and the description stands alone. A title that says something
+-- the control does not (a keybind's action, a code's purpose) stays.
+local LABEL_FIELDS = { "_label", "label", "text", "Text" }
+local function ShowsText(frame, text)
+    for i = 1, #LABEL_FIELDS do
+        local fs = frame[LABEL_FIELDS[i]]
+        if type(fs) == "table" and fs.GetText and fs:GetText() == text then return true end
+    end
+    if frame.GetFontString then
+        local fs = frame:GetFontString()
+        if fs and fs:GetText() == text then return true end
+    end
+    if frame.GetRegions then
+        for _, region in ipairs({ frame:GetRegions() }) do
+            if region.GetText and region:IsShown() and region:GetText() == text then return true end
+        end
+    end
+    return false
+end
+
+local function OwnerShowsText(owner, text)
+    if type(text) ~= "string" or text == "" then return false end
+    if ShowsText(owner, text) then return true end
+    local parent = owner:GetParent()
+    return parent ~= nil and parent ~= UIParent and ShowsText(parent, text)
+end
+Utils.OwnerShowsText = OwnerShowsText
+
 function Utils.AttachDelayedTooltip(frame, anchor, resolve)
     frame:HookScript("OnEnter", function(self)
         local token = (self._efTipToken or 0) + 1
@@ -1684,6 +1715,9 @@ function Utils.AttachDelayedTooltip(frame, anchor, resolve)
             if self._efTipToken ~= token or not self:IsMouseOver() then return end
             local title, body, dimLine = resolve(self)
             if not title and not body then return end
+            if body and OwnerShowsText(self, title) then
+                title, body, dimLine = body, dimLine, nil
+            end
             ns.ShowHintTooltip(self, anchor, title, body, dimLine)
         end)
     end)
@@ -2035,6 +2069,12 @@ ns.COPIED_COLOR = {0.48, 1.0, 0.62}
 -- (chat/notes), tintable, immune to Blizzard sprite-sheet reshuffles.
 -- Filter row and result rows share it.
 ns.SNIPPET_ICON_TEX    = "Interface\\AddOns\\EasyFind\\textures\\snippet-icon"
+ns.CLIPBOARD_ICON_TEX  = "Interface\\AddOns\\EasyFind\\textures\\clipboard-icon"
+ns.CLIPBOARD_ICON_COORDS = { 0, 1, 0, 1 }
+ns.EXTENSIONS_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\apps-icon"
+-- Sort glyph (bars shrinking downward plus a down arrow = descending);
+-- flip the tex coords vertically for ascending.
+ns.SORT_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\sort-icon"
 ns.SNIPPET_ICON_COORDS = { 0, 1, 0, 1 }
 -- One chat line's character budget; snippet bodies cap here so an
 -- expansion can never overflow a single message.
@@ -3292,6 +3332,39 @@ function Utils.SetCheckboxTextures(check, size)
     check:GetCheckedTexture():SetPoint("LEFT", 4, 0)
 end
 
+-- ==== base64 ================================================================
+-- Share codes (shortkey lists, profiles) travel as "<PREFIX>!<base64>".
+local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local b64char, b64byte = string.char, string.byte
+
+function Utils.Base64Encode(data)
+    return ((data:gsub(".", function(x)
+        local r, b = "", b64byte(x)
+        for i = 8, 1, -1 do r = r .. (b % 2 ^ i - b % 2 ^ (i - 1) > 0 and "1" or "0") end
+        return r
+    end) .. "0000"):gsub("%d%d%d?%d?%d?%d?", function(x)
+        if #x < 6 then return "" end
+        local c = 0
+        for i = 1, 6 do c = c + (x:sub(i, i) == "1" and 2 ^ (6 - i) or 0) end
+        return B64:sub(c + 1, c + 1)
+    end) .. ({ "", "==", "=" })[#data % 3 + 1])
+end
+
+function Utils.Base64Decode(data)
+    data = data:gsub("[^" .. B64 .. "=]", "")
+    return (data:gsub(".", function(x)
+        if x == "=" then return "" end
+        local r, f = "", (B64:find(x, 1, true) - 1)
+        for i = 6, 1, -1 do r = r .. (f % 2 ^ i - f % 2 ^ (i - 1) > 0 and "1" or "0") end
+        return r
+    end):gsub("%d%d%d?%d?%d?%d?%d?%d?", function(x)
+        if #x ~= 8 then return "" end
+        local c = 0
+        for i = 1, 8 do c = c + (x:sub(i, i) == "1" and 2 ^ (8 - i) or 0) end
+        return b64char(c)
+    end))
+end
+
 function ns.CreateModernButton(parent, text, width, height)
     local btn = CreateFrame("Button", nil, parent)
     local rawSetSize = btn.SetSize
@@ -3759,11 +3832,26 @@ end
 
 -- Tracks every text state (addon SetText included) so "previous text" is
 -- always the box's real prior content; only user changes can be a paste.
+-- A chunk arriving in one change with the caret at its end is a paste (or
+-- an input method committing a phrase). Reported to whoever listens (the
+-- clipboard history companion); the change itself is untouched.
+local function ReportPastedChunk(editBox, prev, text)
+    if not Utils.OnPasteChunk or not prev or #text <= #prev + 1 then return end
+    local caret = editBox:GetCursorPosition() or 0
+    local added = #text - #prev
+    if caret < added then return end
+    local prefix, suffix = ssub(text, 1, caret - added), ssub(text, caret + 1)
+    if prev ~= prefix .. suffix then return end
+    Utils.OnPasteChunk(editBox, ssub(text, caret - added + 1, caret))
+end
+
 local function SwapPastedLink(editBox, userInput)
     local prev = editBox._efPrevText
     local text = editBox:GetText()
     editBox._efPrevText = text
-    if not userInput or not pastePlain or not prev then return end
+    if not userInput or not prev then return end
+    ReportPastedChunk(editBox, prev, text)
+    if not pastePlain then return end
     local caret = editBox:GetCursorPosition() or 0
     local plainLen = #pastePlain
     if caret < plainLen or sbyte(text, caret) ~= sbyte(pastePlain, plainLen) then return end
@@ -3778,11 +3866,56 @@ local function SwapPastedLink(editBox, userInput)
     editBox:SetCursorPosition(#prefix + #pasteLink)
 end
 
+-- Ctrl+C in an edit box copies its highlighted text; the game exposes no
+-- clipboard and no selection getter, so the selection is found the one
+-- way there is: a frame after the chord (the native copy has landed by
+-- then), the highlight is replaced with nothing, what vanished is the
+-- selection, and the text and highlight are put back as they were. The
+-- macro body is never touched (an addon-written body is a tainted
+-- pending value for the protected macro save), so there the whole body
+-- is reported instead. Reported to whoever listens (the clipboard
+-- history companion).
+local function ReportCopiedSelection(editBox)
+    if not Utils.OnClipboardCopied or not editBox:IsShown() then return end
+    local full = editBox:GetText()
+    if not full or full == "" then return end
+    if editBox._efSnippetMacroBox or editBox == _G["MacroFrameText"] then
+        Utils.OnClipboardCopied(full, nil, nil)
+        return
+    end
+    local cursor = editBox:GetCursorPosition() or 0
+    editBox:Insert("")
+    local after = editBox:GetText()
+    if after == full then return end   -- nothing highlighted: nothing was copied
+    local removed = #full - #after
+    local selStart = editBox:GetCursorPosition() or 0
+    local selected = ssub(full, selStart + 1, selStart + removed)
+    editBox:SetText(full)
+    editBox:SetCursorPosition(cursor)
+    editBox:HighlightText(selStart, selStart + removed)
+    if selected ~= "" then Utils.OnClipboardCopied(selected, nil, nil) end
+end
+
+-- The copy report alone, for boxes that only ever hand text out (the
+-- game's own copy dialogs: Copy Character Name and the like live in the
+-- static popups' edit boxes).
+function Utils.AttachCopyWatch(editBox)
+    if not editBox or editBox._efCopyWatch then return end
+    editBox._efCopyWatch = true
+    editBox:HookScript("OnKeyDown", function(self, key)
+        if key ~= "C" or not IsControlKeyDown() then return end
+        Utils.SafeAfter(0, function() ReportCopiedSelection(self) end)
+    end)
+end
+
+-- One attach per chat or macro box: the paste swap (and paste report) on
+-- text changes, and the copy report on Ctrl+C.
 function Utils.AttachPasteLinkSwap(editBox)
     if not editBox or editBox._efPasteSwap then return end
     editBox._efPasteSwap = true
     editBox._efPrevText = editBox:GetText()
     editBox:HookScript("OnTextChanged", SwapPastedLink)
+    Utils.AttachCopyWatch(editBox)
 end
 end
 
@@ -3812,32 +3945,60 @@ function ns.TooltipTextColor()
     return c[1], c[2], c[3]
 end
 
--- The addon's own messaging tooltip: one pooled panel styled exactly like
--- the menus (StyleMenuPanel), so hints, explanations and hover help never
--- ride Blizzard's GameTooltip (that stays for real item, spell and
--- achievement tooltips). Title in the shared tooltip text color, body in
--- the theme's reading tone, an optional dim note; the panel matches the
--- owner's scale and hides only for the owner that showed it. Anchors use
--- GameTooltip's vocabulary (ANCHOR_RIGHT, ANCHOR_CURSOR, ...) so call
--- sites read the same.
+-- The addon's own messaging tooltip: one pooled panel for hints,
+-- explanations and hover help, so they never ride Blizzard's GameTooltip
+-- (that stays for real item, spell and achievement tooltips). It is
+-- deliberately NOT a menu panel: menus are clickable, this is a label,
+-- and its own grammar keeps the two apart at a glance: a notch pointing
+-- at the owner, a solid surface pushed away from the window fill with a
+-- hairline ring and tighter corners, a small gap from the owner, a short
+-- fade-in, and no mouse. Title in the shared tooltip text color with a
+-- rule under it, body in the theme's reading tone, an optional dim note;
+-- the panel matches the owner's scale and hides only for the owner that
+-- showed it. Anchors use GameTooltip's vocabulary (ANCHOR_RIGHT,
+-- ANCHOR_TOP, ...): a side name places the panel beside or above/below
+-- the owner, centered on it; a corner name aligns that edge instead.
 do
 local tip
 local MAX_W = 280
 local PAD_X, PAD_Y = 12, 10
+local GAP = 7            -- owner edge to panel edge; the notch spans it
+local NOTCH = 9          -- square side; turned 45 degrees, ~6px shows
+local NOTCH_INSET = 12   -- how close to a corner the notch may sit
+local CORNER = 6         -- tighter than the menus' 10
+-- anchor -> panel point, owner point, x, y, notch edge
 local ANCHORS = {
-    ANCHOR_RIGHT = { "BOTTOMLEFT", "TOPRIGHT" },
-    ANCHOR_LEFT = { "BOTTOMRIGHT", "TOPLEFT" },
-    ANCHOR_TOP = { "BOTTOM", "TOP" },
-    ANCHOR_BOTTOM = { "TOP", "BOTTOM" },
-    ANCHOR_TOPRIGHT = { "BOTTOMRIGHT", "TOPRIGHT" },
-    ANCHOR_TOPLEFT = { "BOTTOMLEFT", "TOPLEFT" },
-    ANCHOR_BOTTOMRIGHT = { "TOPRIGHT", "BOTTOMRIGHT" },
-    ANCHOR_BOTTOMLEFT = { "TOPLEFT", "BOTTOMLEFT" },
+    ANCHOR_RIGHT       = { "LEFT",        "RIGHT",       GAP,  0,   "LEFT" },
+    ANCHOR_LEFT        = { "RIGHT",       "LEFT",       -GAP,  0,   "RIGHT" },
+    ANCHOR_TOP         = { "BOTTOM",      "TOP",         0,    GAP, "BOTTOM" },
+    ANCHOR_TOPRIGHT    = { "BOTTOMRIGHT", "TOPRIGHT",    0,    GAP, "BOTTOM" },
+    ANCHOR_TOPLEFT     = { "BOTTOMLEFT",  "TOPLEFT",     0,    GAP, "BOTTOM" },
+    ANCHOR_BOTTOM      = { "TOP",         "BOTTOM",      0,   -GAP, "TOP" },
+    ANCHOR_BOTTOMRIGHT = { "TOPRIGHT",    "BOTTOMRIGHT", 0,   -GAP, "TOP" },
+    ANCHOR_BOTTOMLEFT  = { "TOPLEFT",     "BOTTOMLEFT",  0,   -GAP, "TOP" },
 }
+
+-- Surface colors: the window fill pushed away from the text (darker on
+-- dark themes, deeper on light ones) at full opacity, so the panel reads
+-- as a floating label above the UI and never as a sibling of the menus.
+-- The ring is the theme's border color.
+local function SurfaceColors(theme)
+    local pal = ns.ACTIVE_UI_PALETTE
+    local base = (pal and pal.windowFill) or ns.SEARCH_WINDOW_FILL_COLOR
+    local k = (theme and theme.lightTheme) and 0.86 or 0.55
+    local ring = theme and theme.resultsBackdropBorderColor
+    local rr, rg, rb = 0.42, 0.42, 0.42
+    if ring then rr, rg, rb = ring[1], ring[2], ring[3] end
+    return base[1] * k, base[2] * k, base[3] * k, rr, rg, rb
+end
 
 local function PaintHintTooltip(self)
     local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
     local light = theme and theme.lightTheme
+    local r, g, b, rr, rg, rb = SurfaceColors(theme)
+    ns.SetRoundedRectFill(self, r, g, b, 1)
+    ns.SetRoundedRectBorderColor(self, rr, rg, rb, light and 0.55 or 0.45)
+    self.notch:SetColorTexture(r, g, b, 1)
     self.title:SetTextColor(ns.TooltipTextColor())
     local body = light and theme.leafColor or ns.TEXT_PRIMARY
     self.body:SetTextColor(body[1], body[2], body[3], 1)
@@ -3847,6 +4008,13 @@ local function PaintHintTooltip(self)
     self.title:SetShadowColor(0, 0, 0, shadow)
     self.body:SetShadowColor(0, 0, 0, shadow)
     self.note:SetShadowColor(0, 0, 0, shadow)
+    -- The rule under the title wears the menu separator color.
+    local sep = theme and theme.separatorColor
+    if sep then
+        self.sep:SetColorTexture(sep[1], sep[2], sep[3], sep[4] or 0.35)
+    else
+        self.sep:SetColorTexture(1, 1, 1, 0.18)
+    end
 end
 
 local function EnsureHintTooltip()
@@ -3855,20 +4023,34 @@ local function EnsureHintTooltip()
     tip:SetFrameStrata("TOOLTIP")
     tip:SetFrameLevel(9999)
     tip:SetClampedToScreen(true)
-    ns.StyleMenuPanel(tip)
+    tip:EnableMouse(false)   -- a label: the mouse passes straight through
+    ns.CreateRoundedRectBorder(tip)
+    ns.SetRoundedRectBarHeight(tip, CORNER)
+    -- The notch: a square in the fill color turned 45 degrees, drawn
+    -- under the (opaque) fill so only the half outside the panel shows.
+    tip.notch = tip:CreateTexture(nil, "BACKGROUND", nil, -1)
+    tip.notch:SetSize(NOTCH, NOTCH)
+    tip.notch:SetRotation(math.pi / 4)
     tip.title = tip:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     tip.body = tip:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     tip.note = tip:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    -- A 1px rule between the title and the text below it, so the
+    -- header reads as a header when the body runs long.
+    tip.sep = tip:CreateTexture(nil, "ARTWORK")
+    tip.sep:SetHeight(1)
     for _, fs in ipairs({ tip.title, tip.body, tip.note }) do
-        -- Painted here, never by the menu retint walk (which would flatten
-        -- the three tones into one).
         fs._efOwnColor = true
         fs:SetJustifyH("LEFT")
         fs:SetJustifyV("TOP")
         fs:SetWordWrap(true)
         fs:SetNonSpaceWrap(false)
     end
-    tip._efOnThemeRestyle = PaintHintTooltip
+    -- The fade-in: menus pop, labels arrive.
+    tip.fade = tip:CreateAnimationGroup()
+    local alpha = tip.fade:CreateAnimation("Alpha")
+    alpha:SetFromAlpha(0)
+    alpha:SetToAlpha(1)
+    alpha:SetDuration(0.1)
     tip:Hide()
     return tip
 end
@@ -3879,9 +4061,31 @@ local function NaturalWidth(fs)
     return fs:GetStringWidth() or 0
 end
 
+-- Puts the notch on `edge`, at the owner's center projected onto that
+-- edge (kept away from the corners), half hidden behind the panel.
+-- Reads the resolved rectangles, so it runs after the panel is shown.
+local function PlaceNotch(t, owner, edge)
+    local n = t.notch
+    n:ClearAllPoints()
+    if not edge then n:Hide(); return end
+    local w, h = t:GetWidth(), t:GetHeight()
+    local ocx, ocy = owner:GetCenter()
+    local left, bottom = t:GetLeft(), t:GetBottom()
+    if not (ocx and ocy and left and bottom) then n:Hide(); return end
+    if edge == "LEFT" or edge == "RIGHT" then
+        local y = mmax(NOTCH_INSET, mmin(h - NOTCH_INSET, ocy - bottom))
+        n:SetPoint("CENTER", t, "BOTTOM" .. edge, 0, y)
+    else
+        local x = mmax(NOTCH_INSET, mmin(w - NOTCH_INSET, ocx - left))
+        n:SetPoint("CENTER", t, edge .. "LEFT", x, 0)
+    end
+    n:Show()
+end
+
 function ns.ShowHintTooltip(owner, anchor, title, body, note)
     if not owner or (not title and not body) then return end
     local t = EnsureHintTooltip()
+    local wasShown = t:IsShown()
     t._owner = owner
     t.title:SetText(title or "")
     t.body:SetText(body or "")
@@ -3895,17 +4099,30 @@ function ns.ShowHintTooltip(owner, anchor, title, body, note)
     t.body:SetWidth(w)
     t.note:SetWidth(w)
     local y = -PAD_Y
-    local blocks = { title and t.title, body and t.body, note and t.note }
+    local blocks = {}
+    if title then blocks[#blocks + 1] = t.title end
+    if body then blocks[#blocks + 1] = t.body end
+    if note then blocks[#blocks + 1] = t.note end
     for _, fs in ipairs({ t.title, t.body, t.note }) do
         fs:ClearAllPoints()
         fs:Hide()
     end
+    t.sep:ClearAllPoints()
+    t.sep:Hide()
+    local rule = title and (body or note)
     for i = 1, #blocks do
         local fs = blocks[i]
-        if fs then
-            fs:SetPoint("TOPLEFT", t, "TOPLEFT", PAD_X, y)
-            fs:Show()
-            y = y - mceil(fs:GetStringHeight()) - (fs == t.title and 4 or 6)
+        fs:SetPoint("TOPLEFT", t, "TOPLEFT", PAD_X, y)
+        fs:Show()
+        y = y - mceil(fs:GetStringHeight())
+        if fs == t.title and rule then
+            y = y - 5
+            t.sep:SetPoint("TOPLEFT", t, "TOPLEFT", PAD_X, y)
+            t.sep:SetWidth(w)
+            t.sep:Show()
+            y = y - 1 - 6
+        else
+            y = y - (fs == t.title and 4 or 6)
         end
     end
     t:SetSize(w + PAD_X * 2, -y - 6 + PAD_Y)
@@ -3918,16 +4135,24 @@ function ns.ShowHintTooltip(owner, anchor, title, body, note)
         t:SetScale(1)
     end
     t:ClearAllPoints()
+    local edge
     if anchor == "ANCHOR_CURSOR" then
         local scale = t:GetEffectiveScale()
         local x, cy = GetCursorPosition()
         t:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + 12, cy / scale + 12)
     else
         local a = ANCHORS[anchor] or ANCHORS.ANCHOR_RIGHT
-        t:SetPoint(a[1], owner, a[2], 0, 0)
+        t:SetPoint(a[1], owner, a[2], a[3], a[4])
+        edge = a[5]
     end
     PaintHintTooltip(t)
     t:Show()
+    PlaceNotch(t, owner, edge)
+    -- Fade in on arrival only; moving between owners keeps it steady.
+    if not wasShown then
+        t.fade:Stop()
+        t.fade:Play()
+    end
 end
 
 -- Hides only when `owner` (or nothing) is the frame that showed it, so a
@@ -3936,6 +4161,7 @@ function ns.HideHintTooltip(owner)
     if not tip then return end
     if owner and tip._owner ~= owner then return end
     tip._owner = nil
+    tip.fade:Stop()
     tip:Hide()
 end
 
@@ -4043,6 +4269,11 @@ local function EnsureClipboardBox()
         if not client then return end
         if (key == "C" or key == "c") and IsControlKeyDown() then
             Utils.StashClipboardLink(self:GetText(), clientLink)
+            -- The one moment a copy is known to have landed: the clipboard
+            -- history companion records it from here.
+            if Utils.OnClipboardCopied then
+                Utils.OnClipboardCopied(self:GetText(), clientLink, self._efCopyIcon)
+            end
             if client.OnCopied then client.OnCopied() end
         elseif (key == "LSHIFT" or key == "RSHIFT") and client.OnShift then
             -- Focus sits here while armed, so Shift edges arrive here and
@@ -4102,8 +4333,11 @@ function Utils.ClipboardBoxClient()
     return client
 end
 
-function Utils.ArmClipboardBox(text, link, newClient)
+-- `icon` is the texture the armed target showed; the clipboard history
+-- companion keeps it on the recorded entry.
+function Utils.ArmClipboardBox(text, link, newClient, icon)
     local eb = EnsureClipboardBox()
+    eb._efCopyIcon = icon
     local outgoing = client
     if not outgoing then
         local current = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
@@ -4307,6 +4541,7 @@ function ns.ShowThemedDialog(opts)
     f._opts = opts
 
     local shownText = (opts.checkDefault and opts.textChecked) or opts.text
+    f.message:SetJustifyH(opts.justify or "CENTER")
     f.message:SetText(shownText or "")
     -- Title-style prompts (alias/shortkey/Wowhead family) go gold;
     -- plain confirmations keep the primary text color. On light themes
@@ -5185,6 +5420,26 @@ function Utils.IsFrameOrChildMouseOver(frame)
         end
     end
     return false
+end
+
+-- True when the mouse is on the minimap button or one of the broker
+-- launchers (see brokerLauncherButtons in Core/Main.lua). Those toggle
+-- on mouse-UP, so an outside-click closer must leave them alone or the
+-- surface blinks shut and open again instead of toggling.
+function Utils.IsMouseOnLauncherButton()
+    local mmBtn = _G["EasyFindMinimapButton"]
+    local launchers = ns.brokerLauncherButtons
+    local function Hit(f)
+        return f ~= nil and (f == mmBtn or (launchers ~= nil and launchers[f] == true))
+    end
+    if GetMouseFoci then
+        local foci = GetMouseFoci()
+        for i = 1, (foci and #foci or 0) do
+            if Hit(foci[i]) then return true end
+        end
+        return false
+    end
+    return (GetMouseFocus ~= nil and Hit(GetMouseFocus())) or false
 end
 
 function Utils.IsFrameVisiblyMouseOver(frame)
@@ -6186,7 +6441,8 @@ end
 function MenuCopy.Arm(row)
     if not (row and row._copyText) then return false end
     MenuCopy.armedRow = row
-    Utils.ArmClipboardBox(row._copyText, row._copyLink, MenuCopy.client)
+    local icon = row.icon and row.icon.IsShown and row.icon:IsShown() and row.icon:GetTexture() or nil
+    Utils.ArmClipboardBox(row._copyText, row._copyLink, MenuCopy.client, icon)
     return true
 end
 
@@ -7174,13 +7430,24 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     end
     -- The exact glyph the pinned result rows wear (Utils.CreatePinGlyph),
     -- so the menu action and the row marker read as one concept; Unpin
-    -- adds the red X corner badge.
-    rows[#rows + 1] = {
-        text = isPinned and (_G["RECENT_ALLIES_MENU_BUTTON_LABEL_UNPIN"] or "Unpin") or (_G["RECENT_ALLIES_MENU_BUTTON_LABEL_PIN"] or "Pin"),
-        pinGlyph = true,
-        iconOverlay = isPinned and "Interface\\RaidFrame\\ReadyCheck-NotReady" or nil,
-        onClick = onPin,
-    }
+    -- adds the red X corner badge. A clipboard history entry pins to the
+    -- top of the history only (a general pin would die with the entry
+    -- when the history is cleared), so its pin takes this place.
+    if extra and extra.onClipPin then
+        rows[#rows + 1] = {
+            text = extra.clipPinned and L["CTX_CLIP_UNPIN"] or L["CTX_CLIP_PIN"],
+            pinGlyph = true,
+            iconOverlay = extra.clipPinned and "Interface\\RaidFrame\\ReadyCheck-NotReady" or nil,
+            onClick = extra.onClipPin,
+        }
+    else
+        rows[#rows + 1] = {
+            text = isPinned and (_G["RECENT_ALLIES_MENU_BUTTON_LABEL_UNPIN"] or "Unpin") or (_G["RECENT_ALLIES_MENU_BUTTON_LABEL_PIN"] or "Pin"),
+            pinGlyph = true,
+            iconOverlay = isPinned and "Interface\\RaidFrame\\ReadyCheck-NotReady" or nil,
+            onClick = onPin,
+        }
+    end
     if onGuide then
         rows[#rows + 1] = { text = L["CTX_GUIDE"], icon = ns.EYE_ICON_TEX, chromeIcon = true, onClick = onGuide }
     end
@@ -7299,6 +7566,15 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     end
     if extra and extra.onSnippetDelete then
         extras[#extras + 1] = { text = _G["DELETE"] or "Delete", onClick = extra.onSnippetDelete }
+    end
+    if extra and extra.onClipSaveSnippet then
+        extras[#extras + 1] = { text = L["CTX_CLIP_SAVE_SNIPPET"], onClick = extra.onClipSaveSnippet }
+    end
+    if extra and extra.onClipDelete then
+        extras[#extras + 1] = { text = _G["DELETE"] or "Delete", onClick = extra.onClipDelete }
+    end
+    if extra and extra.onClipClear then
+        extras[#extras + 1] = { text = L["CTX_CLIP_CLEAR"], onClick = extra.onClipClear }
     end
     -- Alphabetical within each section (per-locale, since labels are
     -- localized); the separator keeps standard and extra actions apart.

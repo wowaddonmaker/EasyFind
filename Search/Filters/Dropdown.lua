@@ -542,6 +542,28 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
                 -- Bank and bags both pick which characters' stored items feed
                 -- the search, so they share one flyout builder.
+                if sub.hasOptions and sub.checkboxOptions then
+                    -- Plain toggle flyouts (the Extensions sub-filters):
+                    -- built from the config, attached like the per-key ones.
+                    local optionsPopup, syncOptions = Filters:BuildCheckboxOptionsPopup(
+                        sub, StylePopup, CHECK_SIZE)
+                    optionsPopup._efSync = syncOptions
+                    optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
+                    optionsPopup._owningRow = subRow
+                    popup["_" .. sub.key .. "OptionsPopup"] = optionsPopup
+                    RegisterSubBranchPopup(optionsPopup)
+                    dropdownGuardFrames[#dropdownGuardFrames + 1] = optionsPopup
+                    Utils.AttachHoverPopup(subRow, optionsPopup, {
+                        onShow = function()
+                            syncOptions()
+                            optionsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
+                            Utils.OpenFlyoutBeside(optionsPopup, subRow, 4)
+                            optionsPopup:Show()
+                        end,
+                    })
+                    popup:HookScript("OnHide", function() optionsPopup:Hide() end)
+                    dropdown:HookScript("OnHide", function() optionsPopup:Hide() end)
+                end
                 if sub.hasOptions and (sub.key == "bank" or sub.key == "bags") then
                     local build = sub.key == "bank"
                         and Filters.BuildBankOptionsPopup
@@ -796,6 +818,11 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             HookSiblingHide("_bankOptionsPopup", subRows.bank)
             HookSiblingHide("_bagsOptionsPopup", subRows.bags)
             for _, sub in ipairs(opt.flyoutSubFilters) do
+                -- Toggle flyouts (Extensions sub-rows): one open per level,
+                -- entering a sibling row shuts this one.
+                if sub.checkboxOptions then
+                    HookSiblingHide("_" .. sub.key .. "OptionsPopup", subRows[sub.key])
+                end
                 if sub.subFilters then
                     HookSiblingHide("_nestedFlyout_" .. sub.key, subRows[sub.key])
                 end

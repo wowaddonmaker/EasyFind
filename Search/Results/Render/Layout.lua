@@ -39,6 +39,13 @@ end
 function Render.ApplyFlatResultAnchoring(resultRow, entry, state)
     local data = entry.data
     if not entry.isFlat or (data and data.calculatorResult) then return end
+    -- Dividers and the pin header are flat rows with no text stack: the
+    -- subtext must stay hidden, or a pooled row shows its last row's line
+    -- (a launcher's "Extension" under a date divider).
+    if entry.isSectionHeader or entry.isPinHeader then
+        if resultRow.pathSubtext then resultRow.pathSubtext:Hide() end
+        return
+    end
 
     local catShown = resultRow.flatCatIcon and resultRow.flatCatIcon:IsShown()
     local mainIconOnRight = IsRightSideIconData(data)

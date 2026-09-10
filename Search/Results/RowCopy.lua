@@ -50,6 +50,9 @@ local function RowPayload(row, easy)
         if text then return text, nil, true end
     end
     if data.copyText then return data.copyText, nil end
+    -- Clipboard history rows copy their own text; a link entry keeps the
+    -- live link alongside for the chat paste swap.
+    if data.clipText then return Utils.ClipboardSafeText(data.clipText), data.clipLink end
     local link = ns.GetResultLink and ns.GetResultLink(data)
     if link and link ~= "" then return Utils.ClipboardSafeText(link), link end
     -- No chat link (a panel, a setting, a zone): the name is the text, so
@@ -59,6 +62,20 @@ local function RowPayload(row, easy)
     if name and Utils.StripMarkup then name = Utils.StripMarkup(name) end
     if not name or name == "" then return nil end
     return Utils.ClipboardSafeText(name), nil
+end
+
+-- The texture the target shows, for the clipboard history entry's face:
+-- a result row's icon, an icon-search cell's own texture, or the row
+-- data's icon field.
+local function TargetIcon(row)
+    if not row then return nil end
+    local tex = row.icon or row.tex
+    if tex and tex.GetTexture and (not tex.IsShown or tex:IsShown()) then
+        local t = tex:GetTexture()
+        if t then return t end
+    end
+    if row._efCopyIcon then return row._efCopyIcon end
+    return row.data and row.data.icon or nil
 end
 
 local function EnsureFlash()
@@ -161,7 +178,7 @@ function RowCopy:ArmFor(row, easy)
     local owner = Utils.ClipboardBoxClient()
     if owner and owner ~= client then return false end
     armedRow, armedEasy = row, isEasy or false
-    Utils.ArmClipboardBox(payload, link, client)
+    Utils.ArmClipboardBox(payload, link, client, TargetIcon(row))
     return true
 end
 

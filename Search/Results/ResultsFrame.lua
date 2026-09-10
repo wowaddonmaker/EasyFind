@@ -136,6 +136,12 @@ function Results:CreateResultsFrame()
         -- The filter dropdown and every popup it spawns; IsMouseInFilterChain
         -- owns that union via dropdown.guardFrames.
         if ns.Filters and ns.Filters.IsMouseInFilterChain() then return end
+        -- The minimap button and broker launchers toggle on mouse-UP; a
+        -- hide here would only make their click reopen what it closed.
+        if Utils.IsMouseOnLauncherButton and Utils.IsMouseOnLauncherButton() then return end
+        if ns.NoteApplicationDismissed and ns.CurrentApplicationSurfaceID then
+            ns.NoteApplicationDismissed(ns.CurrentApplicationSurfaceID())
+        end
         Results:RequestHideResults()
     end)
 
@@ -196,6 +202,45 @@ function Results:CreateResultsFrame()
         if bar._scrollTarget then return true end
         return (GetTime() - (bar._lastActivity or 0)) < 0.25
     end
+
+    -- A row that slid under a stationary cursor mid-scroll skipped its
+    -- tooltip and hint (the scroll-busy guard in the row's OnEnter).
+    -- When the scroll settles, that row is entered again, so what the
+    -- cursor rests on shows its tooltip without the mouse moving. The
+    -- watcher runs only from scroll activity until the settle.
+    local settleWatch = CreateFrame("Frame")
+    -- The row under a cursor that has not moved: the engine may never
+    -- have sent it an enter while the rows slid, so the leave for the
+    -- row it was on and the enter for this one are both synthesized.
+    local function RowUnderCursor()
+        local buttons = Search:GetResultButtons()
+        for i = 1, (buttons and #buttons or 0) do
+            local row = buttons[i]
+            if row and row:IsShown() and row:IsMouseOver() then return row end
+        end
+        return nil
+    end
+    local function RefireHover()
+        if not (resultsFrame:IsShown() and resultsFrame:IsMouseOver()) then return end
+        local row = RowUnderCursor()
+        local prev = Results._hoverRow
+        if prev and prev ~= row then
+            local leave = prev:GetScript("OnLeave")
+            if leave then leave(prev) end
+        end
+        if not row then return end
+        local enter = row:GetScript("OnEnter")
+        if enter then enter(row) end
+    end
+    local function WatchForSettle()
+        if settleWatch:GetScript("OnUpdate") then return end
+        settleWatch:SetScript("OnUpdate", function(self)
+            if Results:IsResultsScrollBusy() then return end
+            self:SetScript("OnUpdate", nil)
+            RefireHover()
+        end)
+    end
+    scrollFrame:HookScript("OnVerticalScroll", WatchForSettle)
 
     -- Override-binding owners are SECURE show/hide handlers parented to the
     -- results frame: the _onhide snippet clears their bindings in secure

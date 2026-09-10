@@ -35,7 +35,11 @@ local ENTRIES = {
     { key = "titles",          categories = { "Title" } },
     { key = "gearSets",        categories = { "Gear Set" } },
     { key = "commands",        categories = { "Command" } },
-    { key = "snippets",        categories = { "Snippet" } },
+    -- extensions is the umbrella gate for the extension apps; its children
+    -- carry the real categories.
+    { key = "extensions",      categories = {} },
+    { key = "snippets",        parent = "extensions", categories = { "Snippet" } },
+    { key = "clipboard",       parent = "extensions", categories = { "Clipboard" } },
     { key = "professions",     categories = { "Profession" } },
     { key = "gameOptions",     parent = "options", categories = { "Game Settings" } },
     { key = "addonOptions",    parent = "options", categories = { "AddOn Settings" } },

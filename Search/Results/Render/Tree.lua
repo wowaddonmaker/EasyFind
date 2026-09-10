@@ -80,7 +80,10 @@ function Render.ResultHeader(resultRow, entry, state, depth)
     elseif entry.isSectionHeader then
         if resultRow.headerTab then resultRow.headerTab:Hide() end
         if resultRow.headerGrad then resultRow.headerGrad:Hide() end
-        resultRow.text:SetText("")
+        -- Through the clipping helper, which remembers the full string for
+        -- re-clips: a plain SetText left the recycled row's previous title
+        -- in that memory, and the next re-clip painted it back.
+        SetClippedText(resultRow.text, "")
         resultRow.sectionLabelText:SetText(entry.name)
         resultRow.sectionLabelText:Show()
         resultRow.sectionLabelLeft:ClearAllPoints()

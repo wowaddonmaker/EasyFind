@@ -299,6 +299,24 @@ function Tooltips:ClearResultTooltips()
     end
 end
 
+-- The text a clipboard history row's tooltip shows: line structure kept,
+-- markup flattened, cut well before the panel would run off the screen.
+local CLIP_TIP_MAX = 600
+function Tooltips.ClipTooltipText(text)
+    if type(text) ~= "string" then return "" end
+    local out = ns.Utils.ClipboardSafeText(text) or text
+    if #out > CLIP_TIP_MAX then
+        local cut = CLIP_TIP_MAX
+        while cut > 0 do
+            local b = out:byte(cut + 1)
+            if not b or b < 0x80 or b > 0xBF then break end
+            cut = cut - 1
+        end
+        out = out:sub(1, cut) .. "..."
+    end
+    return out
+end
+
 -- Put a result's OWN game tooltip on `tooltip`, the way Blizzard's chat
 -- links do: the mount, toy, pet, spell, item, macro target, currency, or
 -- achievement itself. The caller has already set the owner and anchor,

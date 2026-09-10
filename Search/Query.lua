@@ -25,6 +25,11 @@ local SearchEngine = ns.SearchEngine
 local function FlatNameLess(ra, rb)
     local sa, sb = ra.score or 0, rb.score or 0
     if sa ~= sb then return sa > sb end
+    -- Rows a provider ordered itself (the clipboard list, newest or
+    -- oldest first) keep that order among equal scores; a name sort
+    -- would shuffle a timeline.
+    local oa, ob = ra.data.clipOrder, rb.data.clipOrder
+    if oa and ob and oa ~= ob then return oa < ob end
     local na, nb = ra.data.name or "", rb.data.name or ""
     if #na ~= #nb then return #na < #nb end
     if na ~= nb then return na < nb end
@@ -324,6 +329,16 @@ function Search:OnSearchTextChangedNow(text, force)
             skipCategories = SCRATCH.skipCategories
         end
     end
+    -- Clipboard history rows are a list to browse under @clipboard, never
+    -- a search hit: outside that pill the category is always skipped (a
+    -- search for "clipboard" finds the launcher row instead).
+    if not (quickFilter and quickFilter.key == "clipboard") then
+        if not skipCategories then
+            wipe(SCRATCH.skipCategories)
+            skipCategories = SCRATCH.skipCategories
+        end
+        skipCategories["Clipboard"] = true
+    end
     local results
     if calculatorData or calculatorLauncher then
         results = SCRATCH.calculatorResults
@@ -522,6 +537,20 @@ function Search:OnSearchTextChangedNow(text, force)
     -- base) so the pooled natural copy is deduped like any other boost.
     if ns.Learned then
         local learned, olderPicks = ns.Learned:GetBoost(slower(text))
+        -- A remembered pick obeys the filter menu like any natural hit: a
+        -- category the user has unchecked (or the General Catalog, for a
+        -- catalog item) stays hidden however often it was picked, and a
+        -- quick filter admits only what it admits.
+        local function LearnedAllowed(e)
+            if not e then return false end
+            if quickFilter and not self:QuickFilterAllowsData(e, quickFilter) then return false end
+            if skipCategories and e.category and skipCategories[e.category] then return false end
+            if e.catalogItem and filters
+               and ns.CategoryMap.IsProviderFilterOff(filters, "catalog") then
+                return false
+            end
+            return true
+        end
         if learned then
             local promoted = SCRATCH.aliasSeen
             -- The query's other remembered picks sit right under the
@@ -531,7 +560,7 @@ function Search:OnSearchTextChangedNow(text, force)
             if olderPicks and not learned.mapSearchResult then
                 for i = #olderPicks, 1, -1 do
                     local e = olderPicks[i]
-                    if not e.mapSearchResult and not IsPromoted(promoted, e) then
+                    if not e.mapSearchResult and LearnedAllowed(e) and not IsPromoted(promoted, e) then
                         MarkPromoted(promoted, e)
                         if e.catalogItem and e.itemID then seenCatalogItems[e.itemID] = true end
                         tinsert(results, 1, { data = e, score = LEARNED_SCORE - i, isAlias = true })
@@ -544,7 +573,7 @@ function Search:OnSearchTextChangedNow(text, force)
                 wrapped.query = text
                 seenMapRows[MapRowKey(wrapped)] = true
                 tinsert(results, 1, { data = wrapped, score = LEARNED_SCORE, isAlias = true })
-            elseif not IsPromoted(promoted, learned) then
+            elseif LearnedAllowed(learned) and not IsPromoted(promoted, learned) then
                 MarkPromoted(promoted, learned)
                 if learned.catalogItem and learned.itemID then
                     seenCatalogItems[learned.itemID] = true
@@ -793,6 +822,15 @@ function Search:OnSearchTextChangedNow(text, force)
             combined[#combined + 1] = { data = iconLauncher, score = 2e6 }
         end
     end
+    -- Clipboard history launcher row, the same way: the door to the
+    -- @clipboard list, since its entries never surface in a search.
+    if not quickFilter and not calculatorData and not calculatorLauncher
+       and Results.GetClipboardLauncherMatch then
+        local clipLauncher = Results:GetClipboardLauncherMatch(text)
+        if clipLauncher then
+            combined[#combined + 1] = { data = clipLauncher, score = 2e6 }
+        end
+    end
     if #combined > 1 then tsort(combined, FlatNameLess) end
 
     -- Hard cap on visible results. The scoring step already ranks by
@@ -848,23 +886,51 @@ function Search:OnSearchTextChangedNow(text, force)
     end
 
     local n = 0
+    local lastGroup
     for ri = 1, #combined do
         local d = combined[ri] and combined[ri].data
         if d then
-            n = n + 1
-            local e = flatEntries[n]
-            if not e then
-                e = {}
-                flatEntries[n] = e
+            -- Rows that carry a group label (clipboard history's Today,
+            -- Yesterday, ...) get a section divider where the label
+            -- changes: a header row, not a result, drawn by ResultHeader
+            -- and skipped by selection like the pin header.
+            if d.clipGroup and d.clipGroup ~= lastGroup then
+                lastGroup = d.clipGroup
+                n = n + 1
+                local h = flatEntries[n]
+                if not h then
+                    h = {}
+                    flatEntries[n] = h
+                end
+                h.name = d.clipGroup
+                h.depth = 0
+                h.isPathNode = false
+                h.isSectionHeader = true
+                h.isMatch = false
+                h.isFlat = true
+                h.flatCatKey = nil
+                h.isPinned = false
+                h.data = nil
             end
-            e.name = d.name
-            e.depth = 0
-            e.isPathNode = false
-            e.isMatch = true
-            e.isFlat = true
-            e.flatCatKey = nil
-            e.isPinned = (not d.noPin and IsUIItemPinned(d)) and true or false
-            e.data = d
+            -- A divider-only entry (the clipboard list's empty state) is
+            -- its divider and nothing else: no row to select or click.
+            if not d.clipDividerOnly then
+                n = n + 1
+                local e = flatEntries[n]
+                if not e then
+                    e = {}
+                    flatEntries[n] = e
+                end
+                e.name = d.name
+                e.depth = 0
+                e.isPathNode = false
+                e.isSectionHeader = false
+                e.isMatch = true
+                e.isFlat = true
+                e.flatCatKey = nil
+                e.isPinned = (not d.noPin and IsUIItemPinned(d)) and true or false
+                e.data = d
+            end
         end
     end
     for i = n + 1, #flatEntries do

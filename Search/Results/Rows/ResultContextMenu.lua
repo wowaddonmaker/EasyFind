@@ -104,6 +104,17 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
             Handlers:DestroyBagItem(pinData)
         end
     end
+    if pinData.clipID and ns.Clipboard then
+        local clipID = pinData.clipID
+        extra.onClipDelete = function() ns.Clipboard:Delete(clipID) end
+        extra.onClipClear = function() ns.Clipboard:ClearWithConfirm() end
+        local entry = ns.ClipboardStore and ns.ClipboardStore:Get(clipID)
+        extra.clipPinned = entry and entry.pinned and true or false
+        extra.onClipPin = function() ns.Clipboard:TogglePin(clipID) end
+        if ns.Snippets and ns.Snippets.OpenEditorPrefilled then
+            extra.onClipSaveSnippet = function() ns.Clipboard:SaveAsSnippet(clipID) end
+        end
+    end
     if pinData.snippetIndex and ns.Snippets then
         local snippetIndex = pinData.snippetIndex
         extra.onSnippetEdit = function()

@@ -277,6 +277,15 @@ function Handlers:SelectResult(data, forceGuide)
         return
     end
 
+    -- A stored copy of an extension launcher (a shortkey's snapshot, an
+    -- extension button's record) keeps the flag but not the run function:
+    -- swap in the live entry so it opens the same way the row does.
+    if not data.nativeRun and ns.FindApplicationEntry
+       and (data.iconSearchLauncher or data.snippetsLauncher or data.clipboardLauncher) then
+        local live = ns.FindApplicationEntry(data)
+        if live then data = live end
+    end
+
     if data.nativeRun then
         local run = data.nativeRun
         self:FinishResultSelection()
@@ -300,6 +309,15 @@ function Handlers:SelectResult(data, forceGuide)
         local snippetName = data.name
         self:FinishResultSelection()
         ns.Snippets:EditByName(snippetName)
+        return
+    end
+
+    -- Clipboard rows: the entry goes into the chat box, live link and all
+    -- (the launcher row carries nativeRun and never reaches this branch).
+    if data.clipID and ns.Clipboard then
+        local clipID = data.clipID
+        self:FinishResultSelection()
+        ns.Clipboard:Activate(clipID)
         return
     end
 
@@ -360,6 +378,13 @@ function Handlers:SelectResult(data, forceGuide)
         return
     end
 
+    -- A stackable consumable used from the row keeps the window open for
+    -- the next click (BagActions: KeepOpenForRepeatUse / AfterRepeatUse);
+    -- the settle check closes it when a cooldown started or the stack ran out.
+    if useFast and self.KeepOpenForRepeatUse and self:KeepOpenForRepeatUse(data) then
+        self:AfterRepeatUse(data)
+        return
+    end
     self:FinishResultSelection()
 
     -- the secure macrotext attribute set when the row was rendered. The

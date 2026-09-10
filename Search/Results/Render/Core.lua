@@ -304,7 +304,6 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
         end
     end
     padT = padT + quickFilterHelpH
-
     -- Scale row icons to match leaf font height so icon top/bottom
     -- align with text top/bottom instead of overflowing the cap line.
     local iconScale = 1.12
@@ -492,7 +491,10 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
             -- to fit the name + path subtext stack with breathing room above
             -- the name and below the path so neither bleeds into the rep bar.
             local padL = theme.resultsPadLeft or 10
-            local entryRowH = entry.isFlat and (rowH + flatExtraH) or rowH
+            -- A section divider (a date line in the clipboard history) has
+            -- no text stack: the single-line height, not the flat two-line
+            -- one, or it opens a gap under whatever sits above it.
+            local entryRowH = (entry.isFlat and not entry.isSectionHeader) and (rowH + flatExtraH) or rowH
             if data and data.calculatorResult and not entry.isPathNode then
                 -- Sized to fit the math card itself; the old 86 was sized
                 -- for card + launcher action bar combined, which is now a

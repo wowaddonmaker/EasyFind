@@ -674,36 +674,7 @@ end
 -- blob (no delimiter escaping needed) wrapped in base64 so it copy-pastes as a
 -- single shareable code: "EF1!<base64>".
 
-local B64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-local schar, sbyte = string.char, string.byte
-
-local function base64enc(data)
-    return ((data:gsub(".", function(x)
-        local r, b = "", sbyte(x)
-        for i = 8, 1, -1 do r = r .. (b % 2 ^ i - b % 2 ^ (i - 1) > 0 and "1" or "0") end
-        return r
-    end) .. "0000"):gsub("%d%d%d?%d?%d?%d?", function(x)
-        if #x < 6 then return "" end
-        local c = 0
-        for i = 1, 6 do c = c + (x:sub(i, i) == "1" and 2 ^ (6 - i) or 0) end
-        return B64:sub(c + 1, c + 1)
-    end) .. ({ "", "==", "=" })[#data % 3 + 1])
-end
-
-local function base64dec(data)
-    data = data:gsub("[^" .. B64 .. "=]", "")
-    return (data:gsub(".", function(x)
-        if x == "=" then return "" end
-        local r, f = "", (B64:find(x, 1, true) - 1)
-        for i = 6, 1, -1 do r = r .. (f % 2 ^ i - f % 2 ^ (i - 1) > 0 and "1" or "0") end
-        return r
-    end):gsub("%d%d%d?%d?%d?%d?%d?%d?", function(x)
-        if #x ~= 8 then return "" end
-        local c = 0
-        for i = 1, 8 do c = c + (x:sub(i, i) == "1" and 2 ^ (8 - i) or 0) end
-        return schar(c)
-    end))
-end
+local base64enc, base64dec = Utils.Base64Encode, Utils.Base64Decode
 
 -- length-prefixed field: "<len>:<bytes>"
 local function encS(s)

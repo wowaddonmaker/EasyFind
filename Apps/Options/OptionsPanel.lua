@@ -228,33 +228,17 @@ local function RunSoon(fn)
 end
 
 local function ClearMapRuntime()
-    if not ns.MapSearch then return end
-    pcall(ns.MapSearch.ClearAll, ns.MapSearch)
-    pcall(ns.MapSearch.ClearZoneHighlight, ns.MapSearch)
-    ns.MapSearch.pendingWaypoint = nil
+    ns.ClearMapRuntime()
 end
 
+-- Both live in core (ns.ApplyUISettings / ns.ApplyMapSettings) so a
+-- profile switch can run them without this panel loaded.
 local function RefreshUIRuntime(resetPosition)
-    if ns.Highlight and ns.Highlight.ClearAll then pcall(ns.Highlight.ClearAll, ns.Highlight) end
-    if not (_G["EasyFindSearchFrame"] and ns.Search) then return end
-    if resetPosition and ns.Search.ResetPosition then ns.Search:ResetPosition() end
-    if ns.Search.UpdateScale then ns.Search:UpdateScale() end
-    if ns.Search.UpdateWidth then ns.Search:UpdateWidth() end
-    if ns.Search.UpdateOpacity then ns.Search:UpdateOpacity() end
-    if ns.Search.UpdateSearchBarHeight then ns.Search:UpdateSearchBarHeight() end
-    if ns.Search.UpdateSmartShow then ns.Search:UpdateSmartShow(false) end
-    if ns.Search.UpdateFontSize then ns.Search:UpdateFontSize() end
-    if ns.Search.RefreshResults then ns.Search:RefreshResults() end
+    ns.ApplyUISettings(resetPosition)
 end
 
 local function RefreshMapRuntime()
-    ClearMapRuntime()
-    if ns.MapSearch then
-        if ns.MapSearch.UpdateIconScales then ns.MapSearch:UpdateIconScales() end
-        if ns.MapSearch.RefreshIndicators then ns.MapSearch:RefreshIndicators() end
-    end
-    local uiInd = _G["EasyFindIndicatorFrame"]
-    if uiInd then uiInd:SetScale(EasyFind.db.iconScale or 0.8) end
+    ns.ApplyMapSettings()
 end
 
 local function GetVisibilityModeValue()
@@ -379,6 +363,26 @@ local function StyleSelectorButton(btnFrame, height)
             PaintControlFill(self, self:IsMouseOver() and ns.BTN_FILL_HOVER or ns.BTN_FILL_NORMAL, 1)
         end
     end)
+end
+
+-- A list card's scrollbar sits in the card's right margin, clear of the
+-- rows' remove buttons, instead of over the scroll frame's edge.
+-- The locale key of each profile section's label. A lookup table, not a
+-- key built from a prefix: the locale audit reads every quoted lookup in
+-- the code as a literal key.
+local PROFILE_SECTION_LABEL_KEY = {
+    settings = "PROFILE_SECTION_SETTINGS", aliases = "PROFILE_SECTION_ALIASES",
+    shortkeys = "PROFILE_SECTION_SHORTKEYS", blacklist = "PROFILE_SECTION_BLACKLIST",
+    snippets = "PROFILE_SECTION_SNIPPETS", extbuttons = "PROFILE_SECTION_EXTBUTTONS",
+    pins = "PROFILE_SECTION_PINS", learned = "PROFILE_SECTION_LEARNED",
+    keybinds = "PROFILE_SECTION_KEYBINDS",
+}
+
+local function ParkScrollBarInMargin(bar, card, top)
+    if not bar then return end
+    bar:ClearAllPoints()
+    bar:SetPoint("TOPRIGHT", card, "TOPRIGHT", -3, -(top + 4))
+    bar:SetPoint("BOTTOMRIGHT", card, "BOTTOMRIGHT", -3, 10)
 end
 
 local function CreateFlyoutSelector(parent, globalPrefix, width, anchor, initialText)
@@ -538,6 +542,7 @@ local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
     text:SetPoint("LEFT", checkbox, "LEFT", compact and 6 or 8, 0)
     text:SetJustifyH("LEFT")
     checkbox.Text = text
+    text._efSearchLabel = true   -- the settings search indexes this label
 
     local track = CreateFrame("Frame", nil, checkbox)
     track:SetSize(toggleW, toggleH)
@@ -1154,6 +1159,7 @@ local function BuildHomeTab(ctx)
     if titlePath then homeTitle:SetFont(titlePath, 28, titleFlags) end
     homeTitle:SetPoint("LEFT", homeIcon, "RIGHT", 14, 0)
     homeTitle:SetText(L["OPT_ADDON_NAME"])
+    homeTitle._efNoIndex = true
 
     local homeVersion = homeTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     homeVersion:SetPoint("BOTTOMLEFT", homeTitle, "BOTTOMRIGHT", 6, 2)
@@ -2548,6 +2554,13 @@ local function BuildAliasesTab(ctx)
     aliasSearchBox:SetPoint("RIGHT", aliasSearchShell, "RIGHT", -8, 0)
     aliasSearchBox:SetHeight(18)
     aliasSearchBox:SetAutoFocus(false)
+    -- Another surface pointing at a row (the export's left-out list):
+    -- the tab opens with the table filtered to it.
+    optionsFrame.ShowInAliasTable = function(text)
+        ctx.SwitchToTab(aliasesTab.tabIndex)
+        aliasSearchBox:SetText(text or "")
+        if RefreshAliasList then RefreshAliasList() end
+    end
     aliasSearchBox:SetFontObject(SMALL_HIGHLIGHT_FONT)
     aliasSearchBox:SetMaxLetters(64)
 
@@ -2641,6 +2654,17 @@ local function BuildAliasesTab(ctx)
         eb:SetScript("OnEscapePressed", function(self) self:ClearFocus(); f:Hide() end)
         scroll:SetScrollChild(eb)
         f.editBox = eb
+        -- The box only reaches as far down as its text, so a click in the
+        -- empty part of the frame must still land as a click in the box:
+        -- focus it, and keep a shared code fully selected for Ctrl+C.
+        local function FocusBox()
+            eb:SetFocus()
+            if eb._efReadOnlyText then eb:HighlightText() else eb:SetCursorPosition(#(eb:GetText() or "")) end
+        end
+        boxFrame:EnableMouse(true)
+        boxFrame:SetScript("OnMouseDown", FocusBox)
+        scroll:EnableMouse(true)
+        scroll:SetScript("OnMouseDown", FocusBox)
         Utils.CreateMinimalScrollBar(scroll, boxFrame)
 
         -- Ctrl-C confirmation flash. No bottom Close button; the top-right
@@ -2652,6 +2676,12 @@ local function BuildAliasesTab(ctx)
 
         f.hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         f.hint:SetPoint("BOTTOMLEFT", 14, 16)
+        -- The hint is a link when it names left-out rows: a click lists them.
+        f.hintBtn = CreateFrame("Button", nil, f)
+        f.hintBtn:SetAllPoints(f.hint)
+        f.hintBtn:SetScript("OnEnter", function() f.hint:SetTextColor(1, 1, 1, 1) end)
+        f.hintBtn:SetScript("OnLeave", function() f.hint:SetTextColor(0.5, 0.5, 0.5, 1) end)
+        f.hintBtn:Hide()
 
         local x = ns.CreateCloseX(f, 14)
         x:SetPoint("TOPRIGHT", -8, -8)
@@ -2679,6 +2709,7 @@ local function BuildAliasesTab(ctx)
         if isExport then
             f.title:SetText(L["SHORTKEY_EXPORT_TITLE"] .. " (Ctrl+C)")
             f.hint:SetText("")
+            f.hintBtn:Hide()
             Utils.SetEditBoxReadOnlyText(f.editBox, str or "")
             f.importBtn:Hide()
             f:Show()
@@ -2691,6 +2722,49 @@ local function BuildAliasesTab(ctx)
             f.editBox:SetText("")
             f.importBtn:Show()
             f.importBtn:SetScript("OnClick", function()
+                -- A profile code becomes a new profile; the player decides
+                -- whether to switch to it.
+                if scope == "profile" then
+                    local text = f.editBox:GetText()
+                    f:Hide()
+                    local payload = ns.Profiles and ns.Profiles:Decode(text)
+                    if not payload then
+                        if EasyFind and EasyFind.Print then EasyFind:Print(L["SHORTKEY_IMPORT_BAD"]) end
+                        return
+                    end
+                    -- The sections the code holds with their entry counts, what
+                    -- the shared-code rules leave out, and the warning when
+                    -- anything in it runs commands.
+                    local inspect = ns.Profiles:InspectImport(payload)
+                    local rows = { { header = L["PROFILE_IMPORT_PREVIEW"] } }
+                    for _, entry in ipairs(inspect.sections) do
+                        rows[#rows + 1] = { label = L[PROFILE_SECTION_LABEL_KEY[entry.id] or "PROFILE_SECTION_SETTINGS"], status = tostring(entry.count) }
+                    end
+                    if inspect.leftOut > 0 then
+                        rows[#rows + 1] = { header = L["IMPORT_PREVIEW_LEFT_OUT"] .. ": " .. inspect.leftOut }
+                    end
+                    ns.ShowImportPreview({
+                        scope = "profile",
+                        warn = inspect.risky > 0 and L["IMPORT_TRUST_WARN"] or nil,
+                        rows = rows,
+                        onImport = function()
+                            local name = ns.Profiles:Import(text)
+                            if not name then
+                                if EasyFind and EasyFind.Print then EasyFind:Print(L["SHORTKEY_IMPORT_BAD"]) end
+                                return
+                            end
+                            if onImported then onImported() end
+                            ns.ShowThemedDialog({
+                                text = (L["PROFILE_IMPORT_SWITCH_FMT"]):format(ns.Profiles:DisplayName(name)),
+                                messageColor = ns.GOLD_COLOR,
+                                acceptText = L["PROFILE_SWITCH"],
+                                onAccept = function() ns.Profiles:Pick(name) end,
+                                cancelText = L["PROFILE_KEEP_CURRENT"],
+                            })
+                        end,
+                    })
+                    return
+                end
                 local decoded = ns.Shortkeys and ns.Shortkeys:DecodeString(f.editBox:GetText())
                 f:Hide()
                 if not decoded then
@@ -2878,6 +2952,7 @@ local function BuildAliasesTab(ctx)
     aliasScroll:SetScrollChild(aliasContent)
 
     local aliasScrollBar = ns.Utils and ns.Utils.CreateMinimalScrollBar and ns.Utils.CreateMinimalScrollBar(aliasScroll, aliasList)
+    ParkScrollBarInMargin(aliasScrollBar, aliasList, SCROLL_TOP)
     local aliasEmpty = aliasContent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     aliasEmpty:SetPoint("TOPLEFT", aliasContent, "TOPLEFT", 8, -8)
     aliasEmpty:SetText(L["OPT_NO_SAVED_ALIASES"])
@@ -3236,6 +3311,11 @@ local function BuildBlacklistTab(ctx)
     blSearchBox:SetPoint("LEFT", blSearchIcon, "RIGHT", 6, 0)
     blSearchBox:SetPoint("RIGHT", blSearchShell, "RIGHT", -8, 0)
     blSearchBox:SetHeight(18)
+    optionsFrame.ShowInBlacklistTable = function(text)
+        ctx.SwitchToTab(blacklistTab.tabIndex)
+        blSearchBox:SetText(text or "")
+        if RefreshBlacklistList then RefreshBlacklistList() end
+    end
     blSearchBox:SetAutoFocus(false)
     blSearchBox:SetFontObject(SMALL_HIGHLIGHT_FONT)
     blSearchBox:SetMaxLetters(64)
@@ -3317,6 +3397,7 @@ local function BuildBlacklistTab(ctx)
     blScroll:SetScrollChild(blContent)
 
     local blScrollBar = Utils.CreateMinimalScrollBar and Utils.CreateMinimalScrollBar(blScroll, blList)
+    ParkScrollBarInMargin(blScrollBar, blList, SCROLL_TOP)
     local blEmpty = blContent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     blEmpty:SetPoint("TOPLEFT", blContent, "TOPLEFT", 8, -8)
     blEmpty:SetText(L["OPT_NO_BLACKLISTED"])
@@ -3429,10 +3510,10 @@ local function BuildBlacklistTab(ctx)
     end)
 end
 
-local function BuildSnippetsTab(ctx)
-    local CreateTab, FRAME_W = ctx.CreateTab, ctx.FRAME_W
-    local snippetsTab = CreateTab(L["FILTER_SNIPPETS"])
-    Options._snippetsTabIndex = snippetsTab.tabIndex
+-- Snippets settings: a page inside the Extensions tab (BuildExtensionsTab).
+local function BuildSnippetsPage(ctx, page)
+    local FRAME_W = ctx.FRAME_W
+    local snippetsTab = page
 
     local snTitle = snippetsTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     snTitle:SetPoint("TOPLEFT", snippetsTab, "TOPLEFT", 8, -8)
@@ -3445,10 +3526,39 @@ local function BuildSnippetsTab(ctx)
     snHeader:SetText(L["OPT_SNIPPETS_HINT"])
 
     local RefreshSnippetsList
+    -- The chat expansion toggle lives here (its filter-menu row is a plain
+    -- sub-filter under Extensions now).
+    local trigger = ns.Snippets and ns.Snippets.TriggerChar and ns.Snippets.TriggerChar() or "\\"
+    local snExpandCheckbox = CreateCheckbox(snippetsTab, "SnippetChatExpansion",
+        sformat(L["SNIPPET_EXPAND_IN_CHAT"], trigger), sformat(L["SNIPPET_KEYWORD_HINT"], trigger), true)
+    snExpandCheckbox:SetPoint("TOPLEFT", snHeader, "BOTTOMLEFT", 0, -4)
+    snExpandCheckbox:SetChecked(EasyFind.db.snippetChatExpansion ~= false)
+    snExpandCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.snippetChatExpansion = self:GetChecked() and true or false
+    end)
     local snTools = CreateFrame("Frame", nil, snippetsTab)
-    snTools:SetPoint("TOPLEFT", snHeader, "BOTTOMLEFT", 0, -8)
+    snTools:SetPoint("TOPLEFT", snExpandCheckbox, "BOTTOMLEFT", 0, -4)
     snTools:SetPoint("RIGHT", snippetsTab, "RIGHT", -8, 0)
     snTools:SetHeight(24)
+
+    -- Actions under the tools row: Clear All at the right, the share
+    -- buttons at the left.
+    local snShare = CreateFrame("Frame", nil, snippetsTab)
+    snShare:SetPoint("TOPLEFT", snTools, "BOTTOMLEFT", 0, -6)
+    snShare:SetPoint("RIGHT", snippetsTab, "RIGHT", -8, 0)
+    snShare:SetHeight(22)
+    local snClearBtn = CreateModernButton(snShare, L["OPT_CLEAR_ALL_BTN"], 78, 22)
+    snClearBtn:SetPoint("RIGHT", snShare, "RIGHT", 0, 0)
+    snClearBtn:SetScript("OnClick", function()
+        ns.ShowThemedDialog({
+            text = L["POPUP_CLEAR_SNIPPETS"],
+            acceptText = _G["CLEAR"] or "Clear",
+            onAccept = function()
+                if ns.Snippets and ns.Snippets.ClearAll then ns.Snippets:ClearAll() end
+                if RefreshSnippetsList then RefreshSnippetsList() end
+            end,
+        })
+    end)
 
     local createSnippetBtn = CreateModernButton(snTools, L["SNIPPET_CREATE"], 130, 22)
     createSnippetBtn:SetPoint("RIGHT", snTools, "RIGHT", 0, 0)
@@ -3522,7 +3632,7 @@ local function BuildSnippetsTab(ctx)
     local SCROLL_TOP = DIVIDER_Y + 4
 
     local snList = CreateFrame("Frame", nil, snippetsTab)
-    snList:SetPoint("TOPLEFT", snTools, "BOTTOMLEFT", 0, -8)
+    snList:SetPoint("TOPLEFT", snShare, "BOTTOMLEFT", 0, -8)
     ctx.AnchorListCardBottom(snList, snippetsTab)
     ns.CreateRoundedRectBorder(snList)
     ns.SetRoundedRectBarHeight(snList, 8)
@@ -3559,6 +3669,7 @@ local function BuildSnippetsTab(ctx)
     snScroll:SetScrollChild(snContent)
 
     local snScrollBar = Utils.CreateMinimalScrollBar and Utils.CreateMinimalScrollBar(snScroll, snList)
+    ParkScrollBarInMargin(snScrollBar, snList, SCROLL_TOP)
     local snEmpty = snContent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     snEmpty:SetPoint("TOPLEFT", snContent, "TOPLEFT", 8, -8)
     snEmpty:SetText(L["OPT_NO_SNIPPETS"])
@@ -3641,6 +3752,8 @@ local function BuildSnippetsTab(ctx)
         end
 
         snEmpty:SetText(total == 0 and L["OPT_NO_SNIPPETS"] or L["OPT_NO_BLACKLIST_MATCH"])
+        snClearBtn:SetEnabled(total > 0)
+        snClearBtn:SetAlpha(total > 0 and 1 or 0.45)
         snEmpty:SetShown(#entries == 0)
 
         local rowH = 28
@@ -3671,6 +3784,250 @@ local function BuildSnippetsTab(ctx)
     Options.RefreshSnippetsList = RefreshSnippetsList
 end
 
+
+-- Clipboard history: what gets recorded, and the one-click clear. The
+-- list itself is the @clipboard results view; this tab is its settings.
+local function BuildClipboardPage(ctx, page)
+    local clipTab = page
+    local title = clipTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", clipTab, "TOPLEFT", 8, -8)
+    title:SetText(L["FILTER_CLIPBOARD"])
+    local hint = clipTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    hint:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -6)
+    hint:SetPoint("RIGHT", clipTab, "RIGHT", -10, 0)
+    hint:SetJustifyH("LEFT")
+    hint:SetText(L["OPT_CLIPBOARD_HINT"])
+    local sources = {
+        { "clipboardCopied", "CLIP_OPT_COPIED", "CLIP_OPT_COPIED_TT", "ClipCopied" },
+        { "clipboardPasted", "CLIP_OPT_PASTED", "CLIP_OPT_PASTED_TT", "ClipPasted" },
+        { "clipboardChat", "CLIP_OPT_CHAT", "CLIP_OPT_CHAT_TT", "ClipChat" },
+        { "clipboardWhispers", "CLIP_OPT_WHISPERS", "CLIP_OPT_WHISPERS_TT", "ClipWhispers" },
+    }
+    local anchor = hint
+    for i = 1, #sources do
+        local dbKey, labelKey, tipKey, name = unpack(sources[i])
+        local box = CreateCheckbox(clipTab, name, L[labelKey], L[tipKey], true)
+        box:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, i == 1 and -8 or -2)
+        box:SetChecked(EasyFind.db[dbKey] ~= false)
+        box:SetScript("OnClick", function(self)
+            EasyFind.db[dbKey] = self:GetChecked() and true or false
+        end)
+        anchor = box
+    end
+    -- Retention: how many entries, and for how long (pins are exempt).
+    local countChoices = {}
+    for _, n in ipairs({ 100, 200, 500, 1000 }) do
+        countChoices[#countChoices + 1] = { label = tostring(n), value = n }
+    end
+    local keepCount = ctx.CreateFlyoutPresetRow(clipTab, L["CLIP_OPT_KEEP_COUNT"], countChoices,
+        function() return tonumber(EasyFind.db.clipboardMaxEntries) or 200 end,
+        function(v)
+            EasyFind.db.clipboardMaxEntries = v
+            if ns.Clipboard and ns.Clipboard.PruneNow then ns.Clipboard:PruneNow() end
+        end,
+        "EasyFindClipKeepCount", 200, L["CLIP_OPT_KEEP_COUNT_TT"])
+    keepCount:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", -8, -8)
+    local dayChoices = {}
+    for _, d in ipairs({ 7, 30, 90 }) do
+        dayChoices[#dayChoices + 1] = { label = Utils.sformat(L["CLIP_DAYS_FMT"], d), value = d }
+    end
+    dayChoices[#dayChoices + 1] = { label = L["CLIP_KEEP_FOREVER"], value = 0 }
+    local keepDays = ctx.CreateFlyoutPresetRow(clipTab, L["CLIP_OPT_KEEP_DAYS"], dayChoices,
+        function() return tonumber(EasyFind.db.clipboardMaxDays) or 30 end,
+        function(v)
+            EasyFind.db.clipboardMaxDays = v
+            if ns.Clipboard and ns.Clipboard.PruneNow then ns.Clipboard:PruneNow() end
+        end,
+        "EasyFindClipKeepDays", 30, L["CLIP_OPT_KEEP_DAYS_TT"])
+    keepDays:SetPoint("TOPLEFT", keepCount, "BOTTOMLEFT", 0, -4)
+    anchor = keepDays
+    local clearBtn = CreateModernButton(clipTab, L["CTX_CLIP_CLEAR"], 140, 22)
+    clearBtn:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 8, -12)
+    clearBtn:SetScript("OnClick", function()
+        if ns.Clipboard and ns.Clipboard.ClearWithConfirm then ns.Clipboard:ClearWithConfirm() end
+    end)
+end
+
+function Options:OpenAtClipboard()
+    self:OpenAtExtension("clipboard")
+end
+
+-- The Extensions tab: one settings page per extension, picked from a
+-- strip of chips at the top of the tab. Bundled pages come first; any
+-- page registered through ns.RegisterExtensionPage follows, so an
+-- extension that is not part of EasyFind gets its settings here without
+-- touching this panel. Pages build on first visit.
+local extensionsTab, extensionStrip, extensionHint
+local extensionPages = {}       -- ordered { def, chip, frame }
+local extensionCurrent
+local extensionCtx
+
+local function ExtensionPageDefs()
+    local defs = {}
+    if not (ns.IsCompanionLoadable and not ns.IsCompanionLoadable("EasyFind_Snippets")) then
+        defs[#defs + 1] = { id = "snippets", name = L["FILTER_SNIPPETS"], icon = ns.SNIPPET_ICON_TEX,
+            coords = ns.SNIPPET_ICON_COORDS, core = true, build = BuildSnippetsPage }
+    end
+    if not (ns.IsCompanionLoadable and not ns.IsCompanionLoadable("EasyFind_Clipboard")) then
+        defs[#defs + 1] = { id = "clipboard", name = L["FILTER_CLIPBOARD"], icon = ns.CLIPBOARD_ICON_TEX,
+            coords = ns.CLIPBOARD_ICON_COORDS, core = true, build = BuildClipboardPage }
+    end
+    for _, def in ipairs(ns.ExtensionPages or {}) do
+        if not (def.companion and ns.IsCompanionLoadable and not ns.IsCompanionLoadable(def.companion)) then
+            defs[#defs + 1] = def
+        end
+    end
+    return defs
+end
+
+-- The page for an id, built on first use under the picker.
+local function EnsureExtensionPage(entry)
+    if entry.frame then return entry.frame end
+    local page = CreateFrame("Frame", nil, extensionsTab)
+    page:SetPoint("TOPLEFT", extensionStrip, "BOTTOMLEFT", 0, -8)
+    page:SetPoint("BOTTOMRIGHT", extensionsTab, "BOTTOMRIGHT", 0, 0)
+    entry.frame = page
+    if entry.def.core then
+        entry.def.build(extensionCtx, page)
+    else
+        entry.def.build(page)
+    end
+    return page
+end
+
+local function SelectExtensionPage(id)
+    extensionCurrent = id
+    for _, entry in ipairs(extensionPages) do
+        local on = entry.def.id == id
+        if on then EnsureExtensionPage(entry) end
+        if entry.frame then entry.frame:SetShown(on) end
+    end
+    if extensionsTab and extensionsTab.picker then extensionsTab.picker.Refresh() end
+end
+
+-- Every page, built: the sidebar search indexes their controls.
+local function EnsureAllExtensionPages()
+    for _, entry in ipairs(extensionPages) do
+        EnsureExtensionPage(entry)
+        entry.frame:SetShown(entry.def.id == extensionCurrent)
+    end
+end
+
+-- The picker: the panel's own flyout selector (the control every "pick
+-- one" row here uses: visibility, size, result rows), sitting right of
+-- the tab title. Its width is measured from the widest page name.
+-- Rebuilt when a page registers after the panel was built.
+local pickerSerial = 0
+local function LayoutExtensionPicker()
+    local defs = ExtensionPageDefs()
+    local byID = {}
+    for _, entry in ipairs(extensionPages) do byID[entry.def.id] = entry end
+    local ordered = {}
+    for _, def in ipairs(defs) do
+        local entry = byID[def.id]
+        if not entry then
+            entry = { def = def }
+            extensionPages[#extensionPages + 1] = entry
+        end
+        entry.def = def
+        ordered[#ordered + 1] = entry
+    end
+    if extensionsTab.picker then
+        extensionsTab.picker.button:Hide()
+        extensionsTab.picker.flyout:Hide()
+        extensionsTab.picker = nil
+    end
+    extensionHint:SetShown(#ordered == 0)
+    if #ordered == 0 then return end
+    local values, names = {}, {}
+    for _, entry in ipairs(ordered) do
+        values[#values + 1] = entry.def.id
+        names[entry.def.id] = entry.def.name or entry.def.id
+    end
+    local found = false
+    for _, entry in ipairs(ordered) do
+        if entry.def.id == extensionCurrent then found = true end
+    end
+    if not found then extensionCurrent = ordered[1].def.id end
+    local function LabelFor(id) return names[id] or tostring(id) end
+    local measure = extensionStrip.measure
+    local widest = 0
+    for _, id in ipairs(values) do
+        measure:SetText(LabelFor(id))
+        widest = mmax(widest, measure:GetStringWidth() or 0)
+    end
+    local width = math.ceil(widest) + 8 + 18 + 6     -- text pad, arrow, slack
+    pickerSerial = pickerSerial + 1
+    local prefix = "EasyFindExtensionPick" .. pickerSerial
+    local btnFrame, btnText = CreateFlyoutSelector(extensionStrip, prefix, width,
+        extensionStrip.title, LabelFor(extensionCurrent))
+    btnFrame:ClearAllPoints()
+    btnFrame:SetPoint("LEFT", extensionStrip.title, "RIGHT", 10, 0)
+    local flyout = CreateFlyoutPanel(btnFrame, prefix, width, #values)
+    AddFlyoutOptions(flyout, values, width - 6, function(id)
+        SelectExtensionPage(id)
+    end, LabelFor)
+    extensionsTab.picker = {
+        button = btnFrame, flyout = flyout,
+        Refresh = function() btnText:SetText(LabelFor(extensionCurrent)) end,
+    }
+    SelectExtensionPage(extensionCurrent)
+end
+
+local function BuildExtensionsTab(ctx)
+    local CreateTab = ctx.CreateTab
+    extensionsTab = CreateTab(L["FILTER_EXTENSIONS"])
+    extensionCtx = ctx
+    Options._extensionsTabIndex = extensionsTab.tabIndex
+    -- The header row: the tab title with the page picker right of it.
+    extensionStrip = CreateFrame("Frame", nil, extensionsTab)
+    extensionStrip:SetPoint("TOPLEFT", extensionsTab, "TOPLEFT", 8, -8)
+    extensionStrip:SetPoint("RIGHT", extensionsTab, "RIGHT", -8, 0)
+    extensionStrip:SetHeight(24)
+    local title = extensionStrip:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("LEFT", extensionStrip, "LEFT", 0, 0)
+    title:SetText(L["FILTER_EXTENSIONS"])
+    extensionStrip.title = title
+    extensionStrip.measure = extensionStrip:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    extensionStrip.measure:Hide()
+    extensionHint = extensionsTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    extensionHint:SetPoint("TOPLEFT", extensionStrip, "BOTTOMLEFT", 0, -6)
+    extensionHint:SetPoint("RIGHT", extensionsTab, "RIGHT", -10, 0)
+    extensionHint:SetJustifyH("LEFT")
+    extensionHint:SetText(L["OPT_EXTENSIONS_HINT"])
+    LayoutExtensionPicker()
+end
+
+-- A page registered after the panel was built joins the picker now.
+function Options:RefreshExtensionPages()
+    if extensionsTab and extensionCtx then LayoutExtensionPicker() end
+end
+
+-- For the sidebar search: every page's controls, with the page they sit on.
+function Options:ExtensionPageFrames()
+    if not extensionsTab then return {} end
+    EnsureAllExtensionPages()
+    local out = {}
+    for _, entry in ipairs(extensionPages) do
+        if entry.frame then out[#out + 1] = { id = entry.def.id, name = entry.def.name, frame = entry.frame } end
+    end
+    return out
+end
+
+function Options:OpenAtExtension(id)
+    self:Show()
+    if optionsFrame and optionsFrame.SwitchToTab and self._extensionsTabIndex then
+        optionsFrame.SwitchToTab(self._extensionsTabIndex)
+    end
+    if extensionsTab and id then SelectExtensionPage(id) end
+end
+
+-- The page the Extensions tab is showing (nil until the tab exists).
+function Options:CurrentExtensionPage()
+    if not extensionsTab then return nil end
+    local shown = optionsFrame and self._extensionsTabIndex and extensionsTab:IsShown()
+    return shown and extensionCurrent or nil
+end
 
 local function BuildFeedbackTab(ctx)
     local CreateTab, RESET_BTN_W = ctx.CreateTab, ctx.RESET_BTN_W
@@ -3704,6 +4061,314 @@ local function BuildFeedbackTab(ctx)
     Utils.AttachDelayedTooltip(featureBtn, "ANCHOR_TOP", function()
         return L["OPT_REQUEST_FEATURE"], L["OPT_REQUEST_FEATURE_TT_DESC"], L["OPT_REQUEST_FEATURE_TT_CMD"]
     end)
+end
+
+-- ==== Profiles tab =========================================================
+-- Second to last tab, above Feedback; the Tutorial entry under the pack
+-- is a button, not a tab.
+-- The shape is the one players know from AceDB and spec-profile addons:
+-- every character remembers its own pick, the picker suggests a profile
+-- for this character and one for the class, spec profiles are an opt-in
+-- section with a row per specialization. Name lists change, so each
+-- picker's flyout is rebuilt when its names do; the button stays.
+local profilesTab
+local profileFlyoutSerial = 0
+local function BuildProfilesTab(ctx)
+    local Profiles = ns.Profiles
+    if not Profiles then return end
+    local CreateTab = ctx.CreateTab
+    local BTN_W = 110
+    profilesTab = CreateTab(L["OPT_TAB_PROFILES"])
+    Options._profilesTabIndex = profilesTab.tabIndex
+    local RefreshTab
+
+    local desc = profilesTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    desc:SetPoint("TOPLEFT", profilesTab, "TOPLEFT", 12, -14)
+    desc:SetPoint("RIGHT", profilesTab, "RIGHT", -12, 0)
+    desc:SetJustifyH("LEFT")
+    desc:SetSpacing(2)
+    desc:SetText(L["OPT_PROFILES_DESC"])
+
+    -- A selector button with a flyout of profile names. The button is made
+    -- once per holder; the flyout is remade only when the names change.
+    local function NameFlyout(holder, width, text, names, onPick, styleFn)
+        local key = table.concat(names, "\n")
+        local picker = holder.picker
+        if not picker then
+            profileFlyoutSerial = profileFlyoutSerial + 1
+            local prefix = "EasyFindProfileFlyout" .. profileFlyoutSerial
+            local btnFrame, btnText = CreateFlyoutSelector(holder, prefix, width, nil, text)
+            picker = { button = btnFrame, text = btnText, prefix = prefix, serial = 0 }
+            holder.picker = picker
+        end
+        if picker.key ~= key then
+            if picker.flyout then picker.flyout:Hide() end
+            picker.serial = picker.serial + 1
+            local prefix = picker.prefix .. "_" .. picker.serial
+            picker.flyout = CreateFlyoutPanel(picker.button, prefix, width, mmax(1, #names))
+            AddFlyoutOptions(picker.flyout, names, width - 6, onPick, function(name)
+                return Profiles:DisplayName(name)
+            end, styleFn)
+            picker.key = key
+        end
+        picker.text:SetText(text)
+        picker.button:SetEnabled(#names > 0)
+        picker.button:SetAlpha(#names > 0 and 1 or 0.5)
+        return picker.button
+    end
+
+    -- Current profile.
+    local pickRow = CreateFrame("Frame", nil, profilesTab)
+    pickRow:SetSize(ctx.SELECTOR_ROW_W, 24)
+    pickRow:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", -8, -6)
+    local pickLabel = pickRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    pickLabel:SetPoint("LEFT", pickRow, "LEFT", 8, 0)
+    pickLabel:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
+    pickLabel:SetText(L["PROFILE_CURRENT"])
+    pickRow:EnableMouse(true)
+    local function PickTooltip() return L["PROFILE_CURRENT"], L["PROFILE_CURRENT_TT"] end
+    Utils.AttachDelayedTooltip(pickRow, "ANCHOR_RIGHT", PickTooltip)
+
+    -- New / Rename / Reset profile, then Copy from / Delete.
+    local newBtn = CreateModernButton(profilesTab)
+    newBtn:SetSize(BTN_W, 20)
+    newBtn:SetPoint("TOPLEFT", pickRow, "BOTTOMLEFT", 8, -6)
+    newBtn:SetText(L["PROFILE_NEW"])
+    local renameBtn = CreateModernButton(profilesTab)
+    renameBtn:SetSize(BTN_W, 20)
+    renameBtn:SetPoint("LEFT", newBtn, "RIGHT", 8, 0)
+    renameBtn:SetText(L["PROFILE_RENAME"])
+    local resetBtn = CreateModernButton(profilesTab)
+    resetBtn:SetSize(BTN_W, 20)
+    resetBtn:SetPoint("LEFT", renameBtn, "RIGHT", 8, 0)
+    resetBtn:SetText(L["PROFILE_RESET"])
+    local copyHolder = CreateFrame("Frame", nil, profilesTab)
+    copyHolder:SetSize(BTN_W + 8, 22)
+    copyHolder:SetPoint("TOPLEFT", newBtn, "BOTTOMLEFT", 0, -4)
+    local deleteHolder = CreateFrame("Frame", nil, profilesTab)
+    deleteHolder:SetSize(BTN_W + 8, 22)
+    deleteHolder:SetPoint("LEFT", copyHolder, "RIGHT", 0, 0)
+
+    local function AskName(prompt, default, onName)
+        ns.ShowThemedDialog({
+            text = prompt,
+            hasEditBox = true, maxLetters = 48, editBoxDefault = default,
+            acceptText = _G["OKAY"] or "Okay",
+            cancelText = _G["CANCEL"] or "Cancel",
+            onAccept = function(value)
+                local name = strtrim(value or "")
+                if name == "" then return end
+                if Profiles:Exists(name) then
+                    EasyFind:Print(L["PROFILE_NAME_TAKEN"])
+                    return
+                end
+                onName(name)
+            end,
+        })
+    end
+    newBtn:SetScript("OnClick", function()
+        AskName(L["PROFILE_NEW_PROMPT"], "", function(name)
+            Profiles:Create(name, Profiles:Active())
+            Profiles:Pick(name)
+        end)
+    end)
+    renameBtn:SetScript("OnClick", function()
+        local active = Profiles:Active()
+        if active == Profiles.DEFAULT then return end
+        AskName(L["PROFILE_RENAME_PROMPT"], active, function(name)
+            Profiles:Rename(active, name)
+            RefreshTab()
+        end)
+    end)
+    resetBtn:SetScript("OnClick", function()
+        ns.ShowThemedDialog({
+            text = (L["PROFILE_RESET_CONFIRM_FMT"]):format(Profiles:DisplayName(Profiles:Active())),
+            messageColor = ns.GOLD_COLOR,
+            acceptText = _G["RESET"] or L["PROFILE_RESET"],
+            onAccept = function() Profiles:ResetActive() end,
+            cancelText = _G["CANCEL"] or "Cancel",
+        })
+    end)
+
+    -- Spec profiles: an enable toggle, then a row per specialization.
+    local specTitle = profilesTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    specTitle:SetPoint("TOPLEFT", copyHolder, "BOTTOMLEFT", 0, -12)
+    specTitle:SetText(L["PROFILE_SPEC_TITLE"])
+    local specEnable = CreateCheckbox(profilesTab, "ProfileSpecEnable", L["PROFILE_SPEC_ENABLE"],
+        L["PROFILE_SPEC_ENABLE_TT"], true, 240)
+    specEnable:SetPoint("TOPLEFT", specTitle, "BOTTOMLEFT", -8, -2)
+    specEnable:SetScript("OnClick", function(self)
+        Profiles:SetSpecProfilesEnabled(self:GetChecked() and true or false)
+        RefreshTab()
+    end)
+    local specRows = {}
+    local lastAnchor = specEnable
+    for i, spec in ipairs(Profiles:ClassSpecs()) do
+        local row = CreateFrame("Frame", nil, profilesTab)
+        row:SetSize(ctx.SELECTOR_ROW_W, 22)
+        row:SetPoint("TOPLEFT", lastAnchor, "BOTTOMLEFT", 0, -2)
+        local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("LEFT", row, "LEFT", 8, 0)
+        label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
+        row.label, row.spec = label, spec
+        specRows[i] = row
+        lastAnchor = row
+    end
+
+    -- Export & import: what goes into the code, then the two buttons.
+    local exportTitle = profilesTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    exportTitle:SetPoint("TOPLEFT", lastAnchor, "BOTTOMLEFT", 8, -12)
+    exportTitle:SetText(L["PROFILE_EXPORT_TITLE"])
+    local inclRow = CreateFrame("Frame", nil, profilesTab)
+    inclRow:SetSize(ctx.SELECTOR_ROW_W, 24)
+    inclRow:SetPoint("TOPLEFT", exportTitle, "BOTTOMLEFT", -8, -4)
+    local inclLabel = inclRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    inclLabel:SetPoint("LEFT", inclRow, "LEFT", 8, 0)
+    inclLabel:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
+    inclLabel:SetText(L["PROFILE_EXPORT_INCLUDE"])
+
+    local function AllIncluded()
+        for _, sec in ipairs(Profiles.SECTIONS) do
+            if not Profiles:ExportIncluded(sec.id) then return false end
+        end
+        return true
+    end
+    local function IncludeLabel()
+        local n = 0
+        for _, sec in ipairs(Profiles.SECTIONS) do
+            if Profiles:ExportIncluded(sec.id) then n = n + 1 end
+        end
+        if n == #Profiles.SECTIONS then return L["PROFILE_INCL_ALL"] end
+        return (L["PROFILE_INCL_COUNT_FMT"]):format(n, #Profiles.SECTIONS)
+    end
+    local inclBtn, inclText = CreateFlyoutSelector(inclRow, "EasyFindProfileInclude", ctx.SELECTOR_BTN_W, nil,
+        IncludeLabel())
+    local INCLUDE_POPUP = "EasyFindProfileIncludePopup"
+    local function RepaintInclude()
+        inclText:SetText(IncludeLabel())
+        local popup = _G[INCLUDE_POPUP]
+        if popup and popup:IsShown() and ns.RefreshTogglePopup then ns.RefreshTogglePopup(popup) end
+    end
+    -- The same shape as the filter flyouts: Toggle All over a check per
+    -- section.
+    inclBtn:SetScript("OnClick", function()
+        local defs = {}
+        defs[#defs + 1] = {
+            kind = "check", label = L["FILTER_TOGGLE_ALL"],
+            get = AllIncluded,
+            set = function()
+                local on = not AllIncluded()
+                for _, sec in ipairs(Profiles.SECTIONS) do Profiles:SetExportIncluded(sec.id, on) end
+                RepaintInclude()
+            end,
+        }
+        defs[#defs + 1] = { kind = "separator" }
+        for _, sec in ipairs(Profiles.SECTIONS) do
+            defs[#defs + 1] = {
+                kind = "check", label = L[PROFILE_SECTION_LABEL_KEY[sec.id] or "PROFILE_SECTION_SETTINGS"],
+                get = function() return Profiles:ExportIncluded(sec.id) end,
+                set = function(v)
+                    Profiles:SetExportIncluded(sec.id, v)
+                    RepaintInclude()
+                end,
+            }
+        end
+        ns.ShowTogglePopup(INCLUDE_POPUP, inclBtn, defs, {})
+    end)
+
+    local exportBtn = CreateModernButton(profilesTab)
+    exportBtn:SetSize(BTN_W, 20)
+    exportBtn:SetPoint("TOPLEFT", inclRow, "BOTTOMLEFT", 8, -6)
+    exportBtn:SetText(L["PROFILE_EXPORT"])
+    Utils.AttachDelayedTooltip(exportBtn, "ANCHOR_TOP", function()
+        return L["PROFILE_EXPORT"], L["PROFILE_EXPORT_TT"]
+    end)
+    exportBtn:SetScript("OnClick", function()
+        local code = Profiles:Export()
+        if not code then
+            EasyFind:Print(L["PROFILE_EXPORT_EMPTY"])
+            return
+        end
+        if optionsFrame and optionsFrame.ShowShareString then
+            optionsFrame.ShowShareString(true, code, "profile")
+        end
+    end)
+    local importBtn = CreateModernButton(profilesTab)
+    importBtn:SetSize(BTN_W, 20)
+    importBtn:SetPoint("LEFT", exportBtn, "RIGHT", 8, 0)
+    importBtn:SetText(L["PROFILE_IMPORT"])
+    importBtn:SetScript("OnClick", function()
+        if optionsFrame and optionsFrame.ShowShareString then
+            optionsFrame.ShowShareString(false, nil, "profile", RefreshTab)
+        end
+    end)
+
+    RefreshTab = function()
+        if not profilesTab:IsShown() then return end
+        local active = Profiles:Active()
+        local names = Profiles:Names()
+        local pickNames, isSuggestion = {}, {}
+        for _, name in ipairs(names) do pickNames[#pickNames + 1] = name end
+        for _, name in ipairs(Profiles:Suggestions()) do
+            pickNames[#pickNames + 1] = name
+            isSuggestion[name] = true
+        end
+        local pickBtn = NameFlyout(pickRow, ctx.SELECTOR_BTN_W, Profiles:DisplayName(active), pickNames,
+            function(name) Profiles:Pick(name) end,
+            function(_, name, label)
+                if isSuggestion[name] then label:SetTextColor(0.55, 0.55, 0.55) end
+            end)
+        Utils.AttachDelayedTooltip(pickBtn, "ANCHOR_RIGHT", PickTooltip)
+        local canRename = active ~= Profiles.DEFAULT
+        renameBtn:SetEnabled(canRename)
+        renameBtn:SetAlpha(canRename and 1 or 0.5)
+
+        local others = {}
+        for _, name in ipairs(names) do
+            if name ~= active then others[#others + 1] = name end
+        end
+        NameFlyout(copyHolder, BTN_W, L["PROFILE_COPY_FROM"], others, function(name)
+            ns.ShowThemedDialog({
+                text = (L["PROFILE_COPY_CONFIRM_FMT"]):format(
+                    Profiles:DisplayName(Profiles:Active()), Profiles:DisplayName(name)),
+                messageColor = ns.GOLD_COLOR,
+                acceptText = _G["OKAY"] or "Okay",
+                onAccept = function() Profiles:CopyFrom(name) end,
+                cancelText = _G["CANCEL"] or "Cancel",
+            })
+        end)
+        NameFlyout(deleteHolder, BTN_W, L["PROFILE_DELETE"], Profiles:Deletable(), function(name)
+            ns.ShowThemedDialog({
+                text = (L["PROFILE_DELETE_CONFIRM_FMT"]):format(Profiles:DisplayName(name)),
+                messageColor = ns.GOLD_COLOR,
+                acceptText = _G["DELETE"] or L["PROFILE_DELETE"],
+                onAccept = function()
+                    Profiles:Delete(name)
+                    RefreshTab()
+                end,
+                cancelText = _G["CANCEL"] or "Cancel",
+            })
+        end)
+
+        local specOn = Profiles:SpecProfilesEnabled()
+        specEnable:SetChecked(specOn)
+        local currentSpec = Profiles:CurrentSpecID()
+        for _, row in ipairs(specRows) do
+            local spec = row.spec
+            local text = spec.id == currentSpec and (L["PROFILE_SPEC_ACTIVE_FMT"]):format(spec.name) or spec.name
+            row.label:SetText(text)
+            local btn = NameFlyout(row, ctx.SELECTOR_BTN_W, Profiles:DisplayName(Profiles:SpecProfile(spec.id)),
+                names, function(name)
+                    Profiles:SetSpecProfile(spec.id, name)
+                    RefreshTab()
+                end)
+            btn:SetEnabled(specOn)
+            row:SetAlpha(specOn and 1 or 0.5)
+        end
+        RepaintInclude()
+    end
+    profilesTab:HookScript("OnShow", RefreshTab)
+    optionsFrame.RefreshProfilesTab = RefreshTab
 end
 
 function Options:Initialize()
@@ -3950,8 +4615,9 @@ function Options:Initialize()
     optionsFrame.RepaintTabs = RepaintTabs
 
 
-    local function FlashBindButton()
-        local target = optionsFrame.toggleFocusBtn
+    -- A gold pulse around any control: the keybind button after a
+    -- capture, a setting the sidebar search jumped to.
+    local function FlashFrame(target)
         if not target then return end
         local glow = target.efBindGlow
         if not glow then
@@ -3987,6 +4653,9 @@ function Options:Initialize()
         glow:SetAlpha(0)
         glow:Show()
         glow.pulse:Play()
+    end
+    local function FlashBindButton()
+        FlashFrame(optionsFrame.toggleFocusBtn)
     end
 
     local function CreateTab(tabName)
@@ -4188,11 +4857,253 @@ function Options:Initialize()
     BuildShortcutsTab(ctx)
     BuildAliasesTab(ctx)
     BuildBlacklistTab(ctx)
-    -- The snippets tab manages a companion's feature; no tab without it.
-    if not (ns.IsCompanionLoadable and not ns.IsCompanionLoadable("EasyFind_Snippets")) then
-        BuildSnippetsTab(ctx)
-    end
+    -- One tab for every extension's settings, each a page picked from the
+    -- strip at its top.
+    BuildExtensionsTab(ctx)
+    -- Profiles sits second to last; Feedback is always the last tab, and
+    -- the Tutorial entry below the pack is a button, not a tab.
+    BuildProfilesTab(ctx)
     BuildFeedbackTab(ctx)
+
+    -- ==== settings search, above the tabs =================================
+    -- Every label on every tab (extension pages built for it) is indexed
+    -- once, on the first search. Typing lists the hits under the box with
+    -- the tab (and page) each sits on; Enter or a click jumps there and
+    -- pulses the control. The addon's own name scorer ranks them.
+    do
+        local shell = CreateFrame("Frame", nil, sidebar)
+        shell:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 8, -6)
+        shell:SetPoint("RIGHT", sidebar, "RIGHT", -8, 0)
+        shell:SetHeight(22)
+        ns.CreateRoundedRectBorder(shell)
+        ns.SetRoundedRectBarHeight(shell, 10)
+        HideRoundedFrameBorder(shell)
+        -- The link-box fill (Home tab), not the button fill: the button
+        -- fill is the selected tab's color, so the field read as a tab.
+        PaintControlFill(shell, SECTION_TABLE_FILL, SECTION_TABLE_FILL[4])
+        local icon = shell:CreateTexture(nil, "OVERLAY")
+        icon:SetSize(13, 13)
+        icon:SetPoint("LEFT", shell, "LEFT", 7, 0)
+        icon:SetAtlas("common-search-magnifyingglass")
+        icon:SetAlpha(0.65)
+        local box = CreateFrame("EditBox", nil, shell)
+        box:SetPoint("LEFT", icon, "RIGHT", 6, 0)
+        box:SetPoint("RIGHT", shell, "RIGHT", -8, 0)
+        box:SetHeight(18)
+        box:SetAutoFocus(false)
+        box:SetFontObject(SMALL_HIGHLIGHT_FONT)
+        box:SetMaxLetters(48)
+        local placeholder = box:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+        placeholder:SetPoint("LEFT", box, "LEFT", 0, 0)
+        placeholder:SetText(L["OPT_SEARCH_PLACEHOLDER"])
+        placeholder:SetTextColor(0.78, 0.78, 0.80, 1)
+        optionsFrame.settingsSearchBox = box
+
+        local index
+        -- Only setting names are hits: the gold label and header fonts
+        -- (GameFontNormal*), plus checkbox labels tagged at creation. The
+        -- white fonts carry descriptions, values, and list rows; the gray
+        -- ones carry empty states, hints, and placeholders ("No snippets
+        -- yet." is not a setting).
+        local function IndexableLabel(fs)
+            if fs._efNoIndex then return false end
+            if fs._efSearchLabel then return true end
+            local fontObj = fs.GetFontObject and fs:GetFontObject()
+            local fontName = fontObj and fontObj.GetName and fontObj:GetName()
+            return fontName ~= nil and string.find(fontName, "^GameFontNormal") ~= nil
+        end
+        local function IndexFrame(frame, tabIndex, pageName, pageID, pageByFrame, seen)
+            if not frame or frame == shell then return end
+            local regions = { frame:GetRegions() }
+            for i = 1, #regions do
+                local r = regions[i]
+                if r.IsObjectType and r:IsObjectType("FontString") and IndexableLabel(r) then
+                    local text = r:GetText()
+                    if text and text ~= "" and #text <= 60 then
+                        local plain = Utils.StripMarkup and Utils.StripMarkup(text) or text
+                        local key = tabIndex .. "|" .. (pageID or "") .. "|" .. plain
+                        if plain ~= "" and not seen[key] then
+                            seen[key] = true
+                            index[#index + 1] = {
+                                label = plain, lower = string.lower(plain),
+                                tab = tabIndex, pageID = pageID, pageName = pageName, target = frame,
+                            }
+                        end
+                    end
+                end
+            end
+            local children = { frame:GetChildren() }
+            for i = 1, #children do
+                local child = children[i]
+                local page = pageByFrame[child]
+                IndexFrame(child, tabIndex, page and page.name or pageName,
+                    page and page.id or pageID, pageByFrame, seen)
+            end
+        end
+        local function BuildIndex()
+            index = {}
+            local seen = {}
+            local pageByFrame = {}
+            for _, p in ipairs(Options:ExtensionPageFrames()) do pageByFrame[p.frame] = p end
+            for ti, tf in ipairs(tabFrames) do
+                IndexFrame(tf, ti, nil, nil, pageByFrame, seen)
+            end
+        end
+        optionsFrame.InvalidateSettingsIndex = function() index = nil end
+
+        local results = CreateFrame("Frame", "EasyFindSettingsSearchResults", UIParent, "BackdropTemplate")
+        results:SetFrameStrata("TOOLTIP")
+        results:SetFrameLevel(9600)
+        results:EnableMouse(true)
+        ns.StyleMenuPanel(results)
+        results.rows = {}
+        -- Sized to its widest hit (measured unconstrained), never a guess;
+        -- registered as a click guard so the bar's closer leaves it be.
+        results.measure = results:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        results.measure:Hide()
+        results.measurePath = results:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+        results.measurePath:Hide()
+        Utils.RegisterClickGuard(results)
+        results:Hide()
+        local ROW_H, PAD, RESULTS_W, MAX_HITS = 22, 6, 200, 12   -- RESULTS_W is the floor
+        local hits, selected = {}, 0
+        local function Jump(hit)
+            results:Hide()
+            box:ClearFocus()
+            SwitchToTab(hit.tab)
+            if hit.pageID then SelectExtensionPage(hit.pageID) end
+            FlashFrame(hit.target)
+        end
+        local function PaintSelection()
+            for i, row in ipairs(results.rows) do
+                if row:IsShown() and row.SetMenuHighlightFocused then
+                    row:SetMenuHighlightFocused(i == selected)
+                end
+            end
+        end
+        local function ShowHits()
+            local n = math.min(#hits, MAX_HITS)
+            for i = 1, n do
+                local row = results.rows[i]
+                if not row then
+                    row = CreateFrame("Button", nil, results)
+                    row:SetHeight(ROW_H)
+                    Utils.InstallMenuRowHighlight(row)
+                    row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                    row.label:SetPoint("LEFT", row, "LEFT", 6, 0)
+                    row.label:SetJustifyH("LEFT")
+                    row.label:SetWordWrap(false)
+                    row.path = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+                    row.path:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+                    row.path:SetJustifyH("RIGHT")
+                    row.path:SetWordWrap(false)
+                    row.label:SetPoint("RIGHT", row.path, "LEFT", -6, 0)
+                    row:SetScript("OnClick", function(self) Jump(self.hit) end)
+                    -- Hover moves the keyboard focus, so one row is lit
+                    -- (as in every menu). HookScript keeps the hover wash.
+                    row:HookScript("OnEnter", function(self)
+                        if self.index and self.index ~= selected then
+                            selected = self.index
+                            PaintSelection()
+                        end
+                    end)
+                    results.rows[i] = row
+                end
+                local hit = hits[i]
+                row.index = i
+                row.hit = hit
+                row.label:SetText(hit.label)
+                local tabBtn = tabButtons[hit.tab]
+                local tabName = tabBtn and tabBtn.label and tabBtn.label:GetText() or ""
+                row.path:SetText(hit.pageName and (tabName .. " > " .. hit.pageName) or tabName)
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", results, "TOPLEFT", PAD, -PAD - (i - 1) * ROW_H)
+                row:SetPoint("RIGHT", results, "RIGHT", -PAD, 0)
+                row:Show()
+            end
+            for i = n + 1, #results.rows do results.rows[i]:Hide() end
+            if n == 0 then results:Hide(); return end
+            local widest = 0
+            for i = 1, n do
+                results.measure:SetText(hits[i].label or "")
+                results.measurePath:SetText(results.rows[i].path:GetText() or "")
+                widest = math.max(widest, (results.measure:GetStringWidth() or 0)
+                    + 6 + (results.measurePath:GetStringWidth() or 0))
+            end
+            results:SetSize(math.max(RESULTS_W, math.ceil(PAD * 2 + 6 + widest + 6)), PAD * 2 + n * ROW_H)
+            results:SetScale(OPTIONS_PANEL_SCALE)
+            Utils.RefreshMenuRowHighlights(results, results.rows)
+            Utils.OpenDropdownBelow(results, shell, 2)
+            results:Show()
+            selected = 1
+            PaintSelection()
+        end
+        local function Run(text)
+            if not index then BuildIndex() end
+            local q = Utils.StripMarkup and Utils.StripMarkup(text) or text
+            q = string.lower(q or "")
+            hits = {}
+            if q == "" then results:Hide(); return end
+            local Database = ns.Database
+            local qLen = #q
+            for _, entry in ipairs(index) do
+                local score = 0
+                if Database and Database.ScoreName then
+                    score = Database:ScoreName(entry.lower, q, qLen) or 0
+                elseif string.find(entry.lower, q, 1, true) then
+                    score = 1
+                end
+                if score > 0 then
+                    hits[#hits + 1] = { score = score, label = entry.label, tab = entry.tab,
+                        pageID = entry.pageID, pageName = entry.pageName, target = entry.target }
+                end
+            end
+            table.sort(hits, function(a, b)
+                if a.score ~= b.score then return a.score > b.score end
+                return a.label < b.label
+            end)
+            ShowHits()
+        end
+        box:SetScript("OnTextChanged", function(self, userInput)
+            local text = self:GetText() or ""
+            placeholder:SetShown(text == "")
+            if userInput then Run(text) end
+        end)
+        box:SetScript("OnEnterPressed", function()
+            if hits[selected] then Jump(hits[selected]) end
+        end)
+        box:SetScript("OnEscapePressed", function(self)
+            if (self:GetText() or "") ~= "" then
+                self:SetText("")
+                results:Hide()
+            else
+                self:ClearFocus()
+            end
+        end)
+        box:SetScript("OnKeyDown", function(_, key)
+            if not results:IsShown() then return end
+            local n = math.min(#hits, MAX_HITS)
+            if n == 0 then return end
+            if key == "DOWN" then
+                selected = selected % n + 1
+                PaintSelection()
+            elseif key == "UP" then
+                selected = (selected - 2) % n + 1
+                PaintSelection()
+            end
+        end)
+        box:SetScript("OnEditFocusGained", function(self)
+            if (self:GetText() or "") ~= "" then Run(self:GetText()) end
+        end)
+        results:HookScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
+        results:HookScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
+        results:SetScript("OnEvent", function(self, event)
+            if event ~= "GLOBAL_MOUSE_DOWN" then return end
+            if Utils.IsFrameVisiblyMouseOver(self) or Utils.IsFrameVisiblyMouseOver(shell) then return end
+            self:Hide()
+        end)
+        optionsFrame:HookScript("OnHide", function() results:Hide() end)
+    end
 
     SwitchToTab(1)
 
@@ -4215,6 +5126,15 @@ end
 
 function Options:ConfirmResetPositions()
     ShowResetConfirm(L["POPUP_RESET_ALL_POSITIONS"], function() Options:DoResetPositions() end)
+end
+
+-- A profile switch replaced the db under the panel: every control
+-- re-reads, the management tables rebuild, the Profiles tab re-lists.
+function Options:OnProfileSwitched()
+    if not isInitialized then return end
+    SyncOptionControls()
+    if ns.RefreshBindTables then ns.RefreshBindTables() end
+    if optionsFrame and optionsFrame.RefreshProfilesTab then optionsFrame.RefreshProfilesTab() end
 end
 
 function Options:DoResetAll()
@@ -4297,10 +5217,7 @@ function Options:OpenAtAliases()
 end
 
 function Options:OpenAtSnippets()
-    self:Show()
-    if optionsFrame and optionsFrame.SwitchToTab and self._snippetsTabIndex then
-        optionsFrame.SwitchToTab(self._snippetsTabIndex)
-    end
+    self:OpenAtExtension("snippets")
     if ns.FeatureSpotlight then ns.FeatureSpotlight:Complete("snippets31") end
 end
 

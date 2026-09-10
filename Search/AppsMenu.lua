@@ -62,7 +62,187 @@ function ns.BuildApplicationEntries()
             end,
         }
     end
+    -- Clipboard history opens its own list (@clipboard). Hidden when the
+    -- clipboard companion is disabled in the AddOns list.
+    if not (ns.IsCompanionLoadable and not ns.IsCompanionLoadable("EasyFind_Clipboard")) then
+        apps[#apps + 1] = {
+            name = L["FILTER_CLIPBOARD"],
+            clipboardLauncher = true,
+            noPin = true,
+            icon = ns.CLIPBOARD_ICON_TEX,
+            nativeRun = function()
+                if ns.Clipboard and ns.Clipboard.OpenList then ns.Clipboard:OpenList() end
+            end,
+        }
+    end
     return apps
+end
+
+-- Stable ids for the extension buttons (Search/ExtensionButtons.lua): an
+-- app is known by its launcher flag, never by its localized name.
+local APP_ID_FLAGS = {
+    { "calculator", "calculatorLauncher" },
+    { "icons", "iconSearchLauncher" },
+    { "snippets", "snippetsLauncher" },
+    { "clipboard", "clipboardLauncher" },
+}
+function ns.ApplicationEntryID(app)
+    if not app then return nil end
+    for i = 1, #APP_ID_FLAGS do
+        if app[APP_ID_FLAGS[i][2]] then return APP_ID_FLAGS[i][1] end
+    end
+    return nil
+end
+-- The live launcher entry for an id, or for a stored copy of one (a
+-- shortkey snapshot keeps the flag but not the run function).
+function ns.FindApplicationEntry(idOrData)
+    if not idOrData then return nil end
+    local id = type(idOrData) == "table" and ns.ApplicationEntryID(idOrData) or idOrData
+    if not id then return nil end
+    local apps = ns.BuildApplicationEntries()
+    for i = 1, #apps do
+        if ns.ApplicationEntryID(apps[i]) == id then return apps[i] end
+    end
+    return nil
+end
+
+-- Whether an extension's own surface is up right now, and how to take it
+-- down: the calculator popup, the icon grid or the clipboard list in the
+-- results (the pill comes off and the results close, leaving the bar),
+-- the options panel on the snippets page. Every launch surface (menu row,
+-- extension button, compartment) toggles through these, so a second
+-- click closes what the first opened.
+function ns.IsApplicationOpen(app)
+    if not app then return false end
+    if app.calculatorLauncher then
+        local calc = ns.Calculator and ns.Calculator._calculator
+        local frame = calc and calc.popupFrame
+        return frame ~= nil and frame:IsShown()
+    end
+    local Filters = ns.Filters
+    local qf = Filters and Filters.GetQuickFilter and Filters:GetQuickFilter()
+    local resultsShown = ns.Search and ns.Search.GetResultsFrame and ns.Search:GetResultsFrame()
+        and ns.Search:GetResultsFrame():IsShown()
+    if app.iconSearchLauncher then
+        return resultsShown and qf ~= nil and qf.key == "icons"
+    end
+    if app.clipboardLauncher then
+        return resultsShown and qf ~= nil and qf.key == "clipboard"
+    end
+    if app.snippetsLauncher then
+        local frame = ns.optionsFrame
+        return frame ~= nil and frame:IsShown() and ns.Options and ns.Options.CurrentExtensionPage
+            and ns.Options:CurrentExtensionPage() == "snippets"
+    end
+    return false
+end
+
+function ns.CloseApplication(app)
+    if not app then return end
+    if app.calculatorLauncher then
+        local calc = ns.Calculator and ns.Calculator._calculator
+        if calc and calc.popupFrame then calc.popupFrame:Hide() end
+        return
+    end
+    if app.iconSearchLauncher or app.clipboardLauncher then
+        if ns.Filters and ns.Filters.ClearQuickFilter then ns.Filters:ClearQuickFilter(false) end
+        if Results and Results.HideResults then Results:HideResults() end
+        return
+    end
+    if app.snippetsLauncher and ns.Options and ns.Options.Hide then
+        ns.Options:Hide()
+    end
+end
+
+-- The results-based extension showing right now ("icons", "clipboard"),
+-- or nil. The outside-click closers ask before they hide.
+function ns.CurrentApplicationSurfaceID()
+    local Filters = ns.Filters
+    local qf = Filters and Filters.GetQuickFilter and Filters:GetQuickFilter()
+    local key = qf and qf.key
+    if key ~= "icons" and key ~= "clipboard" then return nil end
+    local rf = ns.Search and ns.Search.GetResultsFrame and ns.Search:GetResultsFrame()
+    if not (rf and rf:IsShown()) then return nil end
+    return key
+end
+
+-- An outside mouse-down takes the icon grid or the clipboard list down a
+-- beat before the click on a launch surface (extension button, broker
+-- launcher, compartment row) lands, so the toggle would find it closed
+-- and reopen what the user meant to close. The closers note what they
+-- took down; launching that same extension within the gesture is the
+-- close, and does nothing more.
+local DISMISS_GRACE = 0.6
+local dismissedID, dismissedAt
+function ns.NoteApplicationDismissed(id)
+    if not id then return end
+    dismissedID, dismissedAt = id, GetTime()
+end
+local function JustDismissed(app)
+    if not dismissedID then return false end
+    if GetTime() - (dismissedAt or 0) > DISMISS_GRACE then
+        dismissedID = nil
+        return false
+    end
+    return ns.ApplicationEntryID(app) == dismissedID
+end
+
+-- Whether the bar was hidden when a launch opened it. Closing that
+-- extension from a launch surface then takes the bar down too, so the
+-- press that opened everything closes everything; opened while the bar
+-- was already up, the close leaves the bar where it was.
+local launchOpenedBar = {}
+-- Visible to the user, not merely Shown: Hover Show keeps the frame
+-- shown at alpha 0 while faded out, and a faded-out bar is a hidden
+-- bar for this rule.
+local function BarShown()
+    local sf = ns.Search and ns.Search.GetSearchFrame and ns.Search:GetSearchFrame()
+    if not (sf and sf:IsShown()) then return false end
+    local db = EasyFind and EasyFind.db
+    if db and db.smartShow and not db.autoHide and sf.smartShowVisible then
+        return sf.smartShowVisible() and true or false
+    end
+    return (sf:GetAlpha() or 1) > 0.01
+end
+local function HideBarIfLaunchOpened(app)
+    local id = ns.ApplicationEntryID(app)
+    if not (id and launchOpenedBar[id]) then return end
+    launchOpenedBar[id] = nil
+    if BarShown() and ns.Search.Hide then ns.Search:Hide() end
+end
+
+function ns.ToggleApplication(app)
+    if not app then return end
+    if JustDismissed(app) then
+        dismissedID = nil
+        HideBarIfLaunchOpened(app)
+        return
+    end
+    if ns.IsApplicationOpen(app) then
+        ns.CloseApplication(app)
+        HideBarIfLaunchOpened(app)
+        return
+    end
+    local id = ns.ApplicationEntryID(app)
+    if id then launchOpenedBar[id] = not BarShown() end
+    Results:HideResults()
+    ns.ResultHandlers:SelectResult(app)
+end
+
+-- Extension settings pages. The options panel's Extensions tab shows one
+-- page per registered extension, picked from a strip at the top. Bundled
+-- extensions register their pages from the options companion; others
+-- register here: { id, name, icon, coords, companion, build = function(page) }.
+-- `build` fills `page` (a frame filling the tab under the strip) once.
+ns.ExtensionPages = ns.ExtensionPages or {}
+function ns.RegisterExtensionPage(def)
+    if not (def and def.id and def.build) then return end
+    local pages = ns.ExtensionPages
+    for i = 1, #pages do
+        if pages[i].id == def.id then pages[i] = def; return end
+    end
+    pages[#pages + 1] = def
+    if ns.Options and ns.Options.RefreshExtensionPages then ns.Options:RefreshExtensionPages() end
 end
 
 -- The searchable launcher row: typing "icons" / "icon search" (or the
@@ -103,6 +283,36 @@ end
 -- The waffle: 3x3 round dots, drawn rather than shipped so it tints with the
 -- theme like the rest of the bar chrome. A white square gets a circular alpha
 -- mask -- SetColorTexture alone draws hard squares, which is not a dot grid.
+-- The clipboard history launcher row: typing "clipboard" / "clip" /
+-- "history" (or the localized app name) offers the row that opens the
+-- @clipboard list. Core-owned like the icon launcher: the entries
+-- themselves never appear in a search, only this door to them.
+local clipboardLauncherRow
+function ns.Results:GetClipboardLauncherMatch(text)
+    if not text or #text < 3 then return nil end
+    if ns.IsCompanionLoadable and not ns.IsCompanionLoadable("EasyFind_Clipboard") then return nil end
+    local q = ns.Utils.slower(text)
+    local target = ns.Utils.slower(ns.L["FILTER_CLIPBOARD"] or "clipboard")
+    local sfind = ns.Utils.sfind
+    if not (sfind(target, q, 1, true)
+            or sfind("clipboard", q, 1, true)
+            or sfind("clipboard history", q, 1, true)
+            or sfind("history", q, 1, true)) then
+        return nil
+    end
+    clipboardLauncherRow = clipboardLauncherRow or {
+        name = ns.L["FILTER_CLIPBOARD"],
+        clipboardLauncher = true,
+        noPin = true,
+        noLearn = true,
+        icon = ns.CLIPBOARD_ICON_TEX,
+        nativeRun = function()
+            if ns.Clipboard and ns.Clipboard.OpenList then ns.Clipboard:OpenList() end
+        end,
+    }
+    return clipboardLauncherRow
+end
+
 local CIRCLE_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 
 local function CreateGridGlyph(parent, size)
@@ -167,8 +377,34 @@ local function BuildRows(dropdown)
             row:SetScript("OnClick", function(self)
                 if not self.app then return end
                 dropdown:Hide()
-                Results:HideResults()
-                ns.ResultHandlers:SelectResult(self.app)
+                ns.ToggleApplication(self.app)
+            end)
+            -- Dragging a row out makes a button for that extension on
+            -- screen (Search/ExtensionButtons.lua); the menu gets out of
+            -- the way and a ghost rides the cursor until the drop.
+            -- Press-and-move, not the frame drag events (those depend on
+            -- the row keeping the mouse, which a menu row does not always
+            -- get): a press followed by movement past a few pixels while
+            -- the button is still held starts the drag.
+            row:HookScript("OnMouseDown", function(self, button)
+                if button ~= "LeftButton" or not (self.app and ns.ExtensionButtons) then return end
+                local sx, sy = GetCursorPosition()
+                self._efPress = { x = sx, y = sy }
+                self:SetScript("OnUpdate", function(row2)
+                    local press = row2._efPress
+                    if not press then row2:SetScript("OnUpdate", nil); return end
+                    if not IsMouseButtonDown("LeftButton") then
+                        row2._efPress = nil
+                        row2:SetScript("OnUpdate", nil)
+                        return
+                    end
+                    local cx, cy = GetCursorPosition()
+                    if (cx - press.x) ^ 2 + (cy - press.y) ^ 2 < 36 then return end
+                    row2._efPress = nil
+                    row2:SetScript("OnUpdate", nil)
+                    dropdown:Hide()
+                    ns.ExtensionButtons:BeginDragFromMenu(row2.app)
+                end)
             end)
             dropdown.rows[i] = row
         end

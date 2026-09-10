@@ -392,13 +392,7 @@ function Search:CreateSearchFrame()
     searchFrame:EnableMouse(true)
     searchFrame:SetClampedToScreen(true)
 
-    if EasyFind.db.uiSearchPosition then
-        local pos = EasyFind.db.uiSearchPosition
-        searchFrame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
-    else
-        local point, relPoint, x, y = self:GetDefaultSearchBarPoint()
-        searchFrame:SetPoint(point, UIParent, relPoint, x, y)
-    end
+    self:ApplySavedPosition()
 
     local theme = Results:GetActiveTheme()
     ns.CreateSearchBorder(searchFrame)
@@ -2046,6 +2040,9 @@ function Search:CreateSearchFrame()
         -- Every floating EasyFind window (apps menu, pin popup, wizard,
         -- ...) lives in the shared click-guard registry.
         if Utils.IsClickGuardMouseOver() then return end
+        if ns.NoteApplicationDismissed and ns.CurrentApplicationSurfaceID then
+            ns.NoteApplicationDismissed(ns.CurrentApplicationSurfaceID())
+        end
         Search:Hide()
     end)
 
@@ -2142,6 +2139,15 @@ end
 -- text or grant editbox focus; the staged clear-and-refocus behavior
 -- below belongs to the focused flow only.
 function Search:HandleEscape(fromUnfocused)
+    -- A live extension button drag is cancelled before anything else
+    -- (the bar sees Escape before the game's special-frame pass does).
+    if ns.ExtensionButtons and ns.ExtensionButtons.CancelDrag
+       and ns.ExtensionButtons:CancelDrag() then
+        return true
+    end
+    -- An open menu popup (an extension button's menu, the clipboard
+    -- include menu) closes before anything under it.
+    if ns.HideAllTogglePopups and ns.HideAllTogglePopups() then return true end
     -- Put a carried catalog item down FIRST, and before the shown-check: our
     -- ESCAPE override displaces the engine's own "ESC clears the cursor", so
     -- without this the item rides the cursor through every ESC press and the
@@ -2526,6 +2532,20 @@ function Search:UpdateSmartShow(forceShow)
         if EasyFind.db.visible ~= false and (forceShow or wasShown) then
             searchFrame:Show()
         end
+    end
+end
+
+-- Puts the bar where the db says, or at the default spot when nothing is
+-- saved. Creation and a profile switch both read the position this way.
+function Search:ApplySavedPosition()
+    if not searchFrame then return end
+    searchFrame:ClearAllPoints()
+    local pos = EasyFind.db.uiSearchPosition
+    if type(pos) == "table" and pos[1] then
+        searchFrame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
+    else
+        local point, relPoint, x, y = self:GetDefaultSearchBarPoint()
+        searchFrame:SetPoint(point, UIParent, relPoint, x, y)
     end
 end
 

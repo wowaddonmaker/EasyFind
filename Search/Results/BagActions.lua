@@ -61,6 +61,61 @@ end
 -- clicking do" decision consults this one predicate, because each of them gets
 -- it wrong differently -- the bag-open path highlights a slot that is not
 -- there, and the secure path arms /use on an item this character does not have.
+-- ==== repeat use ===========================================================
+-- A stackable consumable with more than one in the bags keeps the window
+-- open across uses, so the next click on the row is the next use (a
+-- recruit's pouch, a stack of knowledge pages) instead of a trip to the
+-- bags. A potion is the exception: its use starts a cooldown, and the
+-- window closes as it always did. The decision is made just after the
+-- use, from what the item slot reports, so no item list is needed.
+local REPEAT_SETTLE = 0.3
+local REPEAT_CD_MIN = 2      -- longer than the global cooldown
+
+function Handlers:KeepOpenForRepeatUse(data)
+    if not (data and data.itemID and data.category == "Bag") then return false end
+    if self:IsRemoteStoredItem(data) then return false end
+    if (data.bagCount or 1) <= 1 then return false end
+    if Handlers:IsSourceModifierHeld() or Handlers:IsSourceCtrlHeld() then return false end
+    return self:GetBagItemActionKind(data) == "use"
+end
+
+-- Called instead of the usual dismiss right after a repeat-use click.
+function Handlers:AfterRepeatUse(data)
+    local bag, slot = data.bagID, data.bagSlot
+    Utils.SafeAfter(REPEAT_SETTLE, function()
+        local start, duration = 0, 0
+        if C_Container and C_Container.GetContainerItemCooldown and bag ~= nil and slot then
+            start, duration = C_Container.GetContainerItemCooldown(bag, slot)
+        end
+        local info = C_Container and C_Container.GetContainerItemInfo and bag ~= nil and slot
+            and C_Container.GetContainerItemInfo(bag, slot)
+        local left = info and info.stackCount or 0
+        if (start or 0) > 0 and (duration or 0) > REPEAT_CD_MIN then
+            -- A cooldown started: this is not a spam item.
+            Handlers:FinishResultSelection()
+            return
+        end
+        if ns.Database and ns.Database.RefreshDynamicCategory then
+            ns.Database:RefreshDynamicCategory("bags")
+        end
+        if left <= 0 then
+            -- That was the last of the stack in this slot: the list now
+            -- shows whatever is left elsewhere, or nothing.
+            local any = false
+            local rows = ns.Database and ns.Database.uiSearchData
+            for i = 1, (rows and #rows or 0) do
+                if rows[i].category == "Bag" and rows[i].itemID == data.itemID then any = true; break end
+            end
+            if not any then Handlers:FinishResultSelection() end
+        end
+    end)
+end
+
+-- No "use all": the game marks UseContainerItem protected for addons
+-- (ADDON_ACTION_FORBIDDEN on the first call, 2026-09-08), so an addon
+-- cannot chain uses at all. The row staying open across clicks is the
+-- whole answer; each click is the hardware event the game requires.
+
 function Handlers:IsRemoteStoredItem(data)
     return data ~= nil and data.storedRemote == true
 end

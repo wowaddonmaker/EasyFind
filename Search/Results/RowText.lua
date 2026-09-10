@@ -57,6 +57,18 @@ local function applyClip(fs)
     local getW = fs.GetUnboundedStringWidth
     local strW = getW and fs:GetUnboundedStringWidth() or fs:GetStringWidth() or 0
     if strW <= maxW then return end
+    -- A colored title (|cffa335ee...|r, or the named |cnIQ4: form) clips
+    -- inside its wrapper: the escape stays whole and the |r stays last.
+    local open, inner = text:match("^(|c%x%x%x%x%x%x%x%x)(.-)|r$")
+    if not open then open, inner = text:match("^(|cn[^:|]+:)(.-)|r$") end
+    if open then
+        for cut = #inner - 1, 1, -1 do
+            fs:SetText(open .. inner:sub(1, cut) .. "..." .. "|r")
+            local w = getW and fs:GetUnboundedStringWidth() or fs:GetStringWidth() or 0
+            if w <= maxW then return end
+        end
+        return
+    end
     for cut = #text - 1, 1, -1 do
         local trimmed = text:sub(1, cut) .. "..."
         fs:SetText(trimmed)
@@ -89,7 +101,9 @@ end
 function Text:GetFlatSubtext(data)
     if not data then return "" end
     if data.calculatorResult then return L["SUBTEXT_EXPRESSION"] end
-    if data.calculatorLauncher or data.iconSearchLauncher then return L["SUBTEXT_APP"] end
+    if data.calculatorLauncher or data.iconSearchLauncher or data.clipboardLauncher then
+        return L["SUBTEXT_APP"]
+    end
     if data.snippetsLauncher then return L["SUBTEXT_SNIPPETS_MENU"] end
     if data.searchCommandDesc then return data.searchCommandDesc end
     if data.quickFilterAliasText then return data.quickFilterAliasText end

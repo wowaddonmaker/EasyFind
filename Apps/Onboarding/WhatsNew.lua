@@ -43,6 +43,109 @@ end
 
 local frame
 
+-- The body is a stack of feature blocks parsed from the localized text:
+-- a feature starts at a gold bullet line (its title) and runs to the next
+-- one. A title line may carry a {showme:<id>} token; when a Show me
+-- script with that id is registered (ShowMeScripts.lua) the title gets a
+-- "Show me" button beside it, and the popup steps aside while it plays.
+local BULLET = "|cffFFD100\226\128\162|r"
+local SHOWME_TOKEN = "{showme:([%w_]+)}"
+local WN_BLOCK_GAP = 10
+local WN_TITLE_BODY_GAP = 4
+
+local function ParseFeatures(text)
+    local features, current = {}, nil
+    for line in (text .. "\n"):gmatch("(.-)\n") do
+        if line:sub(1, #BULLET) == BULLET then
+            local showme = line:match(SHOWME_TOKEN)
+            line = line:gsub("%s*{showme:[%w_]+}", "")
+            current = { title = line, lines = {}, showme = showme }
+            features[#features + 1] = current
+        else
+            if not current then
+                current = { lines = {} }
+                features[#features + 1] = current
+            end
+            current.lines[#current.lines + 1] = line
+        end
+    end
+    return features
+end
+
+local function EnsureBlock(blocks, i)
+    local b = blocks.pool[i]
+    if b then return b end
+    b = {}
+    b.title = blocks:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    b.title:SetJustifyH("LEFT")
+    b.title:SetTextColor(Utils.RGB(TEXT_BODY, 1))
+    b.body = blocks:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    b.body:SetJustifyH("LEFT")
+    b.body:SetJustifyV("TOP")
+    b.body:SetSpacing(4)
+    b.body:SetTextColor(Utils.RGB(TEXT_BODY, 1))
+    b.btn = ns.CreateModernButton(blocks, L["WHATSNEW_SHOW_ME"], 60, 18)
+    b.btn:SetSize(mceil(b.btn._label:GetStringWidth()) + 16, 18)
+    b.btn:SetScript("OnClick", function(self)
+        local id = self._showme
+        local f = frame
+        if not (id and ns.ShowMe and f) then return end
+        -- The show needs the screen: the popup steps aside and comes
+        -- back when the show ends, for any reason.
+        -- A show still running (its end would bring the popup back mid-
+        -- show) ends first.
+        if ns.ShowMe:IsPlaying() then ns.ShowMe:Stop() end
+        f._reshow = true
+        f:Hide()
+        ns.ShowMe:Play(id, function()
+            if f._reshow then
+                f._reshow = nil
+                f:Show()
+            end
+        end)
+    end)
+    blocks.pool[i] = b
+    return b
+end
+
+-- Lays the feature blocks out for the container's current width and
+-- returns the stack's height.
+local function RenderFeatures(blocks, features)
+    local y = 0
+    for i, feat in ipairs(features) do
+        local b = EnsureBlock(blocks, i)
+        local hasTitle = feat.title ~= nil
+        b.title:ClearAllPoints()
+        b.title:SetText(feat.title or "")
+        b.title:SetShown(hasTitle)
+        local offer = hasTitle and feat.showme and ns.ShowMe and ns.ShowMe:Has(feat.showme)
+        b.btn._showme = offer and feat.showme or nil
+        b.btn:SetShown(offer and true or false)
+        if hasTitle then
+            b.title:SetPoint("TOPLEFT", blocks, "TOPLEFT", 0, -y)
+            b.btn:ClearAllPoints()
+            b.btn:SetPoint("LEFT", b.title, "RIGHT", 10, 0)
+            y = y + mceil(b.title:GetStringHeight()) + WN_TITLE_BODY_GAP
+        end
+        b.body:ClearAllPoints()
+        b.body:SetPoint("TOPLEFT", blocks, "TOPLEFT", 0, -y)
+        b.body:SetPoint("RIGHT", blocks, "RIGHT", 0, 0)
+        b.body:SetText(table.concat(feat.lines, "\n"))
+        b.body:SetShown(#feat.lines > 0)
+        if #feat.lines > 0 then y = y + mceil(b.body:GetStringHeight()) end
+        y = y + WN_BLOCK_GAP
+    end
+    for i = #features + 1, #blocks.pool do
+        local b = blocks.pool[i]
+        b.title:Hide()
+        b.body:Hide()
+        b.btn:Hide()
+    end
+    y = mmax(1, y - WN_BLOCK_GAP)
+    blocks:SetHeight(y)
+    return y
+end
+
 function Onboarding:ShowWhatsNew(version)
     if frame and frame:IsShown() then return end
 
@@ -77,15 +180,12 @@ function Onboarding:ShowWhatsNew(version)
         verText:SetTextColor(Utils.RGB(TEXT_DIM, 1))
         f._verText = verText
 
-        local body = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-        body:SetPoint("TOPLEFT", f, "TOPLEFT", WN_PAD_X, 0)
-        body:SetPoint("TOPRIGHT", f, "TOPRIGHT", -WN_PAD_X, 0)
-        body:SetJustifyH("LEFT")
-        body:SetJustifyV("TOP")
-        body:SetSpacing(4)
-        body:SetTextColor(Utils.RGB(TEXT_BODY, 1))
-        body:SetText(BodyText())
-        f._body = body
+        local blocks = CreateFrame("Frame", nil, f)
+        blocks:SetPoint("TOPLEFT", f, "TOPLEFT", WN_PAD_X, 0)
+        blocks:SetPoint("TOPRIGHT", f, "TOPRIGHT", -WN_PAD_X, 0)
+        blocks:SetHeight(1)
+        blocks.pool = {}
+        f._blocks = blocks
 
         -- Permanent footer: "See full changelog" is a copy target for the
         -- GitHub changelog URL (addons cannot open browsers, and only a
@@ -97,7 +197,7 @@ function Onboarding:ShowWhatsNew(version)
         changelogText:SetText(L["WHATSNEW_CHANGELOG_LINK"])
         changelogText:SetTextColor(Utils.RGB(GOLD, 1))
         changelogLink:SetSize(changelogText:GetStringWidth() + 8, 16)
-        changelogLink:SetPoint("TOP", body, "BOTTOM", 0, -10)
+        changelogLink:SetPoint("TOP", blocks, "BOTTOM", 0, -10)
         local copyHint = changelogLink:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         copyHint:SetPoint("LEFT", changelogText, "RIGHT", 6, 0)
         copyHint:Hide()
@@ -143,19 +243,24 @@ function Onboarding:ShowWhatsNew(version)
     local versionLabel = version or ns.version or "?"
     frame._verText:SetText("v" .. versionLabel)
 
-    frame._body:SetText(BodyText())
-
-    local contentW = Utils.MaxContentWidth({ frame._title, frame._verText, frame._body })
+    local features = ParseFeatures(BodyText())
+    local blocks = frame._blocks
+    RenderFeatures(blocks, features)
+    local probe = { frame._title, frame._verText }
+    for i = 1, #features do
+        probe[#probe + 1] = blocks.pool[i].title
+        probe[#probe + 1] = blocks.pool[i].body
+    end
+    local contentW = Utils.MaxContentWidth(probe)
     frame:SetWidth(mmax(WN_MIN_W, mmin(WN_MAX_W, mceil(contentW) + WN_PAD_X * 2)))
 
     local titleH = frame._title:GetStringHeight()
     local verH = frame._verText:GetStringHeight()
     local bodyTopOffset = WN_PAD_TOP + titleH + WN_TITLE_GAP + verH + WN_BODY_GAP
-    frame._body:ClearAllPoints()
-    frame._body:SetPoint("TOPLEFT", frame, "TOPLEFT", WN_PAD_X, -bodyTopOffset)
-    frame._body:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -WN_PAD_X, -bodyTopOffset)
-
-    local bodyH = frame._body:GetStringHeight()
+    blocks:ClearAllPoints()
+    blocks:SetPoint("TOPLEFT", frame, "TOPLEFT", WN_PAD_X, -bodyTopOffset)
+    blocks:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -WN_PAD_X, -bodyTopOffset)
+    local bodyH = RenderFeatures(blocks, features)
     -- 10 = body->changelog gap, 16 = link height.
     local total = bodyTopOffset + bodyH + 10 + 16
         + WN_BTN_GAP + WN_BTN_H + WN_PAD_BOTTOM

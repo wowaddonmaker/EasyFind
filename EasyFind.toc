@@ -2,7 +2,7 @@
 ## Title: EasyFind
 ## Notes: Search and locate UI elements and map locations with ease
 ## Author: justawower
-## Version: 3.2.0
+## Version: 3.3.0
 ## X-Curse-Project-ID: 1454793
 ## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
 ## Group: EasyFind
@@ -24,6 +24,7 @@ Locales/ruRU.lua
 Locales/zhCN.lua
 Locales/zhTW.lua
 Shared/Utils.lua
+Shared/TogglePopup.lua
 Shared/SecureOpeners.lua
 Shared/ControlSync.lua
 Shared/SearchText.lua
@@ -73,6 +74,7 @@ Search/Filters/SourceFlyout.lua
 Search/Filters/SelectDropdown.lua
 Search/Filters/MountOptions.lua
 Search/Filters/HeirloomOptions.lua
+Search/Filters/CheckboxOptions.lua
 Search/Filters/ToyOptions.lua
 Search/Filters/PetOptions.lua
 Search/Filters/CharacterScope.lua
@@ -91,6 +93,7 @@ Search/Aliases.lua
 Search/History.lua
 Search/Answers.lua
 Search/AppsMenu.lua
+Search/ExtensionButtons.lua
 Search/Query.lua
 Search/Results/Theme.lua
 Search/Results/Shortcuts.lua

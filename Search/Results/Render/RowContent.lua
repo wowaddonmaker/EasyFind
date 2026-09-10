@@ -6,6 +6,18 @@ local Utils = ns.Utils
 local Render = ns.ResultRender
 local Icons = ns.ResultIcons
 
+-- The row title: the entry's name, in the color the entry carries
+-- (nameHex, an escape such as |cffa335ee): a clipboard item link wears
+-- its quality, as the item categories do.
+function ns.ResultRender.NameText(entry)
+    if not entry then return nil end
+    -- The color rides on the provider's data; the flat entry the query
+    -- builds carries only the name and a pointer to that data.
+    local hex = entry.nameHex or (entry.data and entry.data.nameHex)
+    if hex and entry.name and entry.name ~= "" then return hex .. entry.name .. "|r" end
+    return entry.name
+end
+
 local select, ipairs = Utils.select, Utils.ipairs
 local sfind = Utils.sfind
 local InCombatLockdown = InCombatLockdown
@@ -75,6 +87,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
     -- branch kept the previous render's badge (a loot row wearing the
     -- player's spec icon). Branches that want them re-show them below.
     if resultRow._specBadge then resultRow._specBadge:Hide() end
+    if resultRow.iconLetter then resultRow.iconLetter:Hide() end
     if resultRow._lockOverlay then Search:UpdateOutfitLockOverlay(resultRow, false) end
     local isCurrencyItem = data and data.category == "Currency"
     local isCurrencyLeaf = isCurrencyItem and not entry.isPathNode
@@ -192,7 +205,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
         -- boundary) has its final position for this row. The earlier
         -- SetClippedText ran against the previous row's amountText
         -- width, which truncated some currencies unnecessarily.
-        Render.SetClippedText(resultRow.text, entry.name)
+        Render.SetClippedText(resultRow.text, Render.NameText(entry))
         iconSet = true
 
     -- Housing decor leaves: housing glyph on the LEFT like every other flat
@@ -250,7 +263,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
             resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
         end
         resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
-        Render.SetClippedText(resultRow.text, entry.name)
+        Render.SetClippedText(resultRow.text, Render.NameText(entry))
         iconSet = true
 
     -- Statistic rows: show the live stat value inline via amountText.
@@ -297,7 +310,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
             resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
         end
         resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
-        Render.SetClippedText(resultRow.text, entry.name)
+        Render.SetClippedText(resultRow.text, Render.NameText(entry))
         iconSet = true
 
     elseif data and data.calculatorResult and not entry.isPathNode then
@@ -328,7 +341,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
         else
             resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
         end
-        Render.SetClippedText(resultRow.text, entry.name)
+        Render.SetClippedText(resultRow.text, Render.NameText(entry))
         iconSet = true
 
     elseif not iconSet and IsMenuBarSpecificIconData(data) then
@@ -348,13 +361,13 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
         else
             resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
         end
-        Render.SetClippedText(resultRow.text, entry.name)
+        Render.SetClippedText(resultRow.text, Render.NameText(entry))
         iconSet = true
 
     -- speciesID rides alongside petID here: an uncollected pet has no petID
     -- (that GUID exists only once owned), and without it the row fell through
     -- to the generic branch, putting the pet's own art in the category slot.
-    elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.speciesID or data.outfitID or data.heirloomItemID or data.gearSetID or data.transmogSetID or data.appearanceItemID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag") or data.storedHolders or (data.achievementID and data.category == "Achievement") or data.professionSkillLine) then
+    elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.speciesID or data.outfitID or data.heirloomItemID or data.gearSetID or data.transmogSetID or data.appearanceItemID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag") or data.storedHolders or (data.clipID and (data.icon or data.clipAtlas or data.clipLetter)) or (data.achievementID and data.category == "Achievement") or data.professionSkillLine) then
         local iconFileID = data.icon
         local rightOffset = -5
 
@@ -372,10 +385,36 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
             C_Item.RequestLoadItemDataByID(data.itemID)
         end
 
-        if iconFileID then
+        if data.clipLetter and not iconFileID and not data.clipAtlas then
+            -- Plain text in the clipboard history wears a typeset letter in
+            -- the row's own font and color, in the icon's place: the one
+            -- glyph the game draws properly at every size.
+            Icons:SetRowIcon(resultRow, "hidden", nil, rowIconSize)
+            local letter = resultRow.iconLetter
+            if not letter then
+                letter = resultRow:CreateFontString(nil, "OVERLAY")
+                letter:SetJustifyH("CENTER")
+                letter:SetJustifyV("MIDDLE")
+                resultRow.iconLetter = letter
+            end
+            local fontPath, _, fontFlags = resultRow.text:GetFont()
+            if fontPath then letter:SetFont(fontPath, rowIconSize, fontFlags) end
+            letter:SetText(data.clipLetter)
+            local r, g, b = resultRow.text:GetTextColor()
+            letter:SetTextColor(r or 1, g or 1, b or 1, 1)
+            letter:SetSize(rowIconSize + 4, rowIconSize + 4)
+            letter:ClearAllPoints()
+            letter:SetPoint("RIGHT", resultRow, "RIGHT", rightOffset, 0)
+            letter:Show()
+        elseif iconFileID or data.clipAtlas then
             resultRow.icon:SetTexture(nil)
             resultRow.icon:SetTexCoord(0, 1, 0, 1)
-            resultRow.icon:SetTexture(iconFileID)
+            if data.clipAtlas and not iconFileID then
+                -- A clipboard map pin wears the pin atlas.
+                resultRow.icon:SetAtlas(data.clipAtlas)
+            else
+                resultRow.icon:SetTexture(iconFileID)
+            end
             if Render.IsBossResultData(data) then
                 resultRow.icon:SetTexCoord(unpack(BOSS_PORTRAIT_TEXCOORD))
             end
@@ -486,13 +525,25 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
         -- Re-clip against the new RIGHT bound (icon:LEFT) -- the
         -- path branch's earlier SetClippedText ran against
         -- amountText:LEFT from the previous row.
-        Render.SetClippedText(resultRow.text, entry.name)
+        Render.SetClippedText(resultRow.text, Render.NameText(entry))
+        -- A stack in the bags shows how many, beside the icon: the count
+        -- the next click will draw from (the row stays open across uses
+        -- of a stackable consumable).
+        if data.bagID and data.category == "Bag" and (data.bagCount or 1) > 1 then
+            resultRow.amountText:SetText("x" .. data.bagCount)
+            PaintAmountText(resultRow.amountText, false)
+            resultRow.amountText:ClearAllPoints()
+            resultRow.amountText:SetPoint("RIGHT", resultRow.icon, "LEFT", -6, 0)
+            resultRow.amountText:Show()
+            resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
+            Render.SetClippedText(resultRow.text, Render.NameText(entry))
+        end
         iconSet = true
 
     -- App launcher rows (calculator, icon search). LEFT: the apps-button
     -- waffle (set by the flat renderer via GetFlatCategoryIcon). RIGHT: the
     -- app's own glyph, desaturated and chrome-tinted like the apps menu.
-    elseif not iconSet and data and (data.calculatorLauncher or data.iconSearchLauncher) then
+    elseif not iconSet and data and (data.calculatorLauncher or data.iconSearchLauncher or data.clipboardLauncher) then
         local appGlyph = Icons:GetAppGlyphIcon(data)
         if appGlyph then
             resultRow.icon:SetTexture(nil)
@@ -657,7 +708,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
         else
             resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
         end
-        Render.SetClippedText(resultRow.text, entry.name)
+        Render.SetClippedText(resultRow.text, Render.NameText(entry))
         iconSet = true
 
     -- Reputation leaves: faction-side crest on the LEFT, rep bar on

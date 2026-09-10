@@ -440,6 +440,17 @@ function Results:MoveSelection(delta, skipRefocus, keepRepeat)
         elseif newIndex > visibleCount then newIndex = visibleCount end
     end
 
+    -- Section dividers are not results: step past one in the direction of
+    -- travel. Past the last row the selection stays where it was; past
+    -- the first it goes to the search box (0) as usual.
+    local buttons = Search:GetResultButtons()
+    local step = delta > 0 and 1 or -1
+    while newIndex >= 1 and newIndex <= visibleCount
+          and buttons[newIndex] and buttons[newIndex].isSectionHeader do
+        newIndex = newIndex + step
+    end
+    if newIndex < 0 then newIndex = 0 end
+    if newIndex > visibleCount then newIndex = oldIndex end
     Search:SetSelectedIndex(newIndex)
     Search:SetToggleFocused(false)
     self:UpdateSelectionHighlight(skipRefocus, keepRepeat)
@@ -450,8 +461,15 @@ function Results:JumpToStart()
     if self.IsIconGridNavActive and self:IsIconGridNavActive() then
         return self:JumpIconGridFocus(false)
     end
-    if self:CountVisibleResults() > 0 then
-        Search:SetSelectedIndex(1)
+    local visibleCount = self:CountVisibleResults()
+    if visibleCount > 0 then
+        -- Past a leading section divider to the first real row.
+        local buttons = Search:GetResultButtons()
+        local first = 1
+        while first < visibleCount and buttons[first] and buttons[first].isSectionHeader do
+            first = first + 1
+        end
+        Search:SetSelectedIndex(first)
         Search:SetToggleFocused(false)
         self:UpdateSelectionHighlight()
     end
