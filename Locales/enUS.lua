@@ -290,13 +290,13 @@ L["SHOWME_SAY_MICRO"]                   = "Snaps to the micro menu"
 L["SHOWME_SAY_TOGGLE"]                  = "Click to open, click again to close"
 L["SHOWME_SAY_REMOVE"]                  = "Drag here to remove"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffExtension buttons|r {showme:extensionButtons}\n" ..
-    "    |cff999999-|r Drag any extension out of the extensions menu and it becomes a round button on screen. Drop it on the minimap to park it on the ring, or on the micro menu to make it a micro button\n" ..
-    "    |cff999999-|r Click the button to open the extension and again to close it. Right-click for lock, borders, shortkey and size; drag it to the remove target if you no longer want it\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSnippets: Ctrl+Enter|r\n" ..
-    "    |cff999999-|r Type \\keyword and press Ctrl+Enter to send the full expansion at once, no space needed\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSettings search|r\n" ..
-    "    |cff999999-|r A search box above the options tabs finds any setting by its label. Enter or a click jumps to it"
+    "|cffFFD100\226\128\162|r |cffffffffProfiles|r\n" ..
+    "    |cff999999-|r Everything you customized, in a profile of its own: settings, aliases, shortkeys, blacklist, snippets, extension buttons, pins and keybinds. Each character remembers its pick, and spec profiles switch with your specialization\n" ..
+    "    |cff999999-|r Export a profile as a code or import one from the new Profiles tab in the options\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffSnippet codes|r\n" ..
+    "    |cff999999-|r Export your snippets as a code from the Snippets settings page, and import a code someone shared with you\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffImport preview|r\n" ..
+    "    |cff999999-|r Pasting an alias, shortkey, blacklist or snippet code shows what it holds before anything applies, and warns when it puts commands on keys or into macros. Import only from a source you trust"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels

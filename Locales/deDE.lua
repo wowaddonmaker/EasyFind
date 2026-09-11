@@ -269,13 +269,13 @@ L["SHOWME_SAY_MICRO"]                   = "Rastet im Mikromenü ein"
 L["SHOWME_SAY_TOGGLE"]                  = "Klick öffnet, nochmal Klick schließt"
 L["SHOWME_SAY_REMOVE"]                  = "Hierher ziehen zum Entfernen"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffErweiterungs-Buttons|r {showme:extensionButtons}\n" ..
-    "    |cff999999-|r Zieh eine Erweiterung aus dem Erweiterungsmenü und sie wird zu einem runden Button auf dem Bildschirm. Lass ihn auf der Minikarte los, um ihn am Ring zu parken, oder im Mikromenü, um ihn zum Mikro-Button zu machen\n" ..
-    "    |cff999999-|r Klicke auf den Button, um die Erweiterung zu öffnen, und erneut, um sie zu schließen. Rechtsklick für Sperren, Ränder, Kurztaste und Größe; zieh ihn zum Entfernen-Ziel, wenn du ihn nicht mehr willst\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSnippets: Strg+Eingabe|r\n" ..
-    "    |cff999999-|r Tippe \\keyword und drücke Strg+Eingabe, um die vollständige Erweiterung sofort zu senden, ohne Leerzeichen\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffEinstellungssuche|r\n" ..
-    "    |cff999999-|r Ein Suchfeld über den Optionsreitern findet jede Einstellung über ihre Beschriftung. Eingabe oder ein Klick springt dorthin"
+    "|cffFFD100\226\128\162|r |cffffffffProfile|r\n" ..
+    "    |cff999999-|r Alles, was du angepasst hast, in einem eigenen Profil: Einstellungen, Aliase, Kurztasten, Blacklist, Snippets, Erweiterungsbuttons, Pins und Tastenbelegungen. Jeder Charakter merkt sich seine Wahl, und Spezialisierungsprofile wechseln mit deiner Spezialisierung\n" ..
+    "    |cff999999-|r Exportiere ein Profil als Code oder importiere eines im neuen Reiter Profile in den Optionen\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffSnippet-Codes|r\n" ..
+    "    |cff999999-|r Exportiere deine Snippets als Code auf der Snippets-Einstellungsseite und importiere einen Code, den jemand mit dir geteilt hat\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffImport-Vorschau|r\n" ..
+    "    |cff999999-|r Das Einfügen eines Alias-, Kurztasten-, Blacklist- oder Snippet-Codes zeigt vor dem Anwenden, was er enthält, und warnt, wenn er Befehle auf Tasten oder in Makros legt. Importiere nur aus einer vertrauenswürdigen Quelle"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"

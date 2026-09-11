@@ -69,6 +69,7 @@ Search from the world map with nested results built for location-first browsing:
 - **Calculator**: Type math directly into search, including arithmetic, trig functions, and factorials, or open the full calculator from the extensions menu or with `Alt+C`. Ships as its own "EasyFind [Calculator]" addon so it can be disabled entirely.
 - **Icon Search**: Browse and filter every game icon in a grid via `@icons`, the extensions menu, or searching "Icon Search". Ctrl+C over an icon copies its ID, and a click offers its name, its path, or a new macro with that icon. The same search engine also appears inside the game's own macro icon picker. Ships as its own "EasyFind [Icons]" addon so it can be disabled entirely.
 - **Snippets**: Save text you type often and expand it anywhere with its keyword: type `\keyword` in chat or the macro editor and it expands as you type. Placeholders such as `{target}` and `{date}` fill in at use, and call-form keywords like `\greet(name)` take arguments. Manage them from the extensions menu, by searching "Snippets", or with the `@snip` quick filter. Ships as its own "EasyFind [Snippets]" addon so it can be disabled entirely.
+- **Share codes**: Export aliases, shortkeys, blacklist entries, and snippets as codes and import codes others share. Every import shows what the code holds before anything applies, and warns when it puts commands on keys or into macros.
 - **Macro window search**: The game's macro window gains a search bar that filters your macros by name or body as you type.
 - **Copy with Ctrl+C**: Ctrl+C on a result copies a snippet's entire message, a link, or an inline answer to your clipboard, ready to paste wherever you want with Ctrl+V. Pasted into chat, an item, spell, or achievement comes back as the live link.
 - **Keyboard control**: Use arrows, Enter, Tab, Alt+number row shortcuts, or Alt+H/J/K/L navigation.
@@ -81,6 +82,7 @@ Configure:
 - Search behavior, visibility mode (auto-hide, hover show, or always show with combat options), result placement, visible row count, window border, fonts and font size, and Alt+number hints.
 - Map Search behavior, map pins, icon sizing, tracking, recent searches, and result categories.
 - Aliases, keybindings, indicator style/color, search window sizing, and reset tools.
+- Profiles: each character remembers its own, spec profiles switch with your specialization, and any profile exports as a code with a preview on import.
 
 ## Examples
 

@@ -267,13 +267,13 @@ L["SHOWME_SAY_MICRO"]                   = "Encaixa no micromenu"
 L["SHOWME_SAY_TOGGLE"]                  = "Clique para abrir, clique de novo para fechar"
 L["SHOWME_SAY_REMOVE"]                  = "Arraste aqui para remover"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffBotões de extensão|r {showme:extensionButtons}\n" ..
-    "    |cff999999-|r Arraste qualquer extensão para fora do menu de extensões e ela vira um botão redondo na tela. Solte no minimapa para deixá-lo no anel, ou no micromenu para torná-lo um microbotão\n" ..
-    "    |cff999999-|r Clique no botão para abrir a extensão e de novo para fechá-la. Clique direito para bloqueio, bordas, tecla rápida e tamanho; arraste-o para o alvo de remoção se não o quiser mais\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSnippets: Ctrl+Enter|r\n" ..
-    "    |cff999999-|r Digite \\keyword e pressione Ctrl+Enter para enviar a expansão completa de uma vez, sem espaço\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffBusca de configurações|r\n" ..
-    "    |cff999999-|r Uma caixa de busca acima das abas de opções encontra qualquer configuração pelo seu rótulo. Enter ou um clique leva até ela"
+    "|cffFFD100\226\128\162|r |cffffffffPerfis|r\n" ..
+    "    |cff999999-|r Tudo o que você personalizou, em um perfil próprio: configurações, apelidos, atalhos, lista negra, snippets, botões de extensão, fixados e teclas. Cada personagem lembra sua escolha e os perfis por especialização trocam com a sua especialização\n" ..
+    "    |cff999999-|r Exporte um perfil como código ou importe um na nova aba Perfis das opções\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCódigos de snippets|r\n" ..
+    "    |cff999999-|r Exporte seus snippets como um código na página de configurações de Snippets e importe um código que alguém compartilhou com você\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffPrévia da importação|r\n" ..
+    "    |cff999999-|r Colar um código de apelidos, atalhos, lista negra ou snippets mostra o que ele contém antes de aplicar qualquer coisa e avisa quando coloca comandos em teclas ou em macros. Importe apenas de uma fonte confiável"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"

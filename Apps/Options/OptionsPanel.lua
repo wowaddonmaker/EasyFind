@@ -2696,7 +2696,309 @@ local function BuildAliasesTab(ctx)
     -- Shared by the Aliases and Blacklist tabs (exposed on optionsFrame):
     -- scope picks which sections import; onImported refreshes the caller's
     -- table.
-    local function ShowShareString(isExport, str, scope, onImported)
+    local PREVIEW_ROWS = 10
+    local function SectionLabel(id)
+        if id == "aliases" then return L["SHORTKEY_SCOPE_ALIASES"] end
+        if id == "shortkeys" then return L["SHORTKEY_SCOPE_SHORTKEYS"] end
+        if id == "blacklist" then return L["OPT_TAB_BLACKLIST"] end
+        return L["FILTER_SNIPPETS"]
+    end
+    local REFUSAL_TEXT = {
+        key = "IMPORT_REFUSED_KEY", command = "IMPORT_REFUSED_COMMAND", length = "IMPORT_REFUSED_LENGTH",
+    }
+    local function ScopeTitle(scope)
+        if scope == "blacklist" then return L["OPT_TAB_BLACKLIST"] end
+        if scope == "snippet" then return L["FILTER_SNIPPETS"] end
+        if scope == "profile" then return L["OPT_TAB_PROFILES"] end
+        return L["OPT_TAB_ALIASES"]
+    end
+
+    -- The import preview window: what a code would do, as a list, before
+    -- anything applies. Titled for the kind of code, movable, the list
+    -- scrolls past PREVIEW_ROWS rows, a click on a row shows what it holds
+    -- in the pane below, and nothing applies until Import.
+    local PV_W, PV_ROW_H, PV_PAD, PV_DETAIL_H = 480, 20, 14, 76
+    local previewFrame
+    local function BuildPreviewFrame()
+        local f = CreateFrame("Frame", "EasyFindImportPreview", UIParent, "BackdropTemplate")
+        f:SetSize(PV_W, 300)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:SetToplevel(true)
+        f:EnableMouse(true)
+        f:SetMovable(true)
+        f:SetClampedToScreen(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        ns.StyleMenuPanel(f)
+
+        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        f.title._efOwnColor = true
+        f.title:SetPoint("TOP", 0, -12)
+
+        f.warn = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        f.warn:SetPoint("TOPLEFT", PV_PAD, -34)
+        f.warn:SetPoint("RIGHT", -PV_PAD, 0)
+        f.warn:SetJustifyH("LEFT")
+        f.warn:SetWordWrap(true)
+        f.warn:SetTextColor(ns.GOLD_COLOR[1], ns.GOLD_COLOR[2], ns.GOLD_COLOR[3], 1)
+
+        local listBox = CreateFrame("Frame", nil, f)
+        listBox:SetPoint("LEFT", PV_PAD, 0)
+        listBox:SetPoint("RIGHT", -PV_PAD, 0)
+        ns.CreateRoundedRectBorder(listBox)
+        ns.SetRoundedRectBarHeight(listBox, 8)
+        ns.SetRoundedRectBorderShown(listBox, false)
+        ns.SetRoundedRectFill(listBox, 0.02, 0.02, 0.03, 1)
+        f.listBox = listBox
+        local scroll = CreateFrame("ScrollFrame", nil, listBox)
+        scroll:SetPoint("TOPLEFT", 6, -6)
+        scroll:SetPoint("BOTTOMRIGHT", -6, 6)
+        local content = CreateFrame("Frame", nil, scroll)
+        content:SetSize(PV_W - PV_PAD * 2 - 12, 1)
+        scroll:SetScrollChild(content)
+        f.scroll, f.content = scroll, content
+        f.scrollBar = Utils.CreateMinimalScrollBar(scroll, listBox)
+        ParkScrollBarInMargin(f.scrollBar, listBox, 2)
+        f.rows = {}
+
+        local detail = CreateFrame("Frame", nil, f)
+        detail:SetPoint("LEFT", PV_PAD, 0)
+        detail:SetPoint("RIGHT", -PV_PAD, 0)
+        detail:SetHeight(PV_DETAIL_H)
+        ns.CreateRoundedRectBorder(detail)
+        ns.SetRoundedRectBarHeight(detail, 8)
+        ns.SetRoundedRectBorderShown(detail, false)
+        ns.SetRoundedRectFill(detail, 0.02, 0.02, 0.03, 1)
+        f.detail = detail
+        f.detailText = detail:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        f.detailText:SetPoint("TOPLEFT", 8, -8)
+        f.detailText:SetPoint("BOTTOMRIGHT", -8, 8)
+        f.detailText:SetJustifyH("LEFT")
+        f.detailText:SetJustifyV("TOP")
+        f.detailText:SetWordWrap(true)
+        f.detailText:SetNonSpaceWrap(true)
+
+        f.importBtn = ns.CreateModernButton(f, L["SHORTKEY_IMPORT"], 90, 22)
+        f.importBtn:SetPoint("BOTTOMRIGHT", -PV_PAD, 12)
+        f.cancelBtn = ns.CreateModernButton(f, _G["CANCEL"] or "Cancel", 90, 22)
+        f.cancelBtn:SetPoint("RIGHT", f.importBtn, "LEFT", -8, 0)
+        f.cancelBtn:SetScript("OnClick", function() f:Hide() end)
+        local x = ns.CreateCloseX(f, 14)
+        x:SetPoint("TOPRIGHT", -8, -8)
+        x:SetScript("OnClick", function() f:Hide() end)
+        ns.AttachEscClose(f)
+        f:Hide()
+        return f
+    end
+
+    local function PreviewRow(f, i)
+        local row = f.rows[i]
+        if row then return row end
+        row = CreateFrame("Button", nil, f.content)
+        row:SetHeight(PV_ROW_H)
+        row:SetPoint("LEFT", f.content, "LEFT", 0, 0)
+        row:SetPoint("RIGHT", f.content, "RIGHT", 0, 0)
+        row.bg = row:CreateTexture(nil, "BACKGROUND")
+        row.bg:SetAllPoints()
+        row.bg:SetColorTexture(1, 1, 1, 0)
+        row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.label:SetPoint("LEFT", row, "LEFT", 6, 0)
+        row.label:SetJustifyH("LEFT")
+        row.label:SetWordWrap(false)
+        row.status = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        row.status:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+        row.status:SetJustifyH("RIGHT")
+        row.status:SetWordWrap(false)
+        row.label:SetPoint("RIGHT", row.status, "LEFT", -8, 0)
+        row:SetScript("OnEnter", function(self)
+            if self.def and self.def.detail then self.bg:SetColorTexture(1, 1, 1, 0.06) end
+        end)
+        row:SetScript("OnLeave", function(self)
+            self.bg:SetColorTexture(1, 1, 1, self.selected and 0.10 or 0)
+        end)
+        row:SetScript("OnClick", function(self)
+            local def = self.def
+            if not (def and def.detail) then return end
+            for _, other in ipairs(f.rows) do
+                other.selected = nil
+                other.bg:SetColorTexture(1, 1, 1, 0)
+            end
+            self.selected = true
+            self.bg:SetColorTexture(1, 1, 1, 0.10)
+            f.detailText:SetText(def.detail)
+            f.detailText:SetTextColor(0.92, 0.92, 0.92, 1)
+        end)
+        f.rows[i] = row
+        return row
+    end
+
+    -- opts: { scope, warn, rows = { { header = text } | { label, status,
+    -- detail } }, onImport }. Header rows read as captions; a row with a
+    -- detail is a link to it.
+    function ns.ShowImportPreview(opts)
+        if not previewFrame then previewFrame = BuildPreviewFrame() end
+        local f = previewFrame
+        local shareTheme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+        if shareTheme and shareTheme.lightTheme then
+            f.title:SetTextColor(unpack(shareTheme.leafColor))
+        else
+            f.title:SetTextColor(1.0, 0.82, 0)
+        end
+        f.title:SetText((L["IMPORT_PREVIEW_TITLE_FMT"]):format(ScopeTitle(opts.scope)))
+        f.warn:SetText(opts.warn or "")
+        local y = -34
+        if opts.warn and opts.warn ~= "" then y = y - f.warn:GetStringHeight() - 8 end
+        f.listBox:ClearAllPoints()
+        f.listBox:SetPoint("TOPLEFT", PV_PAD, y)
+        f.listBox:SetPoint("RIGHT", -PV_PAD, 0)
+        local rows = opts.rows or {}
+        for i = 1, #rows do
+            local row = PreviewRow(f, i)
+            local def = rows[i]
+            row.def = def
+            row.selected = nil
+            row.bg:SetColorTexture(1, 1, 1, 0)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", f.content, "TOPLEFT", 0, -(i - 1) * PV_ROW_H)
+            row:SetPoint("RIGHT", f.content, "RIGHT", 0, 0)
+            if def.header then
+                row.label:SetFontObject("GameFontNormalSmall")
+                row.label:SetText(def.header)
+                row.status:SetText("")
+            else
+                row.label:SetFontObject("GameFontHighlightSmall")
+                row.label:SetText("    " .. (def.label or ""))
+                row.status:SetText(def.status or "")
+            end
+            row:Show()
+        end
+        for i = #rows + 1, #f.rows do f.rows[i]:Hide() end
+        local listH = math.min(#rows, PREVIEW_ROWS) * PV_ROW_H + 12
+        f.listBox:SetHeight(listH)
+        f.content:SetHeight(math.max(1, #rows * PV_ROW_H))
+        f.scroll:SetVerticalScroll(0)
+        if f.scrollBar then
+            if #rows > PREVIEW_ROWS then
+                f.scrollBar:Show()
+                f.scrollBar:UpdateThumb(#rows * PV_ROW_H, listH - 12)
+            else
+                f.scrollBar:Hide()
+            end
+        end
+        local anyDetail = false
+        for i = 1, #rows do
+            if rows[i].detail then anyDetail = true end
+        end
+        f.detail:ClearAllPoints()
+        f.detail:SetPoint("TOPLEFT", f.listBox, "BOTTOMLEFT", 0, -8)
+        f.detail:SetPoint("RIGHT", -PV_PAD, 0)
+        f.detail:SetShown(anyDetail)
+        f.detailText:SetText(L["IMPORT_PREVIEW_PICK"])
+        f.detailText:SetTextColor(0.55, 0.55, 0.55, 1)
+        local bottom = anyDetail and (PV_DETAIL_H + 8) or 0
+        f:SetHeight(-y + listH + 8 + bottom + 22 + 12 + 12)
+        f.importBtn:SetScript("OnClick", function()
+            f:Hide()
+            if opts.onImport then opts.onImport() end
+        end)
+        f:Show()
+    end
+
+    -- What the code would do, section by section, as preview rows: new
+    -- rows, rows that replace the player's own, and the rows the
+    -- shared-code rules leave out with the reason. A row's detail is what
+    -- it holds. Returns rows, whether anything applies, and whether any
+    -- row runs commands.
+    local function DetailFor(section, r)
+        if section == "aliases" then return (r.text or "?") .. "  >  " .. (r.name or "?") end
+        if section == "shortkeys" then return (r.b or "?") .. "  >  " .. (r.n or "?") end
+        if section == "snippets" then
+            local head = (r.name or "?") .. ((r.keyword and r.keyword ~= "") and ("  (" .. r.keyword .. ")") or "")
+            return head .. "\n" .. (r.body or "")
+        end
+        return (r.name or "?") .. ((r.category and r.category ~= "") and ("  (" .. r.category .. ")") or "")
+    end
+    local function LabelFor(section, r)
+        if section == "aliases" then return r.text or "?" end
+        if section == "shortkeys" then return (r.b or "?") .. "  " .. (r.n or "?") end
+        if section == "snippets" then
+            return ((r.keyword and r.keyword ~= "") and (r.keyword .. "  ") or "") .. (r.name or "?")
+        end
+        return r.name or "?"
+    end
+    local function ImportPreviewRows(analysis)
+        local rows, any, risky = {}, false, false
+        local conflictsBy = {}
+        for _, c in ipairs(analysis.conflicts) do
+            conflictsBy[c.section] = conflictsBy[c.section] or {}
+            table.insert(conflictsBy[c.section], c.row)
+        end
+        for _, section in ipairs({ "aliases", "shortkeys", "blacklist", "snippets" }) do
+            local fresh = analysis.newRows[section] or {}
+            local replacing = conflictsBy[section] or {}
+            local total = #fresh + #replacing
+            if total > 0 then
+                any = true
+                rows[#rows + 1] = { header = SectionLabel(section) .. ": " .. total }
+                for _, r in ipairs(fresh) do
+                    if ns.Shortkeys.RunsCommands(section, r) then risky = true end
+                    rows[#rows + 1] = { label = LabelFor(section, r), status = L["IMPORT_STATUS_NEW"], detail = DetailFor(section, r) }
+                end
+                for _, r in ipairs(replacing) do
+                    if ns.Shortkeys.RunsCommands(section, r) then risky = true end
+                    rows[#rows + 1] = { label = LabelFor(section, r), status = L["IMPORT_STATUS_REPLACES"], detail = DetailFor(section, r) }
+                end
+            end
+        end
+        local skipped = analysis.skipped or {}
+        if #skipped > 0 then
+            rows[#rows + 1] = { header = L["IMPORT_PREVIEW_LEFT_OUT"] .. ": " .. #skipped }
+            for _, s in ipairs(skipped) do
+                rows[#rows + 1] = {
+                    label = s.label,
+                    status = (L["IMPORT_STATUS_LEFT_OUT_FMT"]):format(L[REFUSAL_TEXT[s.reason] or "IMPORT_REFUSED_LENGTH"]),
+                }
+            end
+        end
+        return rows, any, risky
+    end
+
+    -- The rows an export left out, listed on a click of the hint with the
+    -- reason each was refused. A row is a link to the thing itself: the
+    -- snippet opens in its editor, an alias, shortkey or blacklist entry
+    -- shows in its table.
+    local function OpenLeftOut(entry)
+        local row = entry.row or {}
+        if entry.section == "snippets" then
+            if ns.Snippets and ns.Snippets.FindConflict and ns.Snippets.OpenEditor then
+                local _, index = ns.Snippets:FindConflict(row.name, row.keyword)
+                if index then ns.Snippets:OpenEditor(index) end
+            end
+        elseif entry.section == "blacklist" then
+            if optionsFrame.ShowInBlacklistTable then optionsFrame.ShowInBlacklistTable(row.name or "") end
+        elseif optionsFrame.ShowInAliasTable then
+            optionsFrame.ShowInAliasTable(entry.section == "aliases" and row.text or row.n or "")
+        end
+    end
+    local function ShowLeftOut(anchor, rows)
+        local defs = { { kind = "title", label = L["IMPORT_PREVIEW_LEFT_OUT"] } }
+        for i = 1, #rows do
+            local entry = rows[i]
+            defs[#defs + 1] = {
+                kind = "action",
+                label = entry.label .. "  (" .. L[REFUSAL_TEXT[entry.reason] or "IMPORT_REFUSED_LENGTH"] .. ")",
+                onClick = function()
+                    if sharePopup then sharePopup:Hide() end
+                    OpenLeftOut(entry)
+                end,
+            }
+        end
+        ns.ShowTogglePopup("EasyFindLeftOutPopup", anchor, defs, {})
+    end
+
+    local function ShowShareString(isExport, str, scope, onImported, leftOut, leftOutRows)
         if not sharePopup then sharePopup = BuildSharePopup() end
         local f = sharePopup
         -- GameFontNormal's default gold is unreadable on light theme fills.
@@ -2708,8 +3010,14 @@ local function BuildAliasesTab(ctx)
         end
         if isExport then
             f.title:SetText(L["SHORTKEY_EXPORT_TITLE"] .. " (Ctrl+C)")
-            f.hint:SetText("")
-            f.hintBtn:Hide()
+            if leftOut and leftOut > 0 and leftOutRows then
+                f.hint:SetText((L["EXPORT_LEFT_OUT_FMT"]):format(leftOut))
+                f.hintBtn:Show()
+                f.hintBtn:SetScript("OnClick", function(self) ShowLeftOut(self, leftOutRows) end)
+            else
+                f.hint:SetText("")
+                f.hintBtn:Hide()
+            end
             Utils.SetEditBoxReadOnlyText(f.editBox, str or "")
             f.importBtn:Hide()
             f:Show()
@@ -2771,6 +3079,14 @@ local function BuildAliasesTab(ctx)
                     if EasyFind and EasyFind.Print then EasyFind:Print(L["SHORTKEY_IMPORT_BAD"]) end
                     return
                 end
+                -- Over the shared-code cap: refused whole, never truncated.
+                local over = ns.Shortkeys:CheckImportLimits(decoded, scope)
+                if over then
+                    if EasyFind and EasyFind.Print then
+                        EasyFind:Print((L["IMPORT_OVER_CAP_FMT"]):format(SectionLabel(over.section), over.count, over.cap))
+                    end
+                    return
+                end
                 local analysis = ns.Shortkeys:AnalyzeImport(decoded, scope)
                 local conflicts = analysis.conflicts
                 -- New rows import unconditionally; conflicts the user chooses to
@@ -2778,9 +3094,9 @@ local function BuildAliasesTab(ctx)
                 local applySet = analysis.newRows
 
                 local function finish()
-                    local na, nk, nb = ns.Shortkeys:ApplyResolvedImport(applySet)
+                    local na, nk, nb, nsn = ns.Shortkeys:ApplyResolvedImport(applySet)
                     if EasyFind and EasyFind.Print then
-                        EasyFind:Print((L["SHORTKEY_IMPORTED"]):format((na or 0) + (nk or 0) + (nb or 0)))
+                        EasyFind:Print((L["SHORTKEY_IMPORTED"]):format((na or 0) + (nk or 0) + (nb or 0) + (nsn or 0)))
                     end
                     if onImported then onImported() end
                 end
@@ -2822,18 +3138,34 @@ local function BuildAliasesTab(ctx)
                     if #conflicts == 0 then finish() else resolve(1, nil) end
                 end
 
-                if #analysis.disruptive > 0 then
-                    ns.ShowThemedDialog({
-                        text = (L["IMPORT_SYSCMD_WARN"]):format(#analysis.disruptive,
-                            table.concat(analysis.disruptive, ", ")),
-                        messageColor = ns.GOLD_COLOR,
-                        acceptText = _G["CONTINUE"] or L["SHORTKEY_IMPORT"],
-                        onAccept = startConflicts,
-                        cancelText = _G["CANCEL"] or "Cancel",
-                    })
-                else
-                    startConflicts()
+                local function afterPreview()
+                    if #analysis.disruptive > 0 then
+                        ns.ShowThemedDialog({
+                            text = (L["IMPORT_SYSCMD_WARN"]):format(#analysis.disruptive,
+                                table.concat(analysis.disruptive, ", ")),
+                            messageColor = ns.GOLD_COLOR,
+                            acceptText = _G["CONTINUE"] or L["SHORTKEY_IMPORT"],
+                            onAccept = startConflicts,
+                            cancelText = _G["CANCEL"] or "Cancel",
+                        })
+                    else
+                        startConflicts()
+                    end
                 end
+
+                -- Everything the code would do, shown first; nothing applies
+                -- until the player confirms.
+                local rows, any, risky = ImportPreviewRows(analysis)
+                if not any and #(analysis.skipped or {}) == 0 then
+                    if EasyFind and EasyFind.Print then EasyFind:Print(L["IMPORT_PREVIEW_EMPTY"]) end
+                    return
+                end
+                ns.ShowImportPreview({
+                    scope = scope,
+                    warn = risky and L["IMPORT_TRUST_WARN"] or nil,
+                    rows = rows,
+                    onImport = afterPreview,
+                })
             end)
             f:Show()
             f.editBox:SetFocus()
@@ -2869,8 +3201,9 @@ local function BuildAliasesTab(ctx)
     exportBtn._label:ClearAllPoints()
     exportBtn._label:SetPoint("CENTER", exportBtn, "CENTER", -9, 0)
     exportBtn:SetScript("OnClick", function()
-        local str = ns.Shortkeys and ns.Shortkeys:BuildExportString(CurrentScope()) or ""
-        ShowShareString(true, str)
+        local str, leftOut, leftOutRows = "", 0, nil
+        if ns.Shortkeys then str, leftOut, leftOutRows = ns.Shortkeys:BuildExportString(CurrentScope()) end
+        ShowShareString(true, str, nil, nil, leftOut, leftOutRows)
     end)
 
     cogBtn = ns.CreateCogButton(exportBtn)
@@ -3344,8 +3677,9 @@ local function BuildBlacklistTab(ctx)
     local blExportBtn = CreateModernButton(blShare, L["SHORTKEY_EXPORT"], 92, 22)
     blExportBtn:SetPoint("LEFT", blShare, "LEFT", 0, 0)
     blExportBtn:SetScript("OnClick", function()
-        local str = ns.Shortkeys and ns.Shortkeys:BuildExportString("blacklist") or ""
-        if optionsFrame.ShowShareString then optionsFrame.ShowShareString(true, str) end
+        local str, leftOut, leftOutRows = "", 0, nil
+        if ns.Shortkeys then str, leftOut, leftOutRows = ns.Shortkeys:BuildExportString("blacklist") end
+        if optionsFrame.ShowShareString then optionsFrame.ShowShareString(true, str, nil, nil, leftOut, leftOutRows) end
     end)
 
     local blImportBtn = CreateModernButton(blShare, L["SHORTKEY_IMPORT"], 92, 22)
@@ -3559,6 +3893,24 @@ local function BuildSnippetsPage(ctx, page)
             end,
         })
     end)
+    -- Share buttons: a snippet code carries plain text only.
+    local snExportBtn = CreateModernButton(snShare, L["SHORTKEY_EXPORT"], 92, 22)
+    snExportBtn:SetPoint("LEFT", snShare, "LEFT", 0, 0)
+    snExportBtn:SetScript("OnClick", function()
+        local str, leftOut, leftOutRows = "", 0, nil
+        if ns.Shortkeys then str, leftOut, leftOutRows = ns.Shortkeys:BuildExportString("snippet") end
+        if optionsFrame.ShowShareString then optionsFrame.ShowShareString(true, str, nil, nil, leftOut, leftOutRows) end
+    end)
+    local snImportBtn = CreateModernButton(snShare, L["SHORTKEY_IMPORT"], 92, 22)
+    snImportBtn:SetPoint("LEFT", snExportBtn, "RIGHT", 8, 0)
+    snImportBtn:SetScript("OnClick", function()
+        if optionsFrame.ShowShareString then
+            optionsFrame.ShowShareString(false, nil, "snippet", function()
+                if RefreshSnippetsList then RefreshSnippetsList() end
+            end)
+        end
+    end)
+    -- End of the share buttons.
 
     local createSnippetBtn = CreateModernButton(snTools, L["SNIPPET_CREATE"], 130, 22)
     createSnippetBtn:SetPoint("RIGHT", snTools, "RIGHT", 0, 0)

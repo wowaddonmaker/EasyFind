@@ -267,13 +267,13 @@ L["SHOWME_SAY_MICRO"]                   = "S'accroche au micro-menu"
 L["SHOWME_SAY_TOGGLE"]                  = "Clic pour ouvrir, re-clic pour fermer"
 L["SHOWME_SAY_REMOVE"]                  = "Glisser ici pour retirer"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffBoutons d'extension|r {showme:extensionButtons}\n" ..
-    "    |cff999999-|r Faites glisser une extension hors du menu des extensions : elle devient un bouton rond à l'écran. Déposez-le sur la minicarte pour le placer sur l'anneau, ou sur le micro-menu pour en faire un micro-bouton\n" ..
-    "    |cff999999-|r Cliquez sur le bouton pour ouvrir l'extension, encore pour la fermer. Clic droit pour le verrou, les bordures, la touche rapide et la taille ; faites-le glisser vers la cible de retrait si vous n'en voulez plus\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSnippets : Ctrl+Entrée|r\n" ..
-    "    |cff999999-|r Tapez \\keyword puis Ctrl+Entrée pour envoyer l'expansion complète d'un coup, sans espace\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffRecherche dans les réglages|r\n" ..
-    "    |cff999999-|r Un champ de recherche au-dessus des onglets d'options trouve n'importe quel réglage par son libellé. Entrée ou un clic y mène"
+    "|cffFFD100\226\128\162|r |cffffffffProfils|r\n" ..
+    "    |cff999999-|r Tout ce que vous avez personnalisé, dans un profil à part : réglages, alias, raccourcis, liste noire, snippets, boutons d'extension, épingles et touches. Chaque personnage retient son choix, et les profils de spécialisation changent avec votre spécialisation\n" ..
+    "    |cff999999-|r Exportez un profil sous forme de code ou importez-en un depuis le nouvel onglet Profils des options\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCodes de snippets|r\n" ..
+    "    |cff999999-|r Exportez vos snippets sous forme de code depuis la page de réglages Snippets, et importez un code que quelqu'un vous a partagé\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffAperçu d'import|r\n" ..
+    "    |cff999999-|r Coller un code d'alias, de raccourcis, de liste noire ou de snippets montre ce qu'il contient avant que quoi que ce soit s'applique, et prévient quand il place des commandes sur des touches ou dans des macros. N'importez que depuis une source de confiance"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"

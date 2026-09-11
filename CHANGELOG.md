@@ -4,6 +4,19 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [3.4.0] - 2026-09-11
+
+### Added
+- **Profiles**: everything you customized lives in a profile: settings, aliases, shortkeys, blacklist, snippets, extension buttons, pinned items, learned picks and keybinds. Each character remembers the profile you pick on it, and the picker suggests one for just this character and one for every character of its class. Turn on spec profiles and each specialization keeps its own, switching as you change spec. New, rename, copy from, delete and reset from the new Profiles tab in the options
+- **Profile codes**: export a profile as a code, choosing which parts to include, and import one as a new profile with a preview of what it holds. Character-specific shortkeys and pins stay with their characters and never travel
+- **Snippet codes**: export your snippets as a code from the Snippets settings page and import a code someone shared with you. A code carries plain text only
+- **Import preview**: every code, whether aliases, shortkeys, blacklist or snippets, shows what it holds before anything applies: the rows it adds, how many replace yours, and what was left out, and a click on a row shows its content. A code that puts commands on keys or into macros says so up front, with a reminder to import only from a source you trust. A snippet that clashes with one of yours by name or keyword asks replace or skip, one at a time or for all, as aliases and shortkeys do
+
+### Changed
+- **Shared codes leave risky rows at home**: a code never carries a shortkey on a movement or camera key, Escape, Enter or Tab, a target that logs out, reloads or runs code, or an entry over 80 characters. Export says how many it left out and lists which on a click, each a link to the entry, and a code over 300 aliases, 100 shortkeys, 500 blacklist entries or 100 snippets is refused whole. Your own setup is never limited: these rules apply only to codes that travel
+
+---
+
 ## [3.3.0] - 2026-09-09
 
 ### Added

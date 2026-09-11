@@ -267,13 +267,13 @@ L["SHOWME_SAY_MICRO"]                   = "Se ajusta al micromenú"
 L["SHOWME_SAY_TOGGLE"]                  = "Clic para abrir, otro clic para cerrar"
 L["SHOWME_SAY_REMOVE"]                  = "Arrastra aquí para quitar"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffBotones de extensión|r {showme:extensionButtons}\n" ..
-    "    |cff999999-|r Arrastra cualquier extensión fuera del menú de extensiones y se convierte en un botón redondo en pantalla. Suéltalo sobre el minimapa para dejarlo en el anillo, o sobre el micromenú para hacerlo un microbotón\n" ..
-    "    |cff999999-|r Haz clic en el botón para abrir la extensión y otra vez para cerrarla. Clic derecho para bloqueo, bordes, tecla rápida y tamaño; arrástralo al destino de quitar si ya no lo quieres\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSnippets: Ctrl+Intro|r\n" ..
-    "    |cff999999-|r Escribe \\keyword y pulsa Ctrl+Intro para enviar la expansión completa de una vez, sin espacio\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffBúsqueda de ajustes|r\n" ..
-    "    |cff999999-|r Un cuadro de búsqueda sobre las pestañas de opciones encuentra cualquier ajuste por su etiqueta. Intro o un clic salta a él"
+    "|cffFFD100\226\128\162|r |cffffffffPerfiles|r\n" ..
+    "    |cff999999-|r Todo lo que personalizaste, en un perfil propio: ajustes, alias, atajos, lista negra, snippets, botones de extensión, fijados y teclas. Cada personaje recuerda su elección y los perfiles por especialización cambian con tu especialización\n" ..
+    "    |cff999999-|r Exporta un perfil como código o importa uno desde la nueva pestaña Perfiles de las opciones\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCódigos de snippets|r\n" ..
+    "    |cff999999-|r Exporta tus snippets como un código desde la página de ajustes de Snippets e importa un código que alguien haya compartido contigo\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffVista previa de importación|r\n" ..
+    "    |cff999999-|r Al pegar un código de alias, atajos, lista negra o snippets se muestra lo que contiene antes de aplicar nada, y avisa cuando pone comandos en teclas o en macros. Importa solo desde una fuente de confianza"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Añadir alias"

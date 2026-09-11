@@ -676,6 +676,145 @@ end
 
 local base64enc, base64dec = Utils.Base64Encode, Utils.Base64Decode
 
+-- ==== shared-code rules =====================================================
+-- Agreed with the EasyFind website (2026-09-08) so a code the addon accepts
+-- is never refused there for a different reason. They apply only to codes
+-- that travel: what a player sets up by hand is never limited. A code
+-- leaves these rows out (the export says how many) and an import lists
+-- them as left out rather than applying them.
+local SHARE_CAPS = { aliases = 300, shortkeys = 100, blacklist = 500, snippets = 100 }
+local SHARE_FIELD_MAX = 80      -- characters, per field
+local SHARE_BODY_MAX = 255      -- characters a snippet body shows (a link counts as its bracket text)
+local SHARE_BODY_RAW_MAX = 1024 -- bytes a snippet body carries (links travel in full)
+-- The last segment of a binding combo a shared code never binds: movement,
+-- camera, and the keys the game itself owns.
+local REFUSED_KEYS = {
+    W = true, A = true, S = true, D = true, Q = true, E = true,
+    SPACE = true, ESCAPE = true, ENTER = true, TAB = true,
+    UP = true, DOWN = true, LEFT = true, RIGHT = true,
+    BUTTON1 = true, BUTTON2 = true, MOUSEWHEELUP = true, MOUSEWHEELDOWN = true,
+}
+-- Targets (shortkey names, snippet bodies) a shared code never carries.
+local REFUSED_COMMANDS = {
+    "/logout", "/quit", "/exit", "/camp", "/reload", "/console",
+    "/run", "/script", "/dump", "/afk", "/dnd",
+}
+Shortkeys.SHARE_CAPS, Shortkeys.SHARE_FIELD_MAX, Shortkeys.SHARE_BODY_MAX = SHARE_CAPS, SHARE_FIELD_MAX, SHARE_BODY_MAX
+Shortkeys.SHARE_BODY_RAW_MAX = SHARE_BODY_RAW_MAX
+Shortkeys.REFUSED_KEYS, Shortkeys.REFUSED_COMMANDS = REFUSED_KEYS, REFUSED_COMMANDS
+
+local function StartsWithRefusedCommand(text)
+    if type(text) ~= "string" then return false end
+    local lower = strtrim(text):lower()
+    for i = 1, #REFUSED_COMMANDS do
+        local cmd = REFUSED_COMMANDS[i]
+        if lower:sub(1, #cmd) == cmd then
+            local after = lower:sub(#cmd + 1, #cmd + 1)
+            if after == "" or after == " " or after == "\n" then return true end
+        end
+    end
+    return false
+end
+
+-- Every line of a body counts: a macro runs each line.
+local function BodyHasRefusedCommand(body)
+    if type(body) ~= "string" then return false end
+    for line in (body .. "\n"):gmatch("([^\n]*)\n") do
+        if StartsWithRefusedCommand(line) then return true end
+    end
+    return false
+end
+
+local function LineIsCommand(line)
+    return type(line) == "string" and strtrim(line):sub(1, 1) == "/"
+end
+
+-- True when a row puts a command where it runs on its own: a shortkey on
+-- a slash command, or a snippet with a slash-command line. The import
+-- preview flags these and warns about the source.
+function Shortkeys.RunsCommands(section, row)
+    if type(row) ~= "table" then return false end
+    if section == "shortkeys" then return LineIsCommand(row.n) end
+    if section == "snippets" and type(row.body) == "string" then
+        for line in (row.body .. "\n"):gmatch("([^\n]*)\n") do
+            if LineIsCommand(line) then return true end
+        end
+    end
+    return false
+end
+
+-- Lengths are characters, never bytes: a name in a two- or three-byte
+-- script is as long as it reads.
+local function Chars(s)
+    if strlenutf8 then return strlenutf8(s) end
+    return #s
+end
+
+local function TooLong(max, ...)
+    for i = 1, select("#", ...) do
+        local v = select(i, ...)
+        if type(v) == "string" and Chars(v) > max then return true end
+    end
+    return false
+end
+
+-- A snippet body is measured the way its editor counts it: links as
+-- their bracket text. The raw text, links and all, has its own cap so a
+-- code stays a code.
+local function BodyTooLong(body)
+    if type(body) ~= "string" then return false end
+    if #body > SHARE_BODY_RAW_MAX then return true end
+    local visible = Utils.ClipboardSafeText and Utils.ClipboardSafeText(body) or body
+    return Chars(visible) > SHARE_BODY_MAX
+end
+
+-- Human-readable identity for a row, shown in the import conflict prompt
+-- and the export's left-out list. Values are the user's own data, never
+-- translated.
+local function AliasRowLabel(r)
+    return '"' .. (r.text or "?") .. '"  (' .. (r.name or "?") .. ")"
+end
+
+local function ShortkeyRowLabel(r)
+    return (r.b or "?") .. "  (" .. (r.n or "?") .. ")"
+end
+
+local function SnippetRowLabel(r)
+    local keyword = type(r.keyword) == "string" and r.keyword ~= "" and (r.keyword .. "  ") or ""
+    return keyword .. (r.name or "?")
+end
+
+local function ShareRowLabel(section, r)
+    if section == "aliases" then return AliasRowLabel(r) end
+    if section == "shortkeys" then return ShortkeyRowLabel(r) end
+    if section == "snippets" then return SnippetRowLabel(r) end
+    return r.name or "?"
+end
+
+-- Why a row cannot travel in a shared code ("key", "command", "length"),
+-- or nil when it can. section is aliases, shortkeys, blacklist or
+-- snippets; row is the codec's row shape for that section.
+function Shortkeys.ShareRefusal(section, row)
+    if type(row) ~= "table" then return "length" end
+    if section == "shortkeys" then
+        local combo = type(row.b) == "string" and row.b or ""
+        local last = combo:match("([^%-]+)$") or combo
+        if REFUSED_KEYS[last:upper()] then return "key" end
+        if StartsWithRefusedCommand(row.n) then return "command" end
+        if TooLong(SHARE_FIELD_MAX, row.k, row.b, row.n) then return "length" end
+    elseif section == "aliases" then
+        if TooLong(SHARE_FIELD_MAX, row.text, row.key, row.name) then return "length" end
+    elseif section == "blacklist" then
+        if TooLong(SHARE_FIELD_MAX, row.key, row.name, row.category) then return "length" end
+    elseif section == "snippets" then
+        if BodyHasRefusedCommand(row.body) then return "command" end
+        if TooLong(SHARE_FIELD_MAX, row.name, row.keyword) or BodyTooLong(row.body) then
+            return "length"
+        end
+    end
+    return nil
+end
+
 -- length-prefixed field: "<len>:<bytes>"
 local function encS(s)
     s = tostring(s or "")
@@ -727,10 +866,25 @@ end
 function Shortkeys:BuildExportString(which)
     which = which or "both"
     local parts = { "EFSK1", encS(which) }
+    -- Rows the shared-code rules refuse stay home; the export dialog gets
+    -- the list (label and reason) so the player knows which and why.
+    local leftOut = {}
+    local function Keep(section, list)
+        local kept = {}
+        for i = 1, #list do
+            local why = Shortkeys.ShareRefusal(section, list[i])
+            if why then
+                leftOut[#leftOut + 1] = { section = section, label = ShareRowLabel(section, list[i]), reason = why, row = list[i] }
+            else
+                kept[#kept + 1] = list[i]
+            end
+        end
+        return kept
+    end
 
     local aliasList = {}
     if (which == "alias" or which == "both") and ns.Aliases and ns.Aliases.ExportList then
-        aliasList = ns.Aliases:ExportList()
+        aliasList = Keep("aliases", ns.Aliases:ExportList())
     end
     parts[#parts + 1] = encS(#aliasList)
     for i = 1, #aliasList do
@@ -742,7 +896,7 @@ function Shortkeys:BuildExportString(which)
 
     local skList = {}
     if which == "shortkey" or which == "both" then
-        skList = self:ExportList()
+        skList = Keep("shortkeys", self:ExportList())
     end
     parts[#parts + 1] = encS(#skList)
     for i = 1, #skList do
@@ -757,7 +911,7 @@ function Shortkeys:BuildExportString(which)
     -- with zero blacklist entries and old clients ignore the trailing data.
     local blList = {}
     if which == "blacklist" and ns.Blacklist and ns.Blacklist.ExportList then
-        blList = ns.Blacklist:ExportList()
+        blList = Keep("blacklist", ns.Blacklist:ExportList())
     end
     parts[#parts + 1] = encS(#blList)
     for i = 1, #blList do
@@ -767,7 +921,21 @@ function Shortkeys:BuildExportString(which)
         parts[#parts + 1] = encS(r.category or "")
     end
 
-    return "EF1!" .. base64enc(table.concat(parts))
+    -- Fourth section, snippets, appended for the same reason: plain text
+    -- only (name, keyword, flat body).
+    local snList = {}
+    if which == "snippet" and ns.Snippets and ns.Snippets.ExportList then
+        snList = Keep("snippets", ns.Snippets:ExportList())
+    end
+    parts[#parts + 1] = encS(#snList)
+    for i = 1, #snList do
+        local r = snList[i]
+        parts[#parts + 1] = encS(r.name)
+        parts[#parts + 1] = encS(r.keyword or "")
+        parts[#parts + 1] = encS(r.body or "")
+    end
+
+    return "EF1!" .. base64enc(table.concat(parts)), #leftOut, leftOut
 end
 
 function Shortkeys:DecodeString(str)
@@ -828,7 +996,42 @@ function Shortkeys:DecodeString(str)
         }
     end
 
-    return { aliases = aliases, shortkeys = shortkeys, blacklist = blacklist }
+    local snCountStr
+    snCountStr, pos = decS(blob, pos)
+    local snCount = tonumber(snCountStr) or 0
+    if snCount > MAX_IMPORT_ROWS then snCount = MAX_IMPORT_ROWS end
+    local snippets = {}
+    for _ = 1, snCount do
+        local name, keyword, body
+        name, pos = decS(blob, pos)
+        if not name then break end
+        keyword, pos = decS(blob, pos)
+        body, pos = decS(blob, pos)
+        if body then snippets[#snippets + 1] = { name = name, keyword = keyword, body = body } end
+    end
+
+    return { aliases = aliases, shortkeys = shortkeys, blacklist = blacklist, snippets = snippets }
+end
+
+-- The first section over its shared-code cap among those the importing
+-- dialog would apply, as { section, count, cap }, or nil.
+function Shortkeys:CheckImportLimits(decoded, which)
+    if type(decoded) ~= "table" then return nil end
+    which = which or "both"
+    local checks = {
+        { id = "aliases", on = which == "alias" or which == "both" },
+        { id = "shortkeys", on = which == "shortkey" or which == "both" },
+        { id = "blacklist", on = which == "blacklist" },
+        { id = "snippets", on = which == "snippet" },
+    }
+    for i = 1, #checks do
+        local c = checks[i]
+        local list = decoded[c.id]
+        if c.on and type(list) == "table" and #list > SHARE_CAPS[c.id] then
+            return { section = c.id, count = #list, cap = SHARE_CAPS[c.id] }
+        end
+    end
+    return nil
 end
 
 -- Returns the system-command slash a shortkey targets (e.g. "/logout"), or nil.
@@ -845,34 +1048,33 @@ local function SystemCommandLabel(name)
     return nil
 end
 
--- Human-readable identity for a conflicting import row, shown in the per-item
--- replace/skip prompt. Values are the user's own data, never translated.
-local function AliasRowLabel(r)
-    return '"' .. (r.text or "?") .. '"  (' .. (r.name or "?") .. ")"
-end
 
-local function ShortkeyRowLabel(r)
-    return (r.b or "?") .. "  (" .. (r.n or "?") .. ")"
-end
-
--- Inspect a decoded import against current data without applying it. Returns an
--- ordered list of conflicts (rows that would replace an existing entry, each
--- carrying its section and a display label), the new rows grouped by section
--- (imported unconditionally), and the distinct system commands any imported
--- shortkey binds (session-disrupting warning). No side effects.
+-- Inspect a decoded import against current data without applying it. Returns
+-- an ordered list of conflicts (rows that would replace an existing entry,
+-- each carrying its section and a display label), the new rows grouped by
+-- section (imported unconditionally), the distinct system commands any
+-- imported shortkey binds (session-disrupting warning), and the rows the
+-- shared-code rules leave out, each with its reason. No side effects.
 function Shortkeys:AnalyzeImport(decoded, which)
     which = which or "both"
     local conflicts = {}
-    local newRows = { aliases = {}, shortkeys = {}, blacklist = {} }
+    local newRows = { aliases = {}, shortkeys = {}, blacklist = {}, snippets = {} }
+    local skipped = {}
     local disruptive, seenCmd = {}, {}
-    if type(decoded) ~= "table" then
-        return { conflicts = conflicts, newRows = newRows, disruptive = disruptive }
+    local result = { conflicts = conflicts, newRows = newRows, disruptive = disruptive, skipped = skipped }
+    if type(decoded) ~= "table" then return result end
+
+    local function Refused(section, row, label)
+        local why = Shortkeys.ShareRefusal(section, row)
+        if why then skipped[#skipped + 1] = { section = section, label = label, reason = why } end
+        return why ~= nil
     end
 
     if (which == "alias" or which == "both") and decoded.aliases then
         for i = 1, #decoded.aliases do
             local r = decoded.aliases[i]
-            if r and r.text and strtrim(r.text) ~= "" and r.key then
+            if r and r.text and strtrim(r.text) ~= "" and r.key
+               and not Refused("aliases", r, AliasRowLabel(r)) then
                 if ns.Aliases and ns.Aliases:HasAlias(r.text) then
                     conflicts[#conflicts + 1] = { section = "aliases", row = r, label = AliasRowLabel(r) }
                 else
@@ -885,7 +1087,7 @@ function Shortkeys:AnalyzeImport(decoded, which)
     if (which == "shortkey" or which == "both") and decoded.shortkeys then
         for i = 1, #decoded.shortkeys do
             local r = decoded.shortkeys[i]
-            if r and r.k and r.b and r.b ~= "" then
+            if r and r.k and r.b and r.b ~= "" and not Refused("shortkeys", r, ShortkeyRowLabel(r)) then
                 if self:ImportWouldOverride(r.k, r.b) then
                     conflicts[#conflicts + 1] = { section = "shortkeys", row = r, label = ShortkeyRowLabel(r) }
                 else
@@ -903,7 +1105,7 @@ function Shortkeys:AnalyzeImport(decoded, which)
     if which == "blacklist" and decoded.blacklist then
         for i = 1, #decoded.blacklist do
             local r = decoded.blacklist[i]
-            if r and r.key then
+            if r and r.key and not Refused("blacklist", r, r.name or "?") then
                 if ns.Blacklist and ns.Blacklist:Has(r.key) then
                     conflicts[#conflicts + 1] = { section = "blacklist", row = r, label = r.name or "?" }
                 else
@@ -913,7 +1115,24 @@ function Shortkeys:AnalyzeImport(decoded, which)
         end
     end
 
-    return { conflicts = conflicts, newRows = newRows, disruptive = disruptive }
+    if which == "snippet" and decoded.snippets then
+        for i = 1, #decoded.snippets do
+            local r = decoded.snippets[i]
+            if r and type(r.name) == "string" and strtrim(r.name) ~= ""
+               and not Refused("snippets", r, SnippetRowLabel(r)) then
+                -- A snippet clashes on its name or on its keyword: keywords
+                -- are unique, so an import with one that exists replaces it.
+                local clash = ns.Snippets and ns.Snippets.FindConflict and ns.Snippets:FindConflict(r.name, r.keyword)
+                if clash then
+                    conflicts[#conflicts + 1] = { section = "snippets", row = r, label = SnippetRowLabel(r) }
+                else
+                    newRows.snippets[#newRows.snippets + 1] = r
+                end
+            end
+        end
+    end
+
+    return result
 end
 
 -- Apply an already-decoded import. skipExisting=true keeps existing rows and
@@ -932,8 +1151,12 @@ function Shortkeys:ApplyDecoded(decoded, which, skipExisting)
     if which == "blacklist" and ns.Blacklist and ns.Blacklist.ImportList then
         nb = ns.Blacklist:ImportList(decoded.blacklist, skipExisting)
     end
+    local nsn = 0
+    if which == "snippet" and ns.Snippets and ns.Snippets.ImportList then
+        nsn = ns.Snippets:ImportList(decoded.snippets, skipExisting)
+    end
     if ns.RefreshBindTables then ns.RefreshBindTables() end
-    return na, nk, nb
+    return na, nk, nb, nsn
 end
 
 -- Write a resolved import. applySet.{aliases,shortkeys,blacklist} hold the rows
@@ -950,8 +1173,12 @@ function Shortkeys:ApplyResolvedImport(applySet)
     if ns.Blacklist and ns.Blacklist.ImportList then
         nb = ns.Blacklist:ImportList(applySet.blacklist, false)
     end
+    local nsn = 0
+    if ns.Snippets and ns.Snippets.ImportList then
+        nsn = ns.Snippets:ImportList(applySet.snippets, false)
+    end
     if ns.RefreshBindTables then ns.RefreshBindTables() end
-    return na, nk, nb
+    return na, nk, nb, nsn
 end
 
 -- Returns aliasCount, shortkeyCount, blacklistCount applied, or nil on a

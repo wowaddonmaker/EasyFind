@@ -845,6 +845,58 @@ function Snippets:ClearAll()
     RefreshSnippetRows()
 end
 
+-- Share codes ------------------------------------------------------------
+
+function Snippets:HasSnippet(name)
+    return FindByName(name) ~= nil
+end
+
+
+-- A code carries plain text only: name, keyword, and the flat body.
+function Snippets:ExportList()
+    local out = {}
+    local list = SnippetList()
+    if not list then return out end
+    for i = 1, #list do
+        local s = list[i]
+        if type(s) == "table" and type(s.name) == "string" and s.name ~= "" then
+            out[#out + 1] = { name = s.name, keyword = s.keyword or "", body = PlainText(s, true) }
+        end
+    end
+    return out
+end
+
+-- Imported snippets arrive as plain text. A row whose name or keyword an
+-- existing snippet already has replaces that snippet (every snippet it
+-- clashes with) unless skipExisting.
+function Snippets:ImportList(rows, skipExisting)
+    local list = SnippetList()
+    if not (list and type(rows) == "table") then return 0 end
+    local n = 0
+    for i = 1, #rows do
+        local r = rows[i]
+        if type(r) == "table" and type(r.name) == "string" and strtrim(r.name) ~= "" then
+            local keyword = sgsub(strtrim(r.keyword or ""), "%s+", "")
+            local clash = self:FindConflict(r.name, keyword)
+            if not (clash and skipExisting) then
+                while clash do
+                    local _, index = self:FindConflict(r.name, keyword)
+                    table.remove(list, index)
+                    clash = self:FindConflict(r.name, keyword)
+                end
+                list[#list + 1] = {
+                    name = strtrim(r.name),
+                    keyword = keyword ~= "" and keyword or nil,
+                    body = ssub(r.body or "", 1, CHAT_MAX),
+                }
+                n = n + 1
+            end
+        end
+    end
+    if n > 0 then RefreshSnippetRows() end
+    return n
+end
+
 local function UpdateCharCounter(f)
     f.charCounter:SetText(f.bodyBox:GetNumLetters() .. "/" .. CHAT_MAX)
 end

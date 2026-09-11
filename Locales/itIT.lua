@@ -267,13 +267,13 @@ L["SHOWME_SAY_MICRO"]                   = "Si aggancia al micromenu"
 L["SHOWME_SAY_TOGGLE"]                  = "Clic per aprire, di nuovo per chiudere"
 L["SHOWME_SAY_REMOVE"]                  = "Trascina qui per rimuovere"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffPulsanti delle estensioni|r {showme:extensionButtons}\n" ..
-    "    |cff999999-|r Trascina un'estensione fuori dal menu delle estensioni e diventa un pulsante rotondo sullo schermo. Lascialo sulla minimappa per parcheggiarlo sull'anello, o sul micromenu per farne un micropulsante\n" ..
-    "    |cff999999-|r Clicca il pulsante per aprire l'estensione e di nuovo per chiuderla. Tasto destro per blocco, bordi, tasto rapido e dimensione; trascinalo sul bersaglio di rimozione se non lo vuoi più\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSnippet: Ctrl+Invio|r\n" ..
-    "    |cff999999-|r Scrivi \\keyword e premi Ctrl+Invio per inviare subito l'espansione completa, senza spazio\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffRicerca nelle impostazioni|r\n" ..
-    "    |cff999999-|r Una casella di ricerca sopra le schede delle opzioni trova qualsiasi impostazione dalla sua etichetta. Invio o un clic ci porta"
+    "|cffFFD100\226\128\162|r |cffffffffProfili|r\n" ..
+    "    |cff999999-|r Tutto ciò che hai personalizzato, in un profilo tutto suo: impostazioni, alias, scorciatoie, lista nera, snippet, pulsanti delle estensioni, elementi fissati e tasti. Ogni personaggio ricorda la sua scelta e i profili per specializzazione cambiano con la tua specializzazione\n" ..
+    "    |cff999999-|r Esporta un profilo come codice o importane uno dalla nuova scheda Profili nelle opzioni\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCodici snippet|r\n" ..
+    "    |cff999999-|r Esporta i tuoi snippet come codice dalla pagina delle impostazioni Snippet e importa un codice che qualcuno ha condiviso con te\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffAnteprima di importazione|r\n" ..
+    "    |cff999999-|r Incollare un codice di alias, scorciatoie, lista nera o snippet mostra cosa contiene prima che qualcosa venga applicato e avvisa quando mette comandi su tasti o in macro. Importa solo da una fonte di cui ti fidi"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"
