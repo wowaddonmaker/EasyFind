@@ -9,7 +9,8 @@ local function POIName(english)
     return L and L[key] or english
 end
 
-ns.STATIC_LOCATIONS = {
+-- Retail's map ids and coordinates, recorded on retail.
+local RETAIL_LOCATIONS = {
     [18] = { -- Tirisfal Glades
         { name = POIName("Portal to Stranglethorn Vale"), category = "portal", x = 0.6142756296653066, y = 0.5879643697403164, keywords = {"portal", "teleport", "mage"} },
         { name = POIName("Portal to Orgrimmar"), category = "portal", x = 0.6107386922901901, y = 0.5889822784330836, keywords = {"portal", "teleport", "mage"} },
@@ -528,6 +529,15 @@ ns.STATIC_LOCATIONS = {
         { name = POIName("Mailbox"), category = "mailbox", x = 0.4497563021021528, y = 0.6597604414722286, keywords = {"mail", "mailbox"} },
     },
 }
+
+-- The hand-recorded places belong to the client they were recorded on:
+-- map ids and layouts differ between retail and WoW Forever, so each
+-- client gets its own table and the other's is never shown.
+if ns.Caps and ns.Caps.forever then
+    ns.STATIC_LOCATIONS = ns.STATIC_LOCATIONS_FOREVER or {}
+else
+    ns.STATIC_LOCATIONS = RETAIL_LOCATIONS
+end
 
 -- Expose for cross-addon access (the dev tools read this)
 EasyFind.staticLocations = ns.STATIC_LOCATIONS

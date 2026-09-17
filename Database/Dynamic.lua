@@ -77,6 +77,11 @@ local dynamicProviders = {
     { key = "professions", category = providerCategory["professions"],  fn = "PopulateDynamicProfessions", eager = true },
 }
 
+-- Providers for systems this client lacks (pets on Forever, the journal
+-- when the game rule turns it off) are dropped here, once, so they never
+-- register, never warm, and never show a filter row.
+if ns.Caps and ns.Caps.PruneRows then ns.Caps.PruneRows(dynamicProviders) end
+
 local dynamicProviderByKey = {}
 for i = 1, #dynamicProviders do
     local provider = dynamicProviders[i]

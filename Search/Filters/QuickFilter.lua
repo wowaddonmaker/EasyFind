@@ -85,6 +85,9 @@ for i = #Filters.quickFilterOptions, 1, -1 do
     if def.companion and ns.IsCompanionLoadable
        and not ns.IsCompanionLoadable(def.companion) then
         tremove(Filters.quickFilterOptions, i)
+    elseif ns.Caps and ns.Caps.Has and not ns.Caps.Has(def.key) then
+        -- A system this client does not have (Shared/Caps.lua).
+        tremove(Filters.quickFilterOptions, i)
     end
 end
 

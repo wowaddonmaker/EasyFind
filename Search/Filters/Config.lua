@@ -113,7 +113,8 @@ local UI_FILTER_OPTIONS = {
           dbKey = "gearSetSpecFilter",
           options = function()
               local opts = { { value = "all", label = _G["ALL_SPECS"] or "All Specializations" } }
-              local numSpecs = GetNumSpecializations and GetNumSpecializations() or 0
+              -- Forever keeps the count function and drops the info one.
+              local numSpecs = (GetNumSpecializations and GetSpecializationInfo) and GetNumSpecializations() or 0
               for i = 1, numSpecs do
                   local _, specName = GetSpecializationInfo(i)
                   if specName then
@@ -490,6 +491,9 @@ for i = #UI_FILTER_OPTIONS, 1, -1 do
         end
     end
 end
+
+-- The same for systems this client does not have (Shared/Caps.lua).
+if ns.Caps and ns.Caps.PruneRows then ns.Caps.PruneRows(UI_FILTER_OPTIONS) end
 
 Filters.UI_FILTER_OPTIONS = UI_FILTER_OPTIONS
 Filters.ForEachFilterKey = ForEachFilterKey

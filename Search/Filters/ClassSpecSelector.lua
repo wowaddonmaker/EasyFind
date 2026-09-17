@@ -30,7 +30,9 @@ local function GetAllClassSpecs()
         local className, classFile, classID = GetClassInfo(classIdx)
         if className then
             local specs = {}
-            for specIdx = 1, GetNumSpecializationsForClassID(classID) do
+            -- No specializations on a client without them (Forever): the
+            -- class row stands alone.
+            for specIdx = 1, (GetNumSpecializationsForClassID and GetNumSpecializationsForClassID(classID)) or 0 do
                 local sid, sname = GetSpecializationInfoForClassID(classID, specIdx)
                 if sid then specs[#specs + 1] = { specID = sid, specName = sname } end
             end

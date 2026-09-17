@@ -1345,6 +1345,7 @@ end
 -- expansions can never drift apart.
 local function ClassSpecIDs(classID)
     local specs = {}
+    if not (ns.Caps and ns.Caps.specs) then return specs end
     for specIdx = 1, GetNumSpecializationsForClassID(classID) do
         local specID = GetSpecializationInfoForClassID(classID, specIdx)
         if specID then specs[#specs + 1] = specID end
@@ -2566,7 +2567,8 @@ function Database:PopulateDynamicGearSets()
                 -- Equipment Manager does it.
                 local specIcon
                 if assignedSpec and GetSpecializationInfo then
-                    local _, _, _, iconID = GetSpecializationInfo(assignedSpec)
+                    local _, _, _, iconID
+                    if GetSpecializationInfo then _, _, _, iconID = GetSpecializationInfo(assignedSpec) end
                     specIcon = iconID
                 end
                 uiSearchData[#uiSearchData + 1] = setmetatable({
@@ -3539,6 +3541,7 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
 
     -- EJ loot tables require the UI loaded first.
     if not EncounterJournal then
+        if not (ns.Caps and ns.Caps.journal) then return end
         EncounterJournal_LoadUI()
     end
 
@@ -3670,6 +3673,7 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
     end
 
     if not EncounterJournal then
+        if not (ns.Caps and ns.Caps.journal) then return end
         EncounterJournal_LoadUI()
     end
 
@@ -4630,6 +4634,7 @@ function Database:PopulateDynamicBosses()
     if self.ResetSearchCache then self:ResetSearchCache() end
 
     if not EncounterJournal then
+        if not (ns.Caps and ns.Caps.journal) then return end
         EncounterJournal_LoadUI()
     end
 
@@ -4702,6 +4707,7 @@ function Database:PopulateDynamicBossesAsync(done)
     if self.ResetSearchCache then self:ResetSearchCache() end
 
     if not EncounterJournal then
+        if not (ns.Caps and ns.Caps.journal) then return end
         EncounterJournal_LoadUI()
     end
 
@@ -6577,6 +6583,7 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
         -- mark instead (which is what happened to the Bags node's atlas).
         if node.iconAtlas then entry.iconAtlas = node.iconAtlas end
         if node.available then entry.available = node.available end
+        if node.caps then entry.caps = node.caps end
         if node.canQueue then entry.canQueue = true end
         if node.slashCommand then entry.slashCommand = node.slashCommand end
         if myIsPvP then entry.isPvP = true end
@@ -6694,6 +6701,32 @@ function Database:BuildUIDatabase()
                     category = "Character Info",
                     steps = {
                         { waitForFrame = "CharacterFrame", tabIndex = 3 },
+                    },
+                },
+                -- Tabs only some clients draw (WoW Forever): each names the
+                -- frame it opens and hides where that tab does not exist.
+                {
+                    name = _G["SKILLS"] or "Skills",
+                    keywords = {"skills", "weapon skills", "armor proficiencies", "languages", "defense", "skill"},
+                    category = "Character Info",
+                    steps = {
+                        { waitForFrame = "CharacterFrame", tabFrame = "SkillsFrame" },
+                    },
+                },
+                {
+                    name = _G["PVP"] or "PvP",
+                    keywords = {"pvp", "honor", "rank", "player vs player", "battlegrounds"},
+                    category = "Character Info",
+                    steps = {
+                        { waitForFrame = "CharacterFrame", tabFrame = "PVPRankFrame" },
+                    },
+                },
+                {
+                    name = _G["STATISTICS"] or "Statistics",
+                    keywords = {"statistics", "stats", "records", "kills", "deaths"},
+                    category = "Character Info",
+                    steps = {
+                        { waitForFrame = "CharacterFrame", tabFrame = "StatisticsFrame" },
                     },
                 },
             },
@@ -6878,11 +6911,11 @@ function Database:BuildUIDatabase()
             steps = {{ buttonFrame = "CollectionsMicroButton" }},
             children = {
                 { name = _G["MOUNTS"] or "Mounts", keywords = {"mounts", "mount", "riding", "mount collection", "flying"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 1 }} },
-                { name = _G["PET_JOURNAL"] or _G["PETS"] or "Pet Journal", keywords = {"pets", "pet", "battle pets", "companion", "pet collection", "critter", "pet journal"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 2 }} },
-                { name = _G["TOY_BOX"] or "Toy Box", keywords = {"toys", "toy", "toybox", "toy box", "fun items"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 3 }} },
-                { name = _G["HEIRLOOMS"] or "Heirlooms", keywords = {"heirlooms", "heirloom", "leveling gear", "bind on account", "boa"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 4 }} },
+                { name = _G["PET_JOURNAL"] or _G["PETS"] or "Pet Journal", keywords = {"pets", "pet", "battle pets", "companion", "pet collection", "critter", "pet journal"}, category = "Warband Collections", caps = "pets", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 2 }} },
+                { name = _G["TOY_BOX"] or "Toy Box", keywords = {"toys", "toy", "toybox", "toy box", "fun items"}, category = "Warband Collections", caps = "toys", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 3 }} },
+                { name = _G["HEIRLOOMS"] or "Heirlooms", keywords = {"heirlooms", "heirloom", "leveling gear", "bind on account", "boa"}, category = "Warband Collections", caps = "heirlooms", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 4 }} },
                 { name = _G["WARDROBE"] or "Appearances", keywords = {"transmog", "tmog", "xmog", "transmogrification", "appearance", "appearances", "wardrobe", "cosmetic", "looks", "mog"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 5 }} },
-                { name = _G["WARBAND_SCENES"] or "Campsites", keywords = {"campsites", "campsite", "camp", "camping", "rest area"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 6 }} },
+                { name = _G["WARBAND_SCENES"] or "Campsites", keywords = {"campsites", "campsite", "camp", "camping", "rest area"}, category = "Warband Collections", caps = "campsites", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 6 }} },
             },
         },
 
@@ -6901,15 +6934,15 @@ function Database:BuildUIDatabase()
             buttonFrame = "EJMicroButton",
             steps = {{ buttonFrame = "EJMicroButton" }},
             children = {
-                { name = _G["JOURNEYS_LABEL"] or "Journeys", keywords = {"journeys", "journey", "adventure journeys"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 1 }}, children = {
+                { name = _G["JOURNEYS_LABEL"] or "Journeys", keywords = {"journeys", "journey", "adventure journeys"}, category = "Adventure Guide", caps = "journal", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 1 }}, children = {
                     { name = L["UITREE_GREAT_VAULT"] .. L["UITREE_SUFFIX_REWARDS"], keywords = {"great vault", "vault", "weekly rewards", "weekly chest", "rewards"}, category = "Adventure Guide", icon = { file = 1121272, coords = { 0.2026, 0.2387, 0.9196, 0.9556 } }, steps = {{ buttonFrame = "EncounterJournalInstanceSelect.GreatVaultButton" }} },
                 }},
-                { name = _G["MONTHLY_ACTIVITIES_TAB"] or "Traveler's Log", keywords = {"traveler", "travelers log", "traveler log", "travel log"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 2 }} },
-                { name = _G["AJ_SUGGESTED_CONTENT_TAB"] or "Suggested Content", keywords = {"suggested", "suggested content", "recommendations"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 3 }} },
-                { name = (_G["DUNGEONS"] or "Dungeons") .. L["UITREE_SUFFIX_JOURNAL"], keywords = {"dungeon journal", "dungeon guide", "dungeon encounters", "dungeon bosses"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 4 }} },
-                { name = (_G["RAIDS"] or "Raids") .. L["UITREE_SUFFIX_JOURNAL"], keywords = {"raid journal", "raid guide", "raid encounters", "raid bosses"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 5 }} },
-                { name = _G["LOOT_JOURNAL_ITEM_SETS"] or "Item Sets", keywords = {"item sets", "tier sets", "set bonuses", "class sets"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 6 }} },
-                { name = _G["EJ_TUTORIALS"] or "Tutorials", keywords = {"tutorials", "tutorial", "help guide", "how to"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 7 }} },
+                { name = _G["MONTHLY_ACTIVITIES_TAB"] or "Traveler's Log", keywords = {"traveler", "travelers log", "traveler log", "travel log"}, category = "Adventure Guide", caps = "journal", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 2 }} },
+                { name = _G["AJ_SUGGESTED_CONTENT_TAB"] or "Suggested Content", keywords = {"suggested", "suggested content", "recommendations"}, category = "Adventure Guide", caps = "journal", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 3 }} },
+                { name = (_G["DUNGEONS"] or "Dungeons") .. L["UITREE_SUFFIX_JOURNAL"], keywords = {"dungeon journal", "dungeon guide", "dungeon encounters", "dungeon bosses"}, category = "Adventure Guide", caps = "journal", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 4 }} },
+                { name = (_G["RAIDS"] or "Raids") .. L["UITREE_SUFFIX_JOURNAL"], keywords = {"raid journal", "raid guide", "raid encounters", "raid bosses"}, category = "Adventure Guide", caps = "journal", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 5 }} },
+                { name = _G["LOOT_JOURNAL_ITEM_SETS"] or "Item Sets", keywords = {"item sets", "tier sets", "set bonuses", "class sets"}, category = "Adventure Guide", caps = "journal", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 6 }} },
+                { name = _G["EJ_TUTORIALS"] or "Tutorials", keywords = {"tutorials", "tutorial", "help guide", "how to"}, category = "Adventure Guide", caps = "journal", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 7 }} },
             },
         },
 
@@ -7003,6 +7036,7 @@ function Database:BuildUIDatabase()
         -- toggles the active battle-pet companion (dismissing it).
         {
             name = L["UITREE_DISMISS_PET"],
+            caps = "pets",
             keywords = {"dismiss", "dismiss pet", "pet", "companion", "summon",
                         "battle pet", "critter", "minion"},
             category = "Action",
@@ -7044,6 +7078,23 @@ function Database:BuildUIDatabase()
         ApplyGroupFinderSubcategoryIcon(item)
         if not item.isPvP and item.category == "PvP" then
             item.isPvP = true
+        end
+    end
+
+    -- Entries into panels this client does not have (Shared/Caps.lua:
+    -- disabled Blizzard addons, bindings that do not exist) answer
+    -- unavailable at search time, on top of whatever the node itself said.
+    if ns.Caps and ns.Caps.UIEntryBlocked then
+        local blocked = ns.Caps.UIEntryBlocked
+        for _, item in ipairs(uiSearchData) do
+            if item.buttonFrame or item.steps then
+                local own = rawget(item, "available")
+                item.available = function()
+                    if blocked(item) then return false end
+                    if own then return own() end
+                    return true
+                end
+            end
         end
     end
 end

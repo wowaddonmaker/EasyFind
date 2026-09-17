@@ -2038,7 +2038,7 @@ local FILTER_OPTIONS = {
     { key = "instances",  label = L["MAP_FILTER_INSTANCES"] },
     { key = "raid",       label = _G["RAIDS"] or "Raids",                   parentKey = "instances" },
     { key = "dungeon",    label = _G["DUNGEONS"] or "Dungeons",             parentKey = "instances" },
-    { key = "delve",      label = _G["DELVES_LABEL"] or "Delves",           parentKey = "instances" },
+    { key = "delve",      label = _G["DELVES_LABEL"] or "Delves",           parentKey = "instances", caps = "delves" },
     { key = "travel",     label = L["MAP_FILTER_TRAVEL"],   tooltip = L["MAP_FILTER_TRAVEL_TT"] },
     { key = "flights",    label = _G["FLIGHT_PATHS_TAB"] or "Flight Paths", parentKey = "travel" },
     { key = "boats",      label = L["MAP_FILTER_BOATS"],                    parentKey = "travel" },
@@ -2054,6 +2054,14 @@ local FILTER_OPTIONS = {
     { key = "otherservices", label = L["MAP_FILTER_OTHER_SERVICES"], parentKey = "services" },
     { key = "rares",      label = L["MAP_FILTER_RARES"] },
 }
+
+-- Rows for systems this client does not have are dropped once (Shared/Caps.lua).
+if ns.Caps then
+    for i = #FILTER_OPTIONS, 1, -1 do
+        local row = FILTER_OPTIONS[i]
+        if row.caps and ns.Caps[row.caps] == false then tremove(FILTER_OPTIONS, i) end
+    end
+end
 
 -- Sub-row that only shows while the parent Rares filter is checked.
 -- Mirrors `alwaysShowRares` in SavedVariables (shared with Options/OptionsPanel.lua).

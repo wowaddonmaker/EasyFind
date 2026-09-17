@@ -457,6 +457,9 @@ end
 
 function Providers:RequestAchievementSearch(query)
     if not query or #query < 2 then return nil end
+    -- No achievements on this client (Forever): the live search stays
+    -- silent, and the fallback index is never built.
+    if ns.Caps and ns.Caps.achievements == false then return nil end
     SyncAchievementSearchStatsVersion()
 
     -- Arm the fallback proactively: hydrate the persisted index, or in a
@@ -493,6 +496,7 @@ end
 -- the paint hold in Query.lua waits for it (capped at about two frames)
 -- instead of painting without the rows and again with them.
 function Providers:IsAchievementSearchPending(query)
+    if ns.Caps and ns.Caps.achievements == false then return false end
     return achSearchPending ~= nil and achSearchPending.query == query
 end
 
