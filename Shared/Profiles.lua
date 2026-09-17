@@ -305,7 +305,7 @@ end
 -- Every specialization of this character's class: { id, name }.
 function Profiles:ClassSpecs()
     local out = {}
-    local n = GetNumSpecializations and GetNumSpecializations() or 0
+    local n = (GetNumSpecializations and GetSpecializationInfo) and GetNumSpecializations() or 0
     for i = 1, n do
         local id, name = GetSpecializationInfo(i)
         if id and id ~= 0 then out[#out + 1] = { id = id, name = name } end

@@ -149,8 +149,8 @@ function Rows.InstallTooltips(resultRow)
                 GameTooltip:SetSpellByID(spellID)
             elseif itemLink and GameTooltip.SetHyperlink then
                 GameTooltip:SetHyperlink(itemLink)
-            elseif itemName and GameTooltip.SetItemByID and select(2, GetItemInfo(itemName)) then
-                GameTooltip:SetHyperlink(select(2, GetItemInfo(itemName)))
+            elseif itemName and GameTooltip.SetItemByID and C_Item and C_Item.GetItemInfo and select(2, C_Item.GetItemInfo(itemName)) then
+                GameTooltip:SetHyperlink(select(2, C_Item.GetItemInfo(itemName)))
             else
                 GameTooltip:SetText(self.data.name or (_G["MACRO"] or "Macro"), 1, 1, 1)
                 if self.data.macroBody and self.data.macroBody ~= "" then

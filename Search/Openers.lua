@@ -112,6 +112,13 @@ local function IsCharacterTabSelected(tabIndex)
 end
 
 local function OpenCharacterFrame(tabIndex)
+    -- A subframe name ("SkillsFrame") opens as itself on either client.
+    if type(tabIndex) == "string" then
+        local sub = _G[tabIndex]
+        if sub and sub:IsShown() and CharacterFrame and CharacterFrame:IsShown() then return true end
+        if SecureCall(_G.ToggleCharacter, tabIndex) then return true end
+        return ClickButton(_G["CharacterMicroButton"])
+    end
     if IsCharacterTabSelected(tabIndex) then return true end
 
     local subFrame = CHARACTER_TAB_SUBFRAME[tabIndex] or "PaperDollFrame"
@@ -129,7 +136,7 @@ local function OpenButtonFrame(buttonFrame, nextStep)
         return OpenPlayerSpellsFrame(tabIndex)
     elseif buttonFrame == "CharacterMicroButton" then
         local tabIndex = nextStep and nextStep.waitForFrame == "CharacterFrame"
-            and nextStep.tabIndex or nil
+            and (nextStep.tabFrame or nextStep.tabIndex) or nil
         return OpenCharacterFrame(tabIndex)
     end
 

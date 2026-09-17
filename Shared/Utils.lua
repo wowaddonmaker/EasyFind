@@ -6160,6 +6160,21 @@ function Utils.ClickButton(btn, mouseButton)
         if ok then return true end
         Utils.DebugPrint("Button OnClick failed: " .. tostring(err))
     end
+    -- A plain frame that answers the mouse (Forever's character mode
+    -- tabs): its down and up scripts, in order. Forever only; retail's
+    -- behavior for a frame without a click stays as it was.
+    local okD, onDown = false, nil
+    local okU, onUp = false, nil
+    if ns.Caps and ns.Caps.forever then
+        okD, onDown = pcall(btn.GetScript, btn, "OnMouseDown")
+        okU, onUp = pcall(btn.GetScript, btn, "OnMouseUp")
+    end
+    if (okD and onDown) or (okU and onUp) then
+        local ok = true
+        if okD and onDown then ok = xpcall(onDown, ErrorHandler, btn, mouseButton) end
+        if ok and okU and onUp then ok = xpcall(onUp, ErrorHandler, btn, mouseButton) end
+        if ok then return true end
+    end
     return false
 end
 

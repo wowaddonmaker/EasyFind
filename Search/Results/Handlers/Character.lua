@@ -26,6 +26,13 @@ function Handlers:ClickCharacterSidebar(sidebarIndex)
         Openers:OpenCharacterFrame(1)
     end
 
+    -- The slot on this client for retail's sidebar number; Forever has no
+    -- Titles, so that one has no slot.
+    if ns.Caps and ns.Caps.CharacterSidebarSlot then
+        sidebarIndex = ns.Caps.CharacterSidebarSlot(sidebarIndex)
+        if not sidebarIndex then return false end
+    end
+
     -- Method 1: Try PaperDollSidebarTab buttons directly (Frame Inspector confirmed names)
     local sidebarTab = _G["PaperDollSidebarTab" .. sidebarIndex]
     if sidebarTab then

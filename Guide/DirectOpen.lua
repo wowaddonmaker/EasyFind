@@ -123,7 +123,7 @@ function Guide:DirectOpen(data)
     local function isStepNavigable(step)
         if step.buttonFrame then return true end
         if step.gameMenuText then return true end
-        if step.tabIndex then return true end
+        if step.tabIndex or step.tabFrame then return true end
         if step.sideTabIndex then return true end
         if step.pvpSideTabIndex then return true end
         if step.sidebarButtonFrame or step.sidebarIndex then return true end
@@ -225,7 +225,7 @@ function Guide:DirectOpen(data)
                 -- own init calls SetTab with our value (clean call stack, no taint)
                 if step.buttonFrame == "EJMicroButton" then
                     local nextStep = steps[i + 1]
-                    if nextStep and nextStep.waitForFrame == "EncounterJournal" and nextStep.tabIndex then
+                    if nextStep and nextStep.waitForFrame == "EncounterJournal" and nextStep.tabIndex and EncounterJournal_LoadUI then
                         EncounterJournal_LoadUI()
                         EncounterJournal.selectedTab = nextStep.tabIndex
                         Openers:SecureShowUIPanel(EncounterJournal)
@@ -241,7 +241,7 @@ function Guide:DirectOpen(data)
                     -- when EJ is already shown (OnShow / SetTab won't refire),
                     -- so we still need an explicit tab click to apply the new
                     -- tier when the user re-opens onto a different expansion.
-                    if nextStep and nextStep.waitForFrame == "EncounterJournal" and nextStep.ejTier then
+                    if nextStep and nextStep.waitForFrame == "EncounterJournal" and nextStep.ejTier and EncounterJournal_LoadUI then
                         EncounterJournal_LoadUI()
                         if EJ_SelectTier then EJ_SelectTier(nextStep.ejTier) end
                         local tabIdx = nextStep.ejTabIsRaid and 5 or 4
@@ -262,6 +262,12 @@ function Guide:DirectOpen(data)
                     end
                 end
                 Openers:OpenButtonFrame(step.buttonFrame, steps[i + 1])
+            end
+
+            if step.waitForFrame == "CharacterFrame" and step.tabFrame and not step.tabIndex then
+                -- A character tab named by the frame it opens: the same
+                -- call on both clients.
+                Openers:OpenCharacterFrame(step.tabFrame)
             end
 
             if step.waitForFrame and step.tabIndex then

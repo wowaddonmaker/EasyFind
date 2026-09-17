@@ -529,7 +529,7 @@ end
 
 local function FindRequiredTabIndex()
     local _, step = FindPreviousStepIndex(function(prevStep)
-        return prevStep.tabIndex ~= nil
+        return prevStep.tabIndex ~= nil or prevStep.tabFrame ~= nil
     end)
     return step and step.tabIndex
 end
@@ -2555,6 +2555,10 @@ function Highlight:IsSidebarTabSelected(sidebarIndex)
         if PaperDollEquipmentManagerPane and PaperDollEquipmentManagerPane:IsShown() then return true end
     end
 
+    if ns.Caps and ns.Caps.CharacterSidebarSlot then
+        sidebarIndex = ns.Caps.CharacterSidebarSlot(sidebarIndex)
+        if not sidebarIndex then return false end
+    end
     local sidebarTab = _G["PaperDollSidebarTab" .. sidebarIndex]
     if sidebarTab then
         if sidebarTab.isSelected then return true end
@@ -2569,6 +2573,10 @@ end
 function Highlight:GetSidebarTabButton(sidebarIndex)
     if not CharacterFrame or not CharacterFrame:IsShown() then
         return nil
+    end
+    if ns.Caps and ns.Caps.CharacterSidebarSlot then
+        sidebarIndex = ns.Caps.CharacterSidebarSlot(sidebarIndex)
+        if not sidebarIndex then return nil end
     end
 
     local sidebarTab = _G["PaperDollSidebarTab" .. sidebarIndex]
@@ -2689,7 +2697,10 @@ function Highlight:GetTabButton(frameName, tabIndex)
     end
 
     if frameName == "CharacterFrame" then
-        return _G["CharacterFrameTab" .. tabIndex]
+        if ns.Caps and ns.Caps.CharacterTab then return ns.Caps.CharacterTab(tabIndex) end
+        local tab = _G["CharacterFrameTab" .. tabIndex]
+        if not tab and CharacterFrame and CharacterFrame.Tabs then tab = CharacterFrame.Tabs[tabIndex] end
+        return tab
     end
 
     if frameName == "PVEFrame" then
