@@ -233,6 +233,10 @@ function Search:Initialize()
     -- overlay). Bar stays hidden until the user finishes the tutorial.
     if not EasyFind.db.tutorialDone then
         Utils.SafeAfter(0.3, function()
+            if ns.TutorialOpensItself and not ns.TutorialOpensItself() then
+                if ns.OfferTutorialInChat then ns.OfferTutorialInChat() end
+                return
+            end
             if ns.RequestOnboarding() and ns.Wizard.Show then ns.Wizard:Show() end
         end)
     end

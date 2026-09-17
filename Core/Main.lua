@@ -579,6 +579,7 @@ local SUGGESTED_KEYBINDS = {
 local WHATSNEW_CONTENT_VERSION = "3.4.0"
 
 local WHATSNEW_LINK_PREFIX = "easyfind:whatsnew:"
+local TUTORIAL_LINK_PREFIX = "easyfind:tutorial"
 local whatsNewHookInstalled = false
 
 local function InstallWhatsNewHyperlinkHook()
@@ -595,6 +596,10 @@ local function InstallWhatsNewHyperlinkHook()
             if ns.RequestOnboarding() and ns.Onboarding.ShowWhatsNew then
                 xpcall(ns.Onboarding.ShowWhatsNew, ErrorHandler, ns.Onboarding, version)
             end
+        elseif link == TUTORIAL_LINK_PREFIX then
+            if ns.RequestOnboarding() and ns.Wizard.Show then
+                xpcall(ns.Wizard.Show, ErrorHandler, ns.Wizard)
+            end
         end
     end)
 end
@@ -605,6 +610,18 @@ local function BlueChatLink(target, label)
     local LC = ns.LINK_COLOR or { 0.44, 0.84, 1.0 }
     return sformat("|cff%02x%02x%02x|H%s|h[%s]|h|r",
         LC[1] * 255, LC[2] * 255, LC[3] * 255, target, label)
+end
+
+-- The tutorial offered in chat instead of opened: WoW Forever's beta has
+-- lost saved variables between sessions, and a wizard that opens on every
+-- login is worse than none. One line, one link; nothing else changes.
+function ns.OfferTutorialInChat()
+    print(sformat(L["TUTORIAL_CHAT_OFFER"], BlueChatLink(TUTORIAL_LINK_PREFIX, L["WHATSNEW_CHAT_HERE"])))
+end
+
+-- Whether the wizard may open on its own on this client.
+function ns.TutorialOpensItself()
+    return not (ns.Caps and ns.Caps.forever)
 end
 
 local function ShowWhatsNewChatMessage(version)

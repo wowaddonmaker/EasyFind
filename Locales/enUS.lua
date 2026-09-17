@@ -280,6 +280,7 @@ L["POPUP_UNAPPLIED_APPLY"]              = "Apply and Exit"
 L["POPUP_UNAPPLIED_CANCEL"]             = "Cancel"
 L["WHATSNEW_CHAT_HELLO"]                = "Welcome to |cFF00FF00EasyFind v%s|r! See update summary %s."
 L["WHATSNEW_CHAT_HERE"]                 = "here"
+L["TUTORIAL_CHAT_OFFER"]               = "|cFF00FF00EasyFind|r: new here? Start the setup tutorial %s."
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_SHOW_ME"]                   = "Show me"
