@@ -4,6 +4,14 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [3.4.1] - 2026-09-17
+
+### Added
+- **WoW Forever**: EasyFind now loads on the WoW Forever beta from the same download. The addon reads what the client actually has at login, so on Forever the search, filters, menu entries and map places only offer what exists there: no pets, toys, heirlooms, currencies, achievements, journal, group finder, arena, housing or class specializations, and the character panel's Skills, PvP, Currency and Statistics tabs are searchable. Retail is unchanged
+- **Tutorial in chat on Forever**: on the beta the setup tutorial is offered as a chat line with a link instead of opening on its own
+
+---
+
 ## [3.4.0] - 2026-09-11
 
 ### Added
