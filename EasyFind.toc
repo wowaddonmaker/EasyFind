@@ -1,4 +1,4 @@
-## Interface: 120100, 120007, 120001, 120000
+## Interface: 16001, 120100, 120007, 120001, 120000
 ## Title: EasyFind
 ## Notes: Search and locate UI elements and map locations with ease
 ## Author: justawower
@@ -9,9 +9,11 @@
 ## Category: UI
 ## AddonCompartmentFunc: EasyFind_OnAddonCompartmentClick
 ## SavedVariables: EasyFindDB
+## SavedVariablesPerCharacter: EasyFindCharDB
 ## DefaultState: enabled
 
 Shared/Localization.lua
+Shared/Caps.lua
 Locales/enUS.lua
 Locales/deDE.lua
 Locales/esES.lua
@@ -41,6 +43,7 @@ Database/Main.lua
 Database/SearchIndex.lua
 Database/Search.lua
 Database/Dynamic.lua
+Database/StaticLocations_Forever.lua
 Database/StaticLocations.lua
 Shared/Aliases.lua
 Shared/Shortkeys.lua

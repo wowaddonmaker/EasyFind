@@ -1,4 +1,4 @@
-## Interface: 120100, 120007, 120001, 120000
+## Interface: 16001, 120100, 120007, 120001, 120000
 ## Title: EasyFind [Icon Search]
 ## Notes: Icon Search app companion for EasyFind, loaded on first use
 ## Author: justawower
