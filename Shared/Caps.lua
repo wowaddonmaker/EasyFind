@@ -40,7 +40,7 @@ function Caps.PanelEnabled(addonName)
     if not forever then return true end
     local known = panelKnown[addonName]
     if known ~= nil then return known end
-    local ok, _, _, _, loadable, reason = pcall(C_AddOns.GetAddOnInfo, addonName)
+    local ok, _, _, _, _, reason = pcall(C_AddOns.GetAddOnInfo, addonName)
     if ok and reason == "MISSING" then panelKnown[addonName] = true return true end  -- baked in, not an addon here
     if ok and (reason == "DISABLED" or reason == "INCOMPATIBLE") then panelKnown[addonName] = false return false end
     local okL, loaded, why = pcall(C_AddOns.LoadAddOn, addonName)

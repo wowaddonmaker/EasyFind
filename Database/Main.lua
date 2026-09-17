@@ -2567,9 +2567,7 @@ function Database:PopulateDynamicGearSets()
                 -- Equipment Manager does it.
                 local specIcon
                 if assignedSpec and GetSpecializationInfo then
-                    local _, _, _, iconID
-                    if GetSpecializationInfo then _, _, _, iconID = GetSpecializationInfo(assignedSpec) end
-                    specIcon = iconID
+                    specIcon = select(4, GetSpecializationInfo(assignedSpec))
                 end
                 uiSearchData[#uiSearchData + 1] = setmetatable({
                     name = name,
