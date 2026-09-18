@@ -249,16 +249,26 @@ function Results:CreateResultsFrame()
     -- is never EasyFind-tainted. Insecure clears at combat entry left the
     -- binding state tainted and detonated protected pet-bar updates
     -- (PetActionBar:SetShownBase autopsy, 2026-07-10).
+    -- No secure snippet at all on WoW Forever: its restricted environment
+    -- has no ClearBindings on a frame handle, and a nil call there is an
+    -- error on every hide of the dropdown. The insecure hide hook clears
+    -- instead there (see below).
+    local secureClear = not (ns.Caps and ns.Caps.forever)
     local shortcutBindOwner = CreateFrame("Frame", nil, resultsFrame, "SecureHandlerShowHideTemplate")
-    shortcutBindOwner:SetAttribute("_onhide", "self:ClearBindings()")
-    shortcutBindOwner:HookScript("OnHide", function()
+    if secureClear then shortcutBindOwner:SetAttribute("_onhide", "self:ClearBindings()") end
+    shortcutBindOwner:HookScript("OnHide", function(self)
+        -- Where the secure snippet could not clear (Forever), the insecure
+        -- path does, out of combat; a lingering Enter or number binding
+        -- on a hidden dropdown would eat keys everywhere.
+        if ns.Caps and ns.Caps.forever and not InCombatLockdown() then ClearOverrideBindings(self) end
         Shortcuts:NoteShortcutBindingsCleared()
     end)
     Shortcuts._shortcutBindOwner = shortcutBindOwner
 
     local navBindOwner = CreateFrame("Frame", nil, resultsFrame, "SecureHandlerShowHideTemplate")
-    navBindOwner:SetAttribute("_onhide", "self:ClearBindings()")
-    navBindOwner:HookScript("OnHide", function()
+    if secureClear then navBindOwner:SetAttribute("_onhide", "self:ClearBindings()") end
+    navBindOwner:HookScript("OnHide", function(self)
+        if ns.Caps and ns.Caps.forever and not InCombatLockdown() then ClearOverrideBindings(self) end
         if Results.NoteNavBindingCleared then Results:NoteNavBindingCleared() end
     end)
     Results._navBindOwner = navBindOwner
