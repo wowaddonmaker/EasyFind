@@ -996,18 +996,39 @@ local function RegisterBlizzardOptionsStub()
     local settingsRoot = SettingsPanel or InterfaceOptionsFrame
     if settingsRoot then
         local restoreOnClose = false
+        -- Both hooks fire from inside Blizzard's protected panel chain
+        -- (ESC > Options runs GameMenuFrame -> ShowUIPanel -> SetUIPanel ->
+        -- Show). Showing or hiding our bar in there is a protected call made
+        -- under EasyFind taint, which the client blocks in combat
+        -- (ADDON_ACTION_BLOCKED on EasyFindSearchFrame:Hide) and which
+        -- spreads our taint through the panel manager the rest of the time.
+        -- Step out of the chain with a zero delay, and do nothing at all
+        -- while locked down: combatHide already parks the bar for fights,
+        -- and an overlapping bar for one fight beats a blocked action.
+        local function AfterPanelChange(fn)
+            Utils.SafeAfter(0, function()
+                if InCombatLockdown() then return end
+                fn()
+            end)
+        end
         settingsRoot:HookScript("OnShow", function()
             local sf = _G["EasyFindSearchFrame"]
             restoreOnClose = sf and sf:IsShown() or false
-            if sf then sf:Hide() end
-            if ns.Search and ns.Search.HideResults then ns.Search:HideResults() end
+            AfterPanelChange(function()
+                if not settingsRoot:IsShown() then return end
+                local frame = _G["EasyFindSearchFrame"]
+                if frame then frame:Hide() end
+                if ns.Search and ns.Search.HideResults then ns.Search:HideResults() end
+            end)
         end)
         settingsRoot:HookScript("OnHide", function()
-            if restoreOnClose then
-                restoreOnClose = false
-                local sf = _G["EasyFindSearchFrame"]
-                if sf then sf:Show() end
-            end
+            if not restoreOnClose then return end
+            restoreOnClose = false
+            AfterPanelChange(function()
+                if settingsRoot:IsShown() then return end
+                local frame = _G["EasyFindSearchFrame"]
+                if frame then frame:Show() end
+            end)
         end)
     end
 end
