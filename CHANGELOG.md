@@ -4,6 +4,16 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [3.4.3] - 2026-09-18
+
+### Fixed
+- **WoW Forever**: the beta no longer shuts down when EasyFind reads the wardrobe. Appearances, appearance sets, appearance items and outfits are not offered on that client at all, because there is no wardrobe behind them there
+- **WoW Forever**: dragging an item out of a result row, and clicking one, work again
+- **WoW Forever**: the Collections entries lead where they say. Mounts is gone, since the beta has no mount tab, and Appearances opens the tab it names instead of the one retail numbers
+- Opening the Options window from the game menu during combat no longer raises a blocked action error. The search bar stays visible for the rest of the fight instead of hiding
+
+---
+
 ## [3.4.2] - 2026-09-18
 
 ### Fixed
