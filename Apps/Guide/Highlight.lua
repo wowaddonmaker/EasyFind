@@ -2016,7 +2016,12 @@ function Highlight:IsTabSelected(frameName, tabIndex)
     if frameName == "CollectionsJournal" then
         local frame = CollectionsJournal
         if frame and PanelTemplates_GetSelectedTab then
-            return PanelTemplates_GetSelectedTab(frame) == tabIndex
+            -- The number that names a tab on retail can name another one
+            -- on a client with fewer tabs, so ask which control this is.
+            local want = tabIndex
+            local tab = ns.Caps and ns.Caps.CollectionsTab and ns.Caps.CollectionsTab(tabIndex)
+            if tab and tab.GetID then want = tab:GetID() end
+            return PanelTemplates_GetSelectedTab(frame) == want
         end
         return false
     end
@@ -2693,6 +2698,7 @@ function Highlight:GetTabButton(frameName, tabIndex)
     end
 
     if frameName == "CollectionsJournal" then
+        if ns.Caps and ns.Caps.CollectionsTab then return ns.Caps.CollectionsTab(tabIndex) end
         return _G["CollectionsJournalTab" .. tabIndex]
     end
 

@@ -223,6 +223,34 @@ function Caps.CharacterTab(tabIndex)
     return tab
 end
 
+-- Collections tabs by what they hold rather than by retail's number.
+-- Forever draws one tab, Appearances, where retail draws six, so a retail
+-- number can name a different tab there or none at all. The tab's own
+-- label is the identity: both clients take it from the same global.
+local COLLECTIONS_TAB_LABEL = {
+    [1] = "MOUNTS", [2] = "PET_JOURNAL", [3] = "TOY_BOX",
+    [4] = "HEIRLOOMS", [5] = "WARDROBE", [6] = "WARBAND_SCENES",
+}
+
+-- The live collections tab control for a retail tab number, or nil.
+function Caps.CollectionsTab(tabIndex)
+    local direct = _G["CollectionsJournalTab" .. tostring(tabIndex)]
+    if not Caps.forever then return direct end
+    local key = COLLECTIONS_TAB_LABEL[tabIndex]
+    local want = key and _G[key]
+    if not want then return direct end
+    local hidden
+    for i = 1, 12 do
+        local tab = _G["CollectionsJournalTab" .. i]
+        if not tab then break end
+        if tab.GetText and tab:GetText() == want then
+            if not tab.IsShown or tab:IsShown() then return tab end
+            hidden = hidden or tab
+        end
+    end
+    return hidden
+end
+
 -- The live sidebar slot for a retail sidebar number, or nil. Blizzard
 -- lists the sidebars in PAPERDOLL_SIDEBARS with the pane each opens.
 function Caps.CharacterSidebarSlot(sidebarIndex)
