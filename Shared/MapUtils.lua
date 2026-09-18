@@ -60,6 +60,33 @@ local ZONE_ABBREVIATIONS = {
 MapUtils.PARENT_OVERRIDES = PARENT_OVERRIDES
 MapUtils.ZONE_ABBREVIATIONS = ZONE_ABBREVIATIONS
 
+-- The top of the map tree, as the children of the Cosmic map (946) on
+-- retail. A client whose Cosmic map lists nothing (the WoW Forever beta)
+-- answers with the root above the player's own map, found by climbing
+-- parents, so every walk that starts "from the world" still starts
+-- somewhere real. Each entry looks like a GetMapChildrenInfo row.
+function MapUtils.WorldRoots()
+    local kids = C_Map.GetMapChildrenInfo(946, nil, false)
+    if kids and #kids > 0 then return kids, 946 end
+    local mapID = C_Map.GetBestMapForUnit("player")
+    local guard = 0
+    while mapID and guard < 12 do
+        local info = C_Map.GetMapInfo(mapID)
+        if not info then break end
+        local parent = info.parentMapID
+        if not parent or parent == 0 then
+            if info.mapType == Enum.UIMapType.Cosmic then
+                local k = C_Map.GetMapChildrenInfo(mapID, nil, false)
+                if k and #k > 0 then return k, mapID end
+            end
+            return { { mapID = mapID, name = info.name, mapType = info.mapType } }, mapID
+        end
+        mapID = parent
+        guard = guard + 1
+    end
+    return {}, 946
+end
+
 function MapUtils.GetParentMapID(mapID, info)
     return PARENT_OVERRIDES[mapID] or (info and info.parentMapID)
 end

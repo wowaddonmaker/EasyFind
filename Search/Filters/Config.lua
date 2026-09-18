@@ -198,12 +198,12 @@ local UI_FILTER_OPTIONS = {
           dbKey = "reputationFilterMode",
           options = {
               { value = "all",     label = _G["ALL"] or "All" },
-              { value = "warband", label = _G["WARBAND"] or "Warband" },
+              { value = "warband", label = _G["WARBAND"] or "Warband", caps = "warbandRep" },
               { value = "char",    label = (UnitName and UnitName("player")) or "This Character" },
           },
           onChange = function(v) if Search.ApplyReputationFilter then Search:ApplyReputationFilter(v) end end,
           checkboxes = {
-              { dbKey = "showLegacyReputations", label = L["FILTER_SHOW_LEGACY_REPUTATIONS"],
+              { dbKey = "showLegacyReputations", label = L["FILTER_SHOW_LEGACY_REPUTATIONS"], caps = "warbandRep",
                 onChange = function(v) if Search.ApplyReputationShowLegacy then Search:ApplyReputationShowLegacy(v) end end },
           },
       } },
@@ -212,8 +212,8 @@ local UI_FILTER_OPTIONS = {
     { key = "talents",     label = _G["TALENTS"] or "Talents",     iconAtlas = "UI-HUD-MicroMenu-SpecTalents-Up",
       flyoutRadio = {
           checkboxes = {
-              { dbKey = "talentShowSpecs", label = _G["SPECIALIZATION"] or "Specialization" },
-              { dbKey = "talentShowLoadouts", label = L["FILTER_LOADOUTS"] },
+              { dbKey = "talentShowSpecs", label = _G["SPECIALIZATION"] or "Specialization", caps = "specs" },
+              { dbKey = "talentShowLoadouts", label = L["FILTER_LOADOUTS"], caps = "specs" },
               { dbKey = "hideTooltips.talents", label = L["FILTER_HIDE_TOOLTIPS"] },
           },
       } },

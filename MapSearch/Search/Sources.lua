@@ -461,7 +461,8 @@ local function BuildGlobalInstanceCacheSync(self)
     globalInstanceCacheBuildToken = globalInstanceCacheBuildToken + 1
     globalInstanceCacheBuilding = false
     globalInstanceCache = {}
-    CollectGlobalInstanceMap(self, globalInstanceCache, {}, {}, 946)
+    local _, rootID = ns.MapUtils and ns.MapUtils.WorldRoots and ns.MapUtils.WorldRoots()
+    CollectGlobalInstanceMap(self, globalInstanceCache, {}, {}, rootID or 946)
     NotifyGlobalInstanceCacheWaiters(true)
     return globalInstanceCache
 end
@@ -503,8 +504,8 @@ local function RunGlobalInstanceCacheBuild(self, done)
     globalInstanceCacheBuildToken = globalInstanceCacheBuildToken + 1
     local token = globalInstanceCacheBuildToken
     local cache, seen, nameSeen = {}, {}, {}
-    local rootChildren = GetMapChildrenInfo(946, nil, false)
-    local stack = rootChildren and {{ children = rootChildren, index = 1 }} or {}
+    local rootChildren = ns.MapUtils and ns.MapUtils.WorldRoots and ns.MapUtils.WorldRoots() or GetMapChildrenInfo(946, nil, false)
+    local stack = rootChildren and #rootChildren > 0 and {{ children = rootChildren, index = 1 }} or {}
 
     local function step()
         if token ~= globalInstanceCacheBuildToken then

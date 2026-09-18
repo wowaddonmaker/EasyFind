@@ -119,6 +119,9 @@ Caps.gearSets = C_EquipmentSet ~= nil
 Caps.outfits = Caps.transmog
 Caps.ammo = rule("EnableAmmoSystem") == true
 Caps.campsites = C_WarbandScene ~= nil and not Caps.forever
+-- Warband-wide reputations and legacy reputation headers: retail's
+-- account-wide reputation system, absent on Forever.
+Caps.warbandRep = C_Reputation ~= nil and C_Reputation.IsAccountWideReputation ~= nil and not Caps.forever
 Caps.pvpUI = Caps.PanelEnabled("Blizzard_PVPUI")
 Caps.groupFinder = Caps.PanelEnabled("Blizzard_GroupFinder")
 Caps.collectionsUI = Caps.PanelEnabled("Blizzard_Collections")
@@ -263,8 +266,20 @@ function Caps.PruneRows(rows)
         local row = rows[i]
         if type(row) == "table" and row.key and not Caps.Has(row.key) then
             table.remove(rows, i)
-        elseif type(row) == "table" and row.flyoutSubFilters then
-            Caps.PruneRows(row.flyoutSubFilters)
+        elseif type(row) == "table" then
+            if row.flyoutSubFilters then Caps.PruneRows(row.flyoutSubFilters) end
+            -- Choices inside a flyout may name a system too (caps = "warbandRep").
+            local radio = row.flyoutRadio
+            if radio then
+                for _, list in ipairs({ radio.options, radio.checkboxes }) do
+                    if type(list) == "table" then
+                        for j = #list, 1, -1 do
+                            local opt = list[j]
+                            if type(opt) == "table" and opt.caps and Caps[opt.caps] == false then table.remove(list, j) end
+                        end
+                    end
+                end
+            end
         end
     end
     return rows

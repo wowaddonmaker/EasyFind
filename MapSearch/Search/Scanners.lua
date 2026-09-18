@@ -141,7 +141,7 @@ function MapSearch:ScanAllFlightMasters()
         end
     end
 
-    local cosmicChildren = GetMapChildrenInfo(946, nil, false)
+    local cosmicChildren = ns.MapUtils and ns.MapUtils.WorldRoots and ns.MapUtils.WorldRoots() or GetMapChildrenInfo(946, nil, false)
     if cosmicChildren then
         for _, child in ipairs(cosmicChildren) do
             collectFromMaps(child.mapID, 0)
