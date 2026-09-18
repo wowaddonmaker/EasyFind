@@ -4,6 +4,13 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [3.4.2] - 2026-09-18
+
+### Fixed
+- **WoW Forever**: zones, flight masters and instances are back in search results (the beta's world map lists no continents under its top map, so the catalog now starts from the world the player stands in). The map search tab sits against the map window with a Quests tab above it to return to the quest log. The results dropdown no longer raises a secure-execution error when it closes. The map and reputation icons draw from the beta's own glyph sheet, and the Warband and specialization choices leave the filter menus. Retail is unchanged
+
+---
+
 ## [3.4.1] - 2026-09-17
 
 ### Added
