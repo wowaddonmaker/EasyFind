@@ -102,6 +102,7 @@ end
 
 local initialized = false
 local tabFrame
+local backTab            -- our Quests tab, only where Blizzard draws none
 -- Forward declared: closures below capture this before RunSearch defines it.
 local RefreshCurrentSearch
 local ReleaseMapTabMemory
@@ -232,6 +233,10 @@ local function RefreshSelectGlows()
     else
         setGlow(tabFrame, false)
     end
+    if backTab then
+        setGlow(backTab, not selectedIsOurs)
+        if backTab._efIcon then backTab._efIcon:SetVertexColor(Utils.RGB(selectedIsOurs and TAB_ICON_DIM or TAB_ICON_GOLD)) end
+    end
     if tabFrame and tabFrame._efIcon then
         local c = selectedIsOurs and TAB_ICON_GOLD or TAB_ICON_DIM
         tabFrame._efIcon:SetVertexColor(Utils.RGB(c))
@@ -299,7 +304,9 @@ local function HideOurPanel(restoreBlizzardMode)
     local qmf = _G["QuestMapFrame"]
     if restoreBlizzardMode
        and qmf and qmf.SetDisplayMode and qmf.displayMode == nil then
-        local restore = prevBlizzardDisplayMode or qmf.QuestsFrame
+        -- The quest log's mode as its own tab names it: a frame on retail,
+        -- a number on WoW Forever.
+        local restore = prevBlizzardDisplayMode or (qmf.QuestsTab and qmf.QuestsTab.displayMode) or qmf.QuestsFrame
         if restore then
             restoringBlizzardDisplayMode = true
             pcall(qmf.SetDisplayMode, qmf, restore)
@@ -2196,6 +2203,79 @@ local function CreateTabFrame(qmf)
     return tab
 end
 
+-- Our own Quests tab for a client whose quest log draws no side tabs:
+-- the same tab art, the icon Blizzard's hidden Quests tab carries, and a
+-- click that leaves our panel and shows the quest log again.
+local function CreateBackTab(qmf)
+    local tab = CreateFrame("Frame", "EasyFindMapQuestsTab", qmf)
+    local refW, refH = qmf.QuestsTab:GetSize()
+    if not refW or refW == 0 then refW, refH = TAB_W, TAB_H end
+    tab:SetSize(refW, refH)
+    tab:SetFrameStrata("HIGH")
+    tab:SetFrameLevel(qmf.QuestsTab:GetFrameLevel())
+    tab:EnableMouse(true)
+
+    local bg = tab:CreateTexture(nil, "BACKGROUND")
+    bg:SetAtlas("QuestLog-tab-side", true)
+    bg:SetPoint("CENTER", tab, "CENTER", 0, 0)
+
+    -- The icon: whatever Blizzard's Quests tab draws besides the tab
+    -- itself, else the quest log's own book.
+    local icon = tab:CreateTexture(nil, "ARTWORK")
+    local copied = false
+    -- Blizzard's tab keeps its glyph in a region named Icon; failing
+    -- that, any texture whose atlas is not tab chrome (compared in lower
+    -- case: the chrome atlases mix "tab-side" and "Tab-side").
+    local src = qmf.QuestsTab.Icon
+    if not src then
+        for i = 1, qmf.QuestsTab:GetNumRegions() do
+            local r = select(i, qmf.QuestsTab:GetRegions())
+            if r and r.GetObjectType and r:GetObjectType() == "Texture" then
+                local atlas = r.GetAtlas and r:GetAtlas()
+                local low = atlas and atlas:lower() or ""
+                if atlas and not low:find("tab") and not low:find("glow") then src = r break end
+            end
+        end
+    end
+    if src then
+        local atlas = src.GetAtlas and src:GetAtlas()
+        if atlas then
+            icon:SetAtlas(atlas, false)
+            copied = true
+        elseif src.GetTexture and src:GetTexture() then
+            icon:SetTexture(src:GetTexture())
+            if src.GetTexCoord then icon:SetTexCoord(src:GetTexCoord()) end
+            copied = true
+        end
+    end
+    if not copied then icon:SetTexture("Interface\\QuestFrame\\UI-QuestLog-BookIcon") end
+    icon:SetSize(TAB_ICON_SIZE + 4, TAB_ICON_SIZE + 4)
+    icon:SetPoint("CENTER", tab, "CENTER", 0, 0)
+    icon:SetVertexColor(Utils.RGB(TAB_ICON_GOLD))
+    tab._efIcon = icon
+
+    local selectGlow = tab:CreateTexture(nil, "OVERLAY")
+    selectGlow:SetAtlas("QuestLog-Tab-side-Glow-Select", true)
+    selectGlow:SetPoint("CENTER", bg, "CENTER", 0, 0)
+    selectGlow:Show()
+    tab._efSelectGlow = selectGlow
+
+    local hoverGlow = tab:CreateTexture(nil, "HIGHLIGHT")
+    hoverGlow:SetAtlas("QuestLog-Tab-side-Glow-hover", true)
+    hoverGlow:SetPoint("CENTER", bg, "CENTER", 0, 0)
+
+    tab:SetScript("OnMouseUp", function(_, button)
+        if button == "LeftButton" then HideOurPanel(true) RefreshSelectGlows() end
+    end)
+    tab:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText(_G["QUESTLOG_BUTTON"] or _G["QUESTS_LABEL"] or "Quests")
+        GameTooltip:Show()
+    end)
+    tab:SetScript("OnLeave", GameTooltip_Hide)
+    return tab
+end
+
 -- Sibling content panel: paper backdrop, gold border, search + cog at
 -- top, scrollable content below.
 local function CreatePanel(qmf)
@@ -2488,8 +2568,24 @@ local function PlaceTab()
         end
     end
     tabFrame:ClearAllPoints()
+    if backTab and lowest then backTab:Hide() end
     if lowest then
         tabFrame:SetPoint("TOPLEFT", lowest, "BOTTOMLEFT", 0, TAB_STACK_GAP)
+    elseif qmf.QuestsTab and not qmf.QuestsTab:IsShown() then
+        -- No side tab is drawn (WoW Forever's quest log has none): our
+        -- Quests tab takes the first slot, where Blizzard's hidden one
+        -- still sits, and the search tab goes under it, instead of
+        -- floating under two invisible tabs with no way back.
+        if not backTab then backTab = CreateBackTab(qmf) end
+        backTab:ClearAllPoints()
+        -- Measured on the beta: the drawn border ends at the quest
+        -- list's scrollbar, nine pixels inside the frame's own edge, and
+        -- the tab art carries transparent padding on its left. Blizzard's
+        -- hidden tab sits five pixels past the edge and would float out
+        -- in the world; ours tucks in against the border as retail's does.
+        backTab:SetPoint("TOPLEFT", qmf, "TOPRIGHT", -9, -28)
+        backTab:Show()
+        tabFrame:SetPoint("TOPLEFT", backTab, "BOTTOMLEFT", 0, TAB_STACK_GAP)
     elseif qmf.MapLegendTab then
         tabFrame:SetPoint("TOPLEFT", qmf.MapLegendTab, "BOTTOMLEFT", 0, TAB_STACK_GAP)
     else
@@ -2613,7 +2709,7 @@ function MapTab:Initialize()
                 SafeAfter(0, function()
                     local q = _G["QuestMapFrame"]
                     if q and q.SetDisplayMode and q.displayMode == nil and not selectedIsOurs then
-                        local restore = prevBlizzardDisplayMode or q.QuestsFrame
+                        local restore = prevBlizzardDisplayMode or (q.QuestsTab and q.QuestsTab.displayMode) or q.QuestsFrame
                         if restore then pcall(q.SetDisplayMode, q, restore) end
                     end
                 end)
