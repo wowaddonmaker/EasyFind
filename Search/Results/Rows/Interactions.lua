@@ -349,6 +349,15 @@ function Rows.InstallInteractions(resultRow, index)
             PickupSpell(spellID)
         end
     end
+    -- The same for items: WoW Forever has no PickupItem global at all,
+    -- only the namespaced call.
+    local function PickupItemCompat(itemID)
+        if C_Item and C_Item.PickupItem then
+            C_Item.PickupItem(itemID)
+        elseif PickupItem then
+            PickupItem(itemID)
+        end
+    end
     local function CanPickupRowAction(d)
         if not d then return false end
         if d.mountID then return Icons:IsMountSummonable(d) end
@@ -385,11 +394,11 @@ function Rows.InstallInteractions(resultRow, index)
             local pickup = (C_Container and C_Container.PickupContainerItem) or PickupContainerItem
             if pickup then
                 pickup(d.bagID, d.bagSlot)
-            elseif d.itemID and PickupItem then
-                PickupItem(d.itemID)
+            elseif d.itemID then
+                PickupItemCompat(d.itemID)
             end
-        elseif d.itemID and PickupItem then
-            PickupItem(d.itemID)
+        elseif d.itemID then
+            PickupItemCompat(d.itemID)
         end
         -- Any row carrying a real item link qualifies, not just catalog rows:
         -- a bag item dragged to chat should link exactly like a catalog item.
