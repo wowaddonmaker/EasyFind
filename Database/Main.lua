@@ -1473,10 +1473,38 @@ end
 
 local DIFF_PRIORITY = { "mythic", "heroic", "normal", "lfr" }
 
+-- Every entry into the wardrobe goes through these two. On a client whose
+-- wardrobe holds nothing, asking for a category does not fail, it takes
+-- the whole client down: an assert inside the game (BC_ASSERT on an empty
+-- optional) that pcall cannot catch, because it aborts the process rather
+-- than raising a Lua error. So the only real protection is the capability
+-- check, and the guard below repeats it here where the call is: no path,
+-- stray or future, reaches the wardrobe on a client without one. The
+-- pcall covers the ordinary Lua-side failures on top of that.
+-- Methods on Database, not file locals: this chunk is at Lua's limit.
+function Database.NoWardrobe()
+    return ns.Caps ~= nil and ns.Caps.transmog == false
+end
+
+function Database.CategoryAppearances(slot)
+    local C = C_TransmogCollection
+    if Database.NoWardrobe() or not (C and C.GetCategoryAppearances) then return nil end
+    local ok, list = pcall(C.GetCategoryAppearances, slot)
+    if ok then return list end
+    return nil
+end
+
+function Database.AllTransmogSets()
+    if Database.NoWardrobe() or not (C_TransmogSets and C_TransmogSets.GetAllSets) then return nil end
+    local ok, sets = pcall(C_TransmogSets.GetAllSets)
+    if ok then return sets end
+    return nil
+end
+
 -- Recovers setID for pinned sets saved before transmogSetID was persisted.
 function Database:GetTransmogSetIDByName(name)
     if not name or not C_TransmogSets or not C_TransmogSets.GetAllSets then return nil end
-    local allSets = C_TransmogSets.GetAllSets()
+    local allSets = Database.AllTransmogSets()
     if not allSets then return nil end
     for i = 1, #allSets do
         local s = allSets[i]
@@ -2858,7 +2886,7 @@ function Database:PopulateDynamicTransmogSets()
         end
     end
 
-    local allSets = C_TransmogSets.GetAllSets()
+    local allSets = Database.AllTransmogSets()
     if not allSets then return false end
 
     local rows = {}
@@ -2938,7 +2966,7 @@ function Database:PopulateDynamicTransmogSetsAsync(done)
         end
     end
 
-    local allSets = C_TransmogSets.GetAllSets()
+    local allSets = Database.AllTransmogSets()
     if not allSets then
         done(false)
         return
@@ -3096,11 +3124,11 @@ function Database:PopulateDynamicAppearanceItems()
     -- loads, GetCategoryAppearances returns nothing. Load it once so search works
     -- even if the player never opened the Appearances journal this session. The
     -- TRANSMOG_COLLECTION_UPDATED handler re-runs us once the data settles.
-    local probe = C.GetCategoryAppearances(slotCats[1])
+    local probe = Database.CategoryAppearances(slotCats[1])
     if (not probe or #probe == 0) and C_AddOns and C_AddOns.LoadAddOn
        and not C_AddOns.IsAddOnLoaded("Blizzard_Collections") then
         pcall(C_AddOns.LoadAddOn, "Blizzard_Collections")
-        probe = C.GetCategoryAppearances(slotCats[1])
+        probe = Database.CategoryAppearances(slotCats[1])
     end
     if not probe or #probe == 0 then return false end
 
@@ -3116,7 +3144,7 @@ function Database:PopulateDynamicAppearanceItems()
 
     for ci = 1, #slotCats do
         local catID = slotCats[ci]
-        local appearances = C.GetCategoryAppearances(catID)
+        local appearances = Database.CategoryAppearances(catID)
         if appearances and #appearances > 0 then
             local slotName
             if getCatInfo then
@@ -3256,11 +3284,11 @@ function Database:PopulateDynamicAppearanceItemsAsync(done)
         slot = (Enum.TransmogCollectionType and Enum.TransmogCollectionType.Head) or 1
     end
 
-    local probe = C.GetCategoryAppearances(slot)
+    local probe = Database.CategoryAppearances(slot)
     if (not probe or #probe == 0) and C_AddOns and C_AddOns.LoadAddOn
        and not C_AddOns.IsAddOnLoaded("Blizzard_Collections") then
         pcall(C_AddOns.LoadAddOn, "Blizzard_Collections")
-        probe = C.GetCategoryAppearances(slot)
+        probe = Database.CategoryAppearances(slot)
     end
     if not probe or #probe == 0 then done(false, "cancelled"); return end
 
@@ -3274,7 +3302,7 @@ function Database:PopulateDynamicAppearanceItemsAsync(done)
     local getCatInfo = C.GetCategoryInfo
     if not GetSources then done(false, "cancelled"); return end
 
-    local appearances = C.GetCategoryAppearances(slot)
+    local appearances = Database.CategoryAppearances(slot)
     if not appearances or #appearances == 0 then done(false, "cancelled"); return end
 
     local slotName

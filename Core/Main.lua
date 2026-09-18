@@ -1269,8 +1269,13 @@ eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_LEVEL_UP")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
-eventFrame:RegisterEvent("TRANSMOG_OUTFITS_CHANGED")
-eventFrame:RegisterEvent("TRANSMOG_COLLECTION_UPDATED")
+-- Both handlers below end up asking the wardrobe, and on a client without
+-- one that call takes the game down rather than failing (Shared/Caps.lua).
+-- No wardrobe, no subscription.
+if not (ns.Caps and ns.Caps.transmog == false) then
+    eventFrame:RegisterEvent("TRANSMOG_OUTFITS_CHANGED")
+    eventFrame:RegisterEvent("TRANSMOG_COLLECTION_UPDATED")
+end
 eventFrame:RegisterEvent("UPDATE_MACROS")
 eventFrame:RegisterEvent("SPELLS_CHANGED")
 eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")

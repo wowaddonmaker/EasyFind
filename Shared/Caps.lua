@@ -90,8 +90,15 @@ Caps.achievements = rule("AchievementsPanelDisabled") ~= true
     and type(GetCategoryList) == "function"
     and Caps.PanelEnabled("Blizzard_AchievementUI")
     and not Caps.forever   -- the panel loads and is a shell; no toggle binding exists
+-- Forever draws the Appearances tab over a wardrobe that holds nothing,
+-- and asking it for a category does not fail, it takes the client down:
+-- GetCategoryAppearances aborts on BC_ASSERT(m_has_value), a C++ assert
+-- that pcall cannot catch (measured 2026-09-18, crash 1FC77402, and the
+-- same assert behind a player report). Nothing here may touch the
+-- wardrobe on that client, so the whole system is off.
 Caps.transmog = rule("TransmogEnabled") ~= false
     and C_TransmogCollection ~= nil
+    and not Caps.forever
 -- Forever's collections journal hides the mount, pet, toy and heirloom
 -- tabs (only Appearances shows), so the journal rows have nowhere to go.
 Caps.mounts = C_MountJournal ~= nil and C_MountJournal.GetMountIDs ~= nil and not Caps.forever
