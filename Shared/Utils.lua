@@ -1937,6 +1937,13 @@ ns.REP_CATEGORY_ICON_COORDS = {
     Horde    = { 0.8479, 0.8744, 0.7144, 0.7415 },
     Alliance = { 0.7154, 0.7402, 0.8141, 0.8400 },
 }
+-- WoW Forever ships a different layout of sheet 1121272: the crests sit
+-- elsewhere and the retail cells come up blank. One reputation glyph and
+-- one map glyph there, read off the beta's sheet by hand.
+if ns.Caps and ns.Caps.forever then
+    ns.REP_CATEGORY_ICON_COORDS.Horde    = { 0.3732, 0.3991, 0.5033, 0.5310 }
+    ns.REP_CATEGORY_ICON_COORDS.Alliance = { 0.3732, 0.3991, 0.5033, 0.5310 }
+end
 function ns.PlayerRepCategoryIconCoords()
     local faction = UnitFactionGroup and UnitFactionGroup("player")
     return ns.REP_CATEGORY_ICON_COORDS[faction] or ns.REP_CATEGORY_ICON_COORDS.Alliance
@@ -1968,7 +1975,9 @@ ns.BANK_CATEGORY_ICON_COORDS = { 0, 1, 0, 1 }
 -- Map-search and Statistics category glyphs (12.1 moved both on the shared
 -- sheet), shared by the filter-menu rows and the result-row category icons.
 ns.MAP_CATEGORY_ICON_TEX = 1121272
-ns.MAP_CATEGORY_ICON_COORDS = { 0.7443, 0.7840, 0.2548, 0.2961 }
+ns.MAP_CATEGORY_ICON_COORDS = (ns.Caps and ns.Caps.forever)
+    and { 0.2513, 0.2932, 0.2533, 0.2982 }   -- Forever's sheet
+    or  { 0.7443, 0.7840, 0.2548, 0.2961 }   -- retail's sheet
 ns.STAT_CATEGORY_ICON_TEX = 1121272
 ns.STAT_CATEGORY_ICON_COORDS = { 0.2680, 0.3043, 0.2666, 0.2943 }
 
