@@ -6936,7 +6936,7 @@ function Database:BuildUIDatabase()
             buttonFrame = "CollectionsMicroButton",
             steps = {{ buttonFrame = "CollectionsMicroButton" }},
             children = {
-                { name = _G["MOUNTS"] or "Mounts", keywords = {"mounts", "mount", "riding", "mount collection", "flying"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 1 }} },
+                { name = _G["MOUNTS"] or "Mounts", keywords = {"mounts", "mount", "riding", "mount collection", "flying"}, category = "Warband Collections", caps = "mounts", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 1 }} },
                 { name = _G["PET_JOURNAL"] or _G["PETS"] or "Pet Journal", keywords = {"pets", "pet", "battle pets", "companion", "pet collection", "critter", "pet journal"}, category = "Warband Collections", caps = "pets", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 2 }} },
                 { name = _G["TOY_BOX"] or "Toy Box", keywords = {"toys", "toy", "toybox", "toy box", "fun items"}, category = "Warband Collections", caps = "toys", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 3 }} },
                 { name = _G["HEIRLOOMS"] or "Heirlooms", keywords = {"heirlooms", "heirloom", "leveling gear", "bind on account", "boa"}, category = "Warband Collections", caps = "heirlooms", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 4 }} },
