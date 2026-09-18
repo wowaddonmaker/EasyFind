@@ -461,8 +461,12 @@ local function BuildGlobalInstanceCacheSync(self)
     globalInstanceCacheBuildToken = globalInstanceCacheBuildToken + 1
     globalInstanceCacheBuilding = false
     globalInstanceCache = {}
-    local _, rootID = ns.MapUtils and ns.MapUtils.WorldRoots and ns.MapUtils.WorldRoots()
-    CollectGlobalInstanceMap(self, globalInstanceCache, {}, {}, rootID or 946)
+    local rootID = 946
+    if ns.MapUtils and ns.MapUtils.WorldRoots then
+        local _, id = ns.MapUtils.WorldRoots()
+        if id then rootID = id end
+    end
+    CollectGlobalInstanceMap(self, globalInstanceCache, {}, {}, rootID)
     NotifyGlobalInstanceCacheWaiters(true)
     return globalInstanceCache
 end
