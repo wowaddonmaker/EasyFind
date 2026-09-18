@@ -2018,9 +2018,12 @@ function Highlight:IsTabSelected(frameName, tabIndex)
         if frame and PanelTemplates_GetSelectedTab then
             -- The number that names a tab on retail can name another one
             -- on a client with fewer tabs, so ask which control this is.
+            -- Retail keeps its own numbering untouched.
             local want = tabIndex
-            local tab = ns.Caps and ns.Caps.CollectionsTab and ns.Caps.CollectionsTab(tabIndex)
-            if tab and tab.GetID then want = tab:GetID() end
+            if ns.Caps and ns.Caps.forever and ns.Caps.CollectionsTab then
+                local tab = ns.Caps.CollectionsTab(tabIndex)
+                if tab and tab.GetID then want = tab:GetID() end
+            end
             return PanelTemplates_GetSelectedTab(frame) == want
         end
         return false
